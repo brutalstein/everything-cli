@@ -80,7 +80,10 @@ impl fmt::Display for StorageError {
                 path.display()
             ),
             Self::InvalidDatabaseVersion(value) => {
-                write!(formatter, "invalid durable database schema version: {value}")
+                write!(
+                    formatter,
+                    "invalid durable database schema version: {value}"
+                )
             }
             Self::MigrationInvariant(message) => {
                 write!(formatter, "migration invariant failed: {message}")
@@ -96,7 +99,9 @@ impl fmt::Display for StorageError {
                 formatter,
                 "secret-class data is not permitted in the ordinary content-addressed object store"
             ),
-            Self::InvalidObjectHash(hash) => write!(formatter, "invalid SHA-256 object hash: {hash}"),
+            Self::InvalidObjectHash(hash) => {
+                write!(formatter, "invalid SHA-256 object hash: {hash}")
+            }
             Self::ObjectCorrupt { expected, actual } => write!(
                 formatter,
                 "content-addressed object hash mismatch: expected {expected}, found {actual}"
@@ -121,7 +126,10 @@ impl fmt::Display for StorageError {
                 "causation event {event_id} belongs to project {cause_project}, not {event_project}"
             ),
             Self::EventIdGeneration(message) => {
-                write!(formatter, "failed to generate monotonic event id: {message}")
+                write!(
+                    formatter,
+                    "failed to generate monotonic event id: {message}"
+                )
             }
             Self::ProjectionMismatch { project_id } => write!(
                 formatter,
