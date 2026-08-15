@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aer.local/schemas/budget.schema.json",
+  "title": "AER Resource Budget",
+  "type": "object",
+  "properties": {
+    "input_tokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "output_tokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "cached_tokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "tool_calls": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "wall_time_seconds": {
+      "type": "number",
+      "minimum": 0
+    },
+    "model_cost_usd": {
+      "type": "number",
+      "minimum": 0
+    },
+    "parallel_workers": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "network_bytes": {
+      "type": "integer",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": false
+}

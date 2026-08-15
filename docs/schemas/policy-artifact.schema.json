@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aer.local/schemas/policy-artifact.schema.json",
+  "title": "AER Policy Artifact",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "policy_id",
+    "policy_type",
+    "version",
+    "content_hash",
+    "creator",
+    "status",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "policy_id": {
+      "type": "string"
+    },
+    "policy_type": {
+      "type": "string"
+    },
+    "version": {
+      "type": "string"
+    },
+    "parent_version": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "content_hash": {
+      "type": "string"
+    },
+    "creator": {
+      "type": "string"
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "evaluation_report_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "status": {
+      "enum": [
+        "candidate",
+        "offline_passed",
+        "shadow",
+        "canary",
+        "active",
+        "retired"
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "additionalProperties": false
+}

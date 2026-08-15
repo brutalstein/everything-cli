@@ -12,11 +12,17 @@
 
 **Cognitive Adapter** — Model-specific compiler from AER's semantic Handoff Envelope to provider/model-efficient instructions and context formatting.
 
+**Compatibility Registry** — Machine-readable supported version ranges and migration relationships across AER's durable/wire contracts.
+
 **Context Pack** — Versioned, bounded, provenance-bearing context selected for one model invocation or handoff.
+
+**Domain Profile** — Composable declaration of project-domain capabilities and verification evidence, e.g. web UI, backend, CLI/TUI, systems, ML/data or IaC.
 
 **Engineering IR** — Canonical model-independent representation of project intent, requirements, constraints, invariants and acceptance criteria.
 
 **Engineering State** — Structured durable facts, decisions, assumptions, hypotheses, failures and progress derived from event/evidence history.
+
+**Environment Fingerprint** — Versioned identity of OS/architecture/toolchain/lockfiles/sandbox/services/hardware properties relevant to reproducibility and evidence reuse.
 
 **Evidence** — Machine-checkable observation tied to repository/environment/command identity.
 
@@ -24,9 +30,15 @@
 
 **Proof Manifest** — Mapping from requirement to implementation locations and verification evidence.
 
-**Repo Snapshot** — Identity of the exact repository state a context/evidence item refers to.
+**Provider Gateway** — Normalized model-provider execution boundary handling streaming, retries, errors, rate limits, structured output, health and cancellation.
 
-**Router Regret** — Difference between the routing outcome and best eligible alternative on tasks where counterfactual outcomes are known/measured.
+**Research Artifact** — Provenance-, time-, confidence-, and contradiction-aware representation of external research claims.
+
+**Repo Snapshot** — Identity of the exact repository/workspace state a context/evidence item refers to.
+
+**Resource Governor** — Admission/backpressure authority for workers, provider calls, subprocesses, services, memory/disk/network and cost budgets.
+
+**Router Regret** — Difference between routing outcome and best eligible alternative on tasks where counterfactual outcomes are known/measured.
 
 **Sandbox** — Constrained execution environment limiting filesystem, network, credential and resource authority.
 
@@ -36,4 +48,6 @@
 
 **Task Envelope** — Typed definition of one unit of engineering work.
 
-**Verifier Composition** — Risk/task-specific collection of deterministic and model-based checks used for acceptance.
+**Verifier Composition** — Risk/task/domain-specific collection of deterministic and model-based checks used for acceptance.
+
+**Workspace Snapshot** — Identity of user-owned repository state including base commit and dirty changes before AER creates isolated writable execution state.

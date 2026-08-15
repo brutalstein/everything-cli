@@ -1,107 +1,162 @@
 # End-to-End Runtime Sequence
 
-This document shows how the subsystems coordinate during a realistic project.
+This document shows how subsystems coordinate during realistic project work.
 
 ## A. New greenfield project
 
 ### 1. Start
 
 ```text
-user -> CLI -> daemon -> project.created event
+user -> CLI -> daemon -> compatibility/preflight -> project.created
 ```
 
-No coding model is called yet.
+Startup validates durable-state compatibility and resource/runtime health before write-mode execution.
 
 ### 2. Intent elicitation
 
-Intent Engine sends the user request to a language/product-reasoning model selected by the router.
+Intent Engine receives the user goal and uses an eligible language/product-reasoning model when useful.
 
-The model outputs structured semantic candidates and unknowns, not an implementation prompt.
+The model outputs structured semantic candidates/unknowns rather than an implementation mega-prompt.
 
-The engine computes material ambiguities and asks only high-value questions.
+The engine asks only high-value questions.
 
-### 3. Engineering IR compilation
+### 3. Research unresolved external facts
+
+Unknowns marked `research` create bounded research tasks.
+
+```text
+question
+ -> source discovery
+ -> provenance/safety classification
+ -> claim extraction
+ -> contradiction/corroboration
+ -> ResearchArtifact
+```
+
+External claims remain evidence with time/freshness semantics. They do not automatically become user requirements.
+
+### 4. Engineering IR compilation
 
 Resolved semantics become IR v1.
 
-- schema validation runs;
-- semantic checksum compares IR against user source messages for medium/high-risk projects;
+- schema + semantic validation;
+- semantic checksum against user source messages for medium/high risk;
 - project contract becomes active.
 
-### 4. Initial architecture/task graph
+### 5. Initial architecture/task graph
 
-A planning-capable model may propose architecture/tasks, but deterministic rules validate:
+A planning-capable model may propose architecture/tasks. Deterministic validation checks:
 
-- stable IDs,
-- dependency DAG,
-- requirement coverage,
-- invariant references,
-- cyclic dependency errors.
+- stable IDs;
+- dependency DAG;
+- requirement/acceptance coverage;
+- invariant references;
+- authority/resource assumptions.
 
-### 5. Repository/bootstrap work
+### 6. Repository/workspace bootstrap
 
-For an empty repo, the task begins with minimal bootstrap. For an existing repo, Repo Intelligence indexes the base commit.
+For existing repositories:
 
-### 6. Context selection
+- capture user-owned Workspace Snapshot;
+- do not reset/stash/discard dirty changes;
+- identify base/upstream/submodule state;
+- create AER-owned isolated writable worktree.
 
-For each ready task:
+For an empty repo, create minimal bootstrap under AER ownership.
+
+### 7. Repository intelligence and Context Pack
 
 ```text
-Task + IR slice + repo state
- -> candidate retrieval
+Task + IR slice + repo/workspace state + Engineering State
+ -> multi-view retrieval
  -> fusion
  -> budgeted selection
+ -> schema/semantic validation
  -> Context Pack
 ```
 
-### 7. Routing
+### 8. Routing and resource admission
 
-Router evaluates eligible models and budget.
+Router evaluates eligible models.
 
-A repository task may first receive bounded cheap scouting. Scouting evidence updates task features before final routing.
+A cheap bounded scout may gather repository evidence first.
 
-### 8. Handoff compilation
+Before execution, Resource Governor checks:
 
-Task + Context Pack + Engineering State become a Handoff Envelope.
+- task/run/org budgets;
+- worker/sandbox capacity;
+- provider quotas/health;
+- disk/memory/process/network constraints;
+- serialization/integration policy.
 
-The selected model's Cognitive Adapter renders provider-specific instructions.
+No capacity means queued/ready, not uncontrolled spawn.
 
-### 9. Execution
+### 9. Handoff + provider execution
 
-Worker runs inside its sandbox/worktree.
+Task + Context Pack + Engineering State become Handoff Envelope.
 
-Tool calls are mediated through Tool ABI. Large outputs become artifacts. New claims are returned as untrusted WorkResult items.
+Cognitive Adapter renders the model-specific request.
 
-### 10. Verification
+Provider Gateway owns normalized:
 
-Verification Controller selects gates from task risk/type.
+- attempt identity;
+- streaming;
+- structured-output/tool-call validation;
+- cancellation;
+- retry/rate-limit behavior;
+- health/circuit state.
 
-Deterministic evidence is collected. An independent semantic verifier is added if policy requires.
+### 10. Sandbox execution and environment identity
 
-### 11. Acceptance
+Worker acts only within admitted sandbox/worktree authority.
 
-If sufficient:
+Tool/dependency/package operations go through Tool ABI/security/network policy.
+
+Relevant toolchain, lockfile, sandbox/service/platform state becomes an Environment Fingerprint.
+
+Large outputs become content-addressed artifacts. Worker claims return as untrusted WorkResult.
+
+### 11. Verification
+
+Verification Controller composes gates using:
+
+- task risk/type;
+- Engineering IR;
+- Domain Profiles;
+- Environment Fingerprint;
+- architecture/security policy.
+
+Deterministic evidence is preferred. Independent semantic verifier/held-out checks are added when required.
+
+### 12. Acceptance
+
+If proof is sufficient:
 
 - Proof Manifest fragment persisted;
 - verified facts promoted to Engineering State;
 - task accepted;
-- repository snapshot updated;
-- repo indexes incrementally refreshed;
+- repository snapshot/index updated;
+- architecture-health time series updated;
+- resource reservations released/reconciled;
 - dependent tasks become ready.
 
 If insufficient:
 
 - task rejected;
-- failure/hypothesis evidence updated;
+- evidence/failure/hypotheses updated;
 - Recovery Controller chooses minimal escalation.
 
-### 12. Long-horizon iteration
+### 13. Long-horizon evolution
 
-Each accepted change updates architecture-health time series. Spec changes create SpecDelta and invalidate affected tasks/evidence where necessary.
+Spec changes create SpecDelta and invalidate affected tasks/evidence.
 
-### 13. Completion
+Repository, dependency, environment, provider or external-fact changes invalidate their dependent cached facts/evidence according to policy.
 
-Project completion requires required Engineering IR requirements to have current accepted proof, not merely an empty task queue.
+### 14. Completion
+
+Project completion requires current accepted proof for required Engineering IR semantics, not an empty task queue.
+
+The CLI presents requirement/evidence state rather than agent activity.
 
 ---
 
@@ -111,33 +166,38 @@ Project completion requires required Engineering IR requirements to have current
 sequenceDiagram
     participant W as Current Worker
     participant C as Controller
-    participant S as State
+    participant S as Engineering State
     participant R as Router
+    participant G as Resource/Provider Gateway
     participant N as New Worker
 
-    W->>C: repeated failures + evidence
-    C->>C: stagnation detected
+    W->>C: failures + evidence
+    C->>C: stagnation/failure classification
     C->>S: persist facts/hypotheses/failed attempts
     C->>R: request recovery route
-    R-->>C: fresh-context stronger diagnostician
+    R->>G: check eligible capacity/health
+    G-->>C: admitted fresh-context route
     C->>N: typed handoff + bounded context
     N->>C: diagnosis / new evidence
     C->>S: update state
 ```
 
-The new worker does not receive the entire old transcript unless specifically justified.
+The new worker does not inherit the whole old transcript by default.
 
 ---
 
 ## C. Parallel feature execution
 
-1. Task graph exposes two independent nodes.
+1. Task graph exposes independent ready nodes.
 2. Scheduler checks write-set/contract stability.
-3. Two worktrees/sandboxes are created.
-4. Each branch is independently verified.
-5. Integration candidate merges both.
-6. Cross-module verification runs.
-7. Only merged evidence can complete parent requirement.
+3. Resource Governor admits bounded workers.
+4. Separate worktrees/sandboxes/services are created.
+5. Each branch receives local verification.
+6. Integration candidate combines accepted branch changes.
+7. Semantic/textual conflicts are resolved with parent intents/evidence.
+8. Cross-module/domain verification runs.
+9. Only merged current evidence can complete parent requirements.
+10. Owned resources/worktrees are cleaned after durable integration/reconciliation.
 
 ---
 
@@ -145,9 +205,46 @@ The new worker does not receive the entire old transcript unless specifically ju
 
 1. User message creates semantic input event.
 2. Intent Engine compiles `SpecDelta`.
-3. IR vN+1 validated.
-4. Impact analysis finds tasks/evidence relying on changed semantics.
-5. Pending/running affected tasks become stale or cancellation is requested.
-6. Accepted code may generate remediation tasks rather than being silently treated as valid.
+3. IR vN+1 validates.
+4. Impact analysis finds tasks/evidence depending on changed semantics.
+5. Running affected tasks receive cancellation/stale transition at safe boundary.
+6. Accepted code may create remediation tasks rather than remaining silently valid.
 
-This sequence is why explicit spec/task/evidence identity is required.
+---
+
+## E. Provider outage or rate limit
+
+1. Provider Gateway classifies the error.
+2. Resource Governor updates quota/health state.
+3. Retry occurs only if retry-safe and within budget.
+4. Circuit/open or reset window prevents request storms.
+5. Failover candidate is re-filtered for privacy/capabilities/cost.
+6. Typed Handoff/attempt state preserves continuity.
+7. Non-idempotent external effects are reconciled before repeat.
+
+Provider failure is execution state, not reason to lose project state.
+
+---
+
+## F. Dependency/environment change
+
+1. Lockfile/toolchain/service/sandbox identity changes.
+2. New Environment Fingerprint produced.
+3. Evidence/cache dependencies compare fingerprints.
+4. Affected evidence becomes stale/ineligible for current proof.
+5. Verification reruns only the invalidated surface according to dependency graph.
+6. Security/advisory refresh may invalidate security acceptance without rewriting historical build truth.
+
+---
+
+## G. AER binary upgrade
+
+1. New binary reads compatibility metadata before normal write mode.
+2. Supported version/migration path is resolved.
+3. Preflight + durable backup/checkpoint runs.
+4. Migration executes in staged/transactional form.
+5. Postconditions/replay invariants validate.
+6. Runtime enters normal mode or explicit recoverable migration failure.
+7. CLI/daemon negotiate API/features.
+
+A binary must not silently reinterpret old events/IR because its code changed.

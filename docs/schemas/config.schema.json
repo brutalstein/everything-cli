@@ -4,36 +4,145 @@
   "title": "AER User Configuration",
   "type": "object",
   "properties": {
-    "quality_mode": {"enum": ["economy", "balanced", "maximum-quality"]},
-    "security_profile": {"enum": ["read-only", "sandboxed", "networked-build", "privileged-special"]},
-    "autonomy": {"enum": ["read", "workspace", "commit", "remote-write"]},
+    "quality_mode": {
+      "enum": [
+        "economy",
+        "balanced",
+        "maximum-quality"
+      ]
+    },
+    "security_profile": {
+      "enum": [
+        "read-only",
+        "sandboxed",
+        "networked-build",
+        "privileged-special"
+      ]
+    },
+    "autonomy": {
+      "enum": [
+        "read",
+        "workspace",
+        "commit",
+        "remote-write"
+      ]
+    },
     "models": {
       "type": "object",
       "properties": {
-        "allowed_providers": {"type": "array", "items": {"type": "string"}},
-        "max_run_cost_usd": {"type": "number", "minimum": 0}
+        "allowed_providers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "uniqueItems": true
+        },
+        "max_run_cost_usd": {
+          "type": "number",
+          "minimum": 0
+        }
       },
       "additionalProperties": false
     },
     "context": {
       "type": "object",
       "properties": {
-        "max_tokens_per_call": {"type": "integer", "minimum": 1024}
+        "max_tokens_per_call": {
+          "type": "integer",
+          "minimum": 1024
+        }
       },
       "additionalProperties": false
     },
     "parallelism": {
       "type": "object",
       "properties": {
-        "max_workers": {"type": "integer", "minimum": 1}
+        "max_workers": {
+          "type": "integer",
+          "minimum": 1
+        }
       },
       "additionalProperties": false
     },
     "privacy": {
       "type": "object",
       "properties": {
-        "store_prompt_content": {"type": "boolean"},
-        "cross_project_learning": {"enum": ["off", "aggregate_only", "explicit"]}
+        "store_prompt_content": {
+          "type": "boolean"
+        },
+        "cross_project_learning": {
+          "enum": [
+            "off",
+            "aggregate_only",
+            "explicit"
+          ]
+        },
+        "retention_profile": {
+          "enum": [
+            "minimal",
+            "standard",
+            "audit"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "ui": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "enum": [
+            "auto",
+            "tui",
+            "line",
+            "plain",
+            "json"
+          ]
+        },
+        "motion": {
+          "enum": [
+            "full",
+            "reduced",
+            "off"
+          ]
+        },
+        "unicode": {
+          "type": "boolean"
+        },
+        "color": {
+          "enum": [
+            "auto",
+            "always",
+            "never"
+          ]
+        },
+        "notifications": {
+          "enum": [
+            "off",
+            "important",
+            "all"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "updates": {
+      "type": "object",
+      "properties": {
+        "channel": {
+          "enum": [
+            "stable",
+            "beta",
+            "nightly"
+          ]
+        },
+        "check": {
+          "enum": [
+            "auto",
+            "manual",
+            "off"
+          ]
+        }
       },
       "additionalProperties": false
     }

@@ -1,4 +1,5 @@
 {
+  "schema_version": 1,
   "handoff_id": "HO-042-02",
   "task_id": "TASK-042",
   "objective": "Implement resumable realtime ingestion without duplicate committed segments.",

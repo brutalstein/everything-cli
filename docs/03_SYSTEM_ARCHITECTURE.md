@@ -2,32 +2,27 @@
 
 ## 1. Architectural style
 
-AER uses a **library + local service + isolated workers** architecture.
+AER uses a **typed local control plane + durable state + isolated execution workers** architecture.
 
-The recommended implementation split is:
+Recommended implementation split:
 
-- `aer-core`: deterministic domain library and state machines;
-- `aerd`: local runtime daemon / app server;
+- `aer-domain`: deterministic domain types, identities, schemas/state invariants;
+- `aer-core`: orchestration application layer/control plane;
+- `aerd`: local runtime daemon/app server;
 - `aer`: CLI/TUI client;
-- worker processes or sandboxes for model-driven execution;
-- optional external clients (IDE, desktop, CI) that use the same local/remote runtime API.
+- isolated worker/sandbox processes for model-driven execution;
+- replaceable adapters for providers, repository intelligence, sandboxes, research, protocols, environment/supply-chain and verification;
+- optional future clients (IDE, desktop, CI) using the same runtime API.
 
-This mirrors a useful industry pattern: keep the agent loop and persistence in a reusable core/runtime, while clients remain replaceable.
+The product is the control system, not any one model SDK, TUI, database, vector store, or sandbox backend.
 
 ## 2. Recommended language strategy
 
 ### Core runtime: Rust
 
-Use Rust for the core runtime unless an implementation-stage benchmark disproves the choice.
+Use Rust for the durable core/runtime unless implementation evidence disproves the choice.
 
-Reasons:
-
-- strong memory safety for a tool-executing daemon;
-- efficient concurrent scheduling;
-- cross-platform static/single-binary distribution potential;
-- good process and filesystem control;
-- low overhead for local-first operation;
-- explicit type system suits IR/state/protocol contracts.
+Reasons include memory safety for a tool-executing daemon, efficient concurrency, cross-platform distribution, strong process/filesystem control and typed contracts.
 
 The core MUST NOT require Python for basic operation.
 
@@ -35,129 +30,197 @@ The core MUST NOT require Python for basic operation.
 
 Provide thin SDKs later for:
 
-- TypeScript/JavaScript — ecosystem integrations and UI/plugin authors;
-- Python — research policies, experimental evaluators, ML retrieval components.
+- TypeScript/JavaScript — integrations/client ecosystem;
+- Python — research policies, experimental evaluators and ML retrieval components.
 
-Extension languages MUST interact through stable protocol boundaries rather than being linked into core correctness logic.
+Extension languages interact through stable protocol boundaries rather than owning core correctness state.
 
 ## 3. Main components
 
 ```mermaid
 flowchart LR
     CLI[CLI/TUI] --> API[Runtime API]
-    UI[Future IDE/Desktop] --> API
+    UI[Future IDE/Desktop/CI] --> API
 
     API --> CORE[Core State Machine]
     CORE --> INTENT[Intent Engine]
+    INTENT --> RESEARCH[Research Engine]
     CORE --> GRAPH[Task Graph]
-    CORE --> POLICY[Policy Controller]
+    CORE --> POLICY[Adaptive Policy Controller]
 
     POLICY --> ROUTER[Model Router]
     POLICY --> CONTEXT[Context Engine]
-    POLICY --> BUDGET[Budget Engine]
+    POLICY --> GOV[Budget / Resource Governor]
     POLICY --> SCHED[Scheduler]
 
     CONTEXT --> REPO[Repo Intelligence]
-    ROUTER --> PROVIDER[Provider Gateway]
+    ROUTER --> PG[Provider Gateway]
     SCHED --> EXEC[Execution Manager]
+    GOV --> EXEC
+    GOV --> PG
     EXEC --> SANDBOX[Sandbox Backend]
 
+    SANDBOX --> ENV[Environment / Dependency Identity]
     SANDBOX --> EVIDENCE[Evidence Collector]
+    ENV --> EVIDENCE
     EVIDENCE --> VERIFY[Verification Controller]
     VERIFY --> CORE
 
     CORE --> STATE[(SQLite + Event Journal)]
     REPO --> INDEX[(Commit-aware Indexes)]
-    CORE --> BLOBS[(Content-addressed Artifact Store)]
+    CORE --> BLOBS[(Content-addressed Objects)]
     CORE --> OTEL[OpenTelemetry]
+
+    CORE --> COMPAT[Compatibility / Migration Registry]
+    COMPAT --> STATE
 ```
 
-## 4. Control plane vs data plane
+## 4. Control plane vs execution plane
 
-### Control plane
+### Control plane owns decisions
 
-Owns decisions:
+- intent/spec resolution;
+- external-research promotion;
+- task graph;
+- routing/provider eligibility;
+- context policy;
+- budgets/resource admission;
+- scheduling/topology;
+- verification policy;
+- recovery;
+- acceptance;
+- compatibility/migration mode;
+- authority/data policy.
 
-- intent resolution,
-- task graph,
-- routing,
-- context policy,
-- budgets,
-- scheduling,
-- verification policy,
-- recovery,
-- acceptance.
+### Data/execution plane performs work
 
-### Data / execution plane
-
-Performs work:
-
-- model calls,
-- shell commands,
-- source edits,
-- build/test execution,
-- browser or external tool calls,
+- model calls;
+- research fetches;
+- shell/process commands;
+- source edits;
+- build/test execution;
+- browser/external tool calls;
+- package/dependency operations;
 - worktree changes.
 
-The execution plane MUST NOT promote its own result to accepted state.
+Execution components MUST NOT promote their own outputs to accepted state.
 
-## 5. Durability model
+## 5. Authority boundaries
 
-AER should be resumable after process termination.
+Text from users, repositories, web pages, model providers, MCP/A2A peers, packages and tool output is **data** until policy/validation grants a specific semantic role.
 
-Every material transition is appended to an event journal before the corresponding external effect is considered durable.
+Authority comes from:
+
+- explicit user/organization policy;
+- accepted Engineering IR/ADRs;
+- capability/security lattice;
+- deterministic runtime state machines;
+- independent verification.
+
+Natural-language content cannot grant itself filesystem/network/credential/release authority.
+
+## 6. Durability model
+
+AER is resumable after daemon/client termination.
+
+Every material transition is journaled before the corresponding externally observable state is considered durable.
 
 Examples:
 
-- task created,
-- task leased,
-- model call started/completed,
-- worktree created,
-- file mutation summarized,
-- command completed,
-- evidence recorded,
-- verifier verdict,
-- task accepted,
-- policy changed.
+- project/spec/research artifact created;
+- task created/leased;
+- resource reservation admitted;
+- routing/provider decision;
+- model call started/completed;
+- worktree/sandbox created;
+- command/dependency operation completed;
+- evidence recorded;
+- verifier verdict;
+- task accepted/rejected;
+- migration state;
+- policy/release metadata applied.
 
-Large payloads are stored content-addressed; events store hashes and metadata.
+Large payloads are content-addressed; events store hashes and typed metadata.
 
-## 6. Runtime API
+## 7. Runtime API
 
-Prefer a typed API generated from a schema. A practical initial choice is Protocol Buffers with gRPC over loopback for the daemon boundary, while domain files remain JSON/YAML-friendly.
+Prefer a typed, version-negotiated API generated from schema. Protocol Buffers + gRPC/Connect-style loopback remains a candidate, not a frozen transport.
 
 Requirements:
 
-- streaming events,
-- cancellation,
-- resumability,
-- request IDs,
-- protocol versioning,
-- local authentication token,
+- streaming semantic events;
+- cancellation;
+- resumability;
+- request/causation IDs;
+- protocol/feature negotiation;
+- local authentication token/capability;
+- stable headless semantics;
 - future remote transport compatibility.
 
-A direct in-process mode MAY exist for tests.
+A direct in-process mode MAY exist for deterministic tests.
 
-## 7. Concurrency model
+## 8. Concurrency and resource model
 
 The daemon is the single coordinator for one AER state directory.
 
-Workers are isolated processes/sandboxes. They do not mutate authoritative state directly. They emit results/events to the coordinator.
+Workers never mutate authoritative state directly. They emit typed results/evidence to the coordinator.
 
-Use leases with deadlines for running tasks. On daemon restart, expired leases become recoverable rather than silently assumed successful.
+Every running attempt requires:
 
-## 8. Repository identity
+- one active task lease;
+- admitted resource capacity;
+- owned sandbox/worktree;
+- bounded provider/tool/resource budgets.
 
-A repository snapshot is identified by:
+All queues are bounded or use explicitly bounded spill/backpressure semantics. Verification capacity can be reserved from generator saturation.
 
-- repository canonical ID,
-- base commit hash,
-- worktree branch/commit,
-- dirty diff hash when applicable.
+See `39_SCHEDULER_RESOURCE_GOVERNOR_AND_BACKPRESSURE.md`.
 
-Every context pack and evidence record MUST bind to a repository identity.
+## 9. Provider boundary
 
-## 9. Storage boundaries
+Model-provider SDK behavior is normalized by the Provider Gateway.
+
+Core code MUST NOT directly depend on provider-specific:
+
+- error categories;
+- retry semantics;
+- rate-limit headers;
+- streaming fragments;
+- structured-output quirks;
+- tool-call identifiers;
+- pricing aliases.
+
+The gateway normalizes those into typed attempt/results while the router remains responsible for semantic eligibility/selection.
+
+See `37_PROVIDER_GATEWAY_AND_RESILIENCE.md`.
+
+## 10. Repository and workspace identity
+
+A repository/workspace snapshot identifies:
+
+- repository canonical ID;
+- base/upstream commit;
+- AER worktree branch/commit;
+- dirty diff hash where applicable;
+- relevant submodule/LFS state where applicable.
+
+AER MUST preserve user-owned dirty state and perform writable autonomous work in owned isolated workspaces by default.
+
+Every Context Pack and code-related Evidence record binds to repository/workspace identity.
+
+See `41_WORKSPACE_VCS_AND_CHANGE_LIFECYCLE.md`.
+
+## 11. Environment and dependency identity
+
+Verification additionally binds to an `EnvironmentFingerprint` when outcome can depend on toolchain, OS, lockfiles, services, hardware, sandbox image or environment.
+
+Repository commit alone is not sufficient identity for reusable evidence.
+
+Dependency installs/build hooks remain sandboxed external inputs.
+
+See `38_ENVIRONMENT_REPRODUCIBILITY_AND_SUPPLY_CHAIN.md`.
+
+## 12. Storage boundaries
 
 Recommended local layout:
 
@@ -169,28 +232,64 @@ Recommended local layout:
   worktrees/
   runs/
   logs/
+  backups/
   tmp/
 ```
 
-`state.db` stores normalized metadata and event journal. Large tool outputs, compressed traces, patches, screenshots, and context artifacts belong in `objects/` addressed by cryptographic hash.
+`state.db` stores normalized metadata, version registries and event journal. Large outputs/traces/patches/screenshots/context/research/eval artifacts belong in content-addressed objects with sensitivity/retention metadata.
 
-## 10. External standards
+## 13. Compatibility and migration
 
-AER should support standards at boundaries without forcing them internally:
+AER tracks independent versions for durable/wire surfaces instead of assuming binary semver solves compatibility.
 
-- **MCP 2026-07-28** adapter for tools/resources/prompts and Tasks extension where appropriate;
-- **A2A v1.0** gateway for interoperability with remote autonomous agents;
-- **OpenTelemetry GenAI semantic conventions** for tracing and cost/usage telemetry.
+Startup before write mode:
 
-Internal hot-path execution should use AER's own typed Tool ABI and Handoff ABI; protocol adapters translate at boundaries.
+```text
+inspect durable versions
+  -> negotiate/check compatibility
+  -> migrate if supported
+  -> verify postconditions
+  -> enter normal write mode
+```
 
-## 11. Architectural evolution
+Incompatible or failed migrations fail closed/recoverably.
 
-The system should scale in this order:
+See `40_VERSIONING_MIGRATIONS_AND_RELEASE_SAFETY.md` and ADR-0008.
 
-1. one local process + one sandboxed worker;
-2. local daemon + multiple isolated workers;
-3. optional remote sandbox workers;
-4. optional distributed scheduling.
+## 14. Data lifecycle
 
-Do not begin at stage 4.
+Objects/events/indexes/telemetry carry project/tenant scope, sensitivity and retention semantics.
+
+Secrets are not ordinary artifacts. Cross-project learning is aggregate-only by default and cannot silently transfer proprietary content.
+
+See `42_DATA_GOVERNANCE_RETENTION_AND_TENANCY.md`.
+
+## 15. External standards
+
+Support standards at boundaries without forcing them into internal hot paths:
+
+- current MCP adapter for tools/resources/prompts/tasks where appropriate;
+- optional A2A gateway for independent remote agents;
+- OpenTelemetry GenAI conventions plus AER-specific attributes;
+- standard SBOM/provenance/signing formats for release-grade supply-chain evidence;
+- mature secure-update metadata/framework rather than a bespoke unsigned updater.
+
+Internal Tool/Handoff/Evidence/Engineering IR semantics remain AER-owned typed contracts.
+
+## 16. Architectural evolution
+
+Scale in this order:
+
+1. local daemon + one sandboxed worker;
+2. local daemon + multiple bounded isolated workers;
+3. richer provider/research/context/verification policies;
+4. optional remote sandbox workers;
+5. optional distributed scheduling/control only after measured need.
+
+Do not begin at stage 5.
+
+## 17. Completeness requirement
+
+Every new subsystem must pass the ownership/lifecycle/failure/resource/authority/compatibility/evidence checklist in `35_ARCHITECTURE_COMPLETENESS_AUDIT.md`.
+
+A box in a diagram is not an architecture until its contracts and failure semantics exist.

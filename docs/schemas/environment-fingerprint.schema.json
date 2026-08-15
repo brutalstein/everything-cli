@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aer.local/schemas/environment-fingerprint.schema.json",
+  "title": "AER Environment Fingerprint",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "fingerprint_id",
+    "os",
+    "architecture",
+    "toolchain",
+    "dependency_state_hash"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "fingerprint_id": {
+      "type": "string"
+    },
+    "os": {
+      "type": "object",
+      "required": [
+        "family"
+      ],
+      "properties": {
+        "family": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "kernel": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "architecture": {
+      "type": "string"
+    },
+    "toolchain": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "dependency_state_hash": {
+      "type": "string"
+    },
+    "lockfile_hashes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "sandbox_image": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "environment_variables": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "service_fingerprints": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "hardware": {
+      "type": "object"
+    },
+    "package_managers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "sandbox_backend": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "network_policy": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "locale": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "timezone": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aer.local/schemas/proof-manifest.schema.json",
+  "title": "AER Proof Manifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "task_id",
+    "repo_snapshot",
+    "spec_version",
+    "requirements",
+    "integrity",
+    "overall_verdict"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "repo_snapshot": {
+      "type": "string"
+    },
+    "spec_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "requirements": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "implementation",
+          "evidence",
+          "verdict"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "implementation": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "path"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "symbol": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "verdict": {
+            "enum": [
+              "pass",
+              "fail",
+              "waived"
+            ]
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "architecture_health": {
+      "type": "object",
+      "required": [
+        "verdict"
+      ],
+      "properties": {
+        "verdict": {
+          "enum": [
+            "pass",
+            "warn",
+            "fail",
+            "not_applicable"
+          ]
+        },
+        "evidence": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "integrity": {
+      "type": "object",
+      "required": [
+        "verifier_snapshot",
+        "generator_could_modify_verifier"
+      ],
+      "properties": {
+        "verifier_snapshot": {
+          "type": "string"
+        },
+        "generator_could_modify_verifier": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "overall_verdict": {
+      "enum": [
+        "pass",
+        "fail",
+        "waived"
+      ]
+    }
+  },
+  "additionalProperties": false
+}
