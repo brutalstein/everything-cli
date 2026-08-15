@@ -38,13 +38,13 @@ PowerShell:
 git clone https://github.com/brutalstein/everything-cli.git
 cd everything-cli
 
-rustup toolchain install 1.85.0 --profile minimal --component rustfmt --component clippy
+rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
 
-rustup run 1.85.0 cargo fmt --all --check
-rustup run 1.85.0 cargo clippy --workspace --all-targets -- -D warnings
-rustup run 1.85.0 cargo test --workspace --all-targets
-rustup run 1.85.0 cargo run -p aer-doc-check -- --check
-rustup run 1.85.0 cargo run -p aer-phase0-check -- --check
+rustup run 1.97.1 cargo fmt --all --check
+rustup run 1.97.1 cargo clippy --workspace --all-targets -- -D warnings
+rustup run 1.97.1 cargo test --workspace --all-targets
+rustup run 1.97.1 cargo run -p aer-doc-check -- --check
+rustup run 1.97.1 cargo run -p aer-phase0-check -- --check
 ```
 
 The verification commands intentionally invoke Cargo through `rustup run`. This remains reliable
