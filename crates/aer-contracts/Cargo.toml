@@ -1,0 +1,15 @@
+[package]
+name = "aer-contracts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+aer-domain = { path = "../aer-domain" }
+jsonschema.workspace = true
+opentelemetry.workspace = true
+serde_json.workspace = true
+serde_yaml_ng.workspace = true
+
+[lints]
+workspace = true
