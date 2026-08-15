@@ -8,15 +8,16 @@
 use std::{
     collections::BTreeSet,
     error::Error,
-    fmt,
-    fs,
+    fmt, fs,
     path::{Component, Path, PathBuf},
     time::Duration,
 };
 
 use aer_domain::state_machines::RunState;
 use aer_environment::{EnvironmentFingerprint, evidence::CommandExecutionEvidence};
-use aer_exec::{CommandSpec, ExecutionPolicy, LocalProcessExecutor, SideEffectClass, lowercase_hex};
+use aer_exec::{
+    CommandSpec, ExecutionPolicy, LocalProcessExecutor, SideEffectClass, lowercase_hex,
+};
 use aer_provider::{CancellationSignal, ProviderAdapter, ProviderGateway, ProviderRequest};
 use aer_storage::{
     DurableState, EventPayload, NewEvent, ObjectHash, ObjectMetadata, Sensitivity, StoredEvent,
@@ -127,8 +128,9 @@ where
         interrupt_after: Option<InterruptAfter>,
     ) -> Result<RunSummary, RuntimeError> {
         validate_request(&request)?;
-        let snapshot = WorkspaceSnapshot::capture(&request.workspace_root, &SnapshotPolicy::default())
-            .map_err(|error| RuntimeError::lower("workspace snapshot", error))?;
+        let snapshot =
+            WorkspaceSnapshot::capture(&request.workspace_root, &SnapshotPolicy::default())
+                .map_err(|error| RuntimeError::lower("workspace snapshot", error))?;
         let project_id = snapshot.identity.repo_id.clone();
         let run_id = Ulid::generate().to_string();
         let project_root = project_runtime_root(&request.state_home, &project_id);
@@ -145,7 +147,13 @@ where
             "worktree_path": worktree_path,
             "verification": verification_to_json(&request.verification),
         });
-        append_json(&mut store, &snapshot.identity.repo_id, &run_id, "run.created", created)?;
+        append_json(
+            &mut store,
+            &snapshot.identity.repo_id,
+            &run_id,
+            "run.created",
+            created,
+        )?;
 
         let mut record = RunRecord {
             summary: RunSummary {
@@ -291,10 +299,9 @@ fn continue_run(
     interrupt_after: Option<InterruptAfter>,
 ) -> Result<RunSummary, RuntimeError> {
     if !record.edits_applied {
-        let hash = record
-            .plan_hash
-            .as_ref()
-            .ok_or_else(|| RuntimeError::Integrity("run has no provider plan artifact".to_owned()))?;
+        let hash = record.plan_hash.as_ref().ok_or_else(|| {
+            RuntimeError::Integrity("run has no provider plan artifact".to_owned())
+        })?;
         let bytes = store.read_object(&record.summary.project_id, hash)?;
         let plan_text = String::from_utf8(bytes)
             .map_err(|_| RuntimeError::InvalidPlan("provider plan is not UTF-8".to_owned()))?;
@@ -332,7 +339,10 @@ fn continue_run(
         )));
     }
 
-    let expected_ok = verify_expected_files(&record.summary.worktree_path, &record.verifier.expected_files)?;
+    let expected_ok = verify_expected_files(
+        &record.summary.worktree_path,
+        &record.verifier.expected_files,
+    )?;
     let environment = EnvironmentFingerprint::discover(&record.summary.worktree_path)
         .map_err(|error| RuntimeError::lower("environment fingerprint", error))?;
     let policy = ExecutionPolicy::trusted_workspace(
@@ -350,8 +360,9 @@ fn continue_run(
     let result = LocalProcessExecutor
         .execute(&policy, command)
         .map_err(|error| RuntimeError::lower("verification execution", error))?;
-    let evidence = CommandExecutionEvidence::bind(&record.summary.project_id, &environment, &result)
-        .map_err(|error| RuntimeError::lower("verification evidence", error))?;
+    let evidence =
+        CommandExecutionEvidence::bind(&record.summary.project_id, &environment, &result)
+            .map_err(|error| RuntimeError::lower("verification evidence", error))?;
     let accepted = expected_ok && result.success;
     append_json(
         store,
@@ -501,7 +512,10 @@ fn load_run(
         match event.event_type.as_str() {
             "run.created" => {
                 let payload = inline_payload(&event)?;
-                goal = payload.get("goal").and_then(Value::as_str).map(str::to_owned);
+                goal = payload
+                    .get("goal")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned);
                 worktree = payload
                     .get("worktree_path")
                     .and_then(Value::as_str)
@@ -513,12 +527,9 @@ fn load_run(
             }
             "run.state_changed" => {
                 let payload = inline_payload(&event)?;
-                state = parse_run_state(
-                    payload
-                        .get("state")
-                        .and_then(Value::as_str)
-                        .ok_or_else(|| RuntimeError::Integrity("run state event missing state".to_owned()))?,
-                )?;
+                state = parse_run_state(payload.get("state").and_then(Value::as_str).ok_or_else(
+                    || RuntimeError::Integrity("run state event missing state".to_owned()),
+                )?)?;
             }
             "provider.response" => plan_hash = event.payload_artifact_hash,
             "provider.completed" => {
@@ -562,10 +573,9 @@ fn load_run(
 }
 
 fn inline_payload(event: &StoredEvent) -> Result<Value, RuntimeError> {
-    let payload = event
-        .payload_json
-        .as_deref()
-        .ok_or_else(|| RuntimeError::Integrity(format!("{} requires inline payload", event.event_type)))?;
+    let payload = event.payload_json.as_deref().ok_or_else(|| {
+        RuntimeError::Integrity(format!("{} requires inline payload", event.event_type))
+    })?;
     serde_json::from_str(payload).map_err(RuntimeError::from)
 }
 
@@ -597,10 +607,9 @@ fn verification_from_json(value: &Value) -> Result<VerificationSpec, RuntimeErro
         .ok_or_else(|| RuntimeError::Integrity("verification args missing".to_owned()))?
         .iter()
         .map(|value| {
-            value
-                .as_str()
-                .map(str::to_owned)
-                .ok_or_else(|| RuntimeError::Integrity("verification arg must be string".to_owned()))
+            value.as_str().map(str::to_owned).ok_or_else(|| {
+                RuntimeError::Integrity("verification arg must be string".to_owned())
+            })
         })
         .collect::<Result<Vec<_>, _>>()?;
     let expected_files = value
@@ -662,7 +671,9 @@ fn edit_plan_schema() -> Value {
 
 fn parse_edit_plan(text: &str) -> Result<EditPlan, RuntimeError> {
     if text.len() > MAX_PLAN_BYTES {
-        return Err(RuntimeError::InvalidPlan("plan exceeds byte budget".to_owned()));
+        return Err(RuntimeError::InvalidPlan(
+            "plan exceeds byte budget".to_owned(),
+        ));
     }
     let value: Value = serde_json::from_str(text)?;
     let object = value
@@ -721,7 +732,9 @@ fn parse_edit_plan(text: &str) -> Result<EditPlan, RuntimeError> {
             .checked_add(content.len())
             .ok_or_else(|| RuntimeError::InvalidPlan("edit byte count overflow".to_owned()))?;
         if total > MAX_PLAN_BYTES {
-            return Err(RuntimeError::InvalidPlan("edit payload exceeds total budget".to_owned()));
+            return Err(RuntimeError::InvalidPlan(
+                "edit payload exceeds total budget".to_owned(),
+            ));
         }
         parsed.push(FileEdit {
             relative_path,
@@ -855,7 +868,10 @@ pub enum RuntimeError {
     Integrity(String),
     RecoveryRequired(String),
     UnknownRun(String),
-    LowerLayer { context: &'static str, message: String },
+    LowerLayer {
+        context: &'static str,
+        message: String,
+    },
     Io(std::io::Error),
     Json(serde_json::Error),
     Storage(aer_storage::StorageError),
@@ -873,10 +889,16 @@ impl RuntimeError {
 impl fmt::Display for RuntimeError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidRequest(message) => write!(formatter, "invalid runtime request: {message}"),
-            Self::InvalidPlan(message) => write!(formatter, "invalid provider edit plan: {message}"),
+            Self::InvalidRequest(message) => {
+                write!(formatter, "invalid runtime request: {message}")
+            }
+            Self::InvalidPlan(message) => {
+                write!(formatter, "invalid provider edit plan: {message}")
+            }
             Self::Integrity(message) => write!(formatter, "runtime integrity failure: {message}"),
-            Self::RecoveryRequired(message) => write!(formatter, "runtime recovery required: {message}"),
+            Self::RecoveryRequired(message) => {
+                write!(formatter, "runtime recovery required: {message}")
+            }
             Self::UnknownRun(run_id) => write!(formatter, "unknown run: {run_id}"),
             Self::LowerLayer { context, message } => write!(formatter, "{context}: {message}"),
             Self::Io(error) => error.fmt(formatter),
@@ -1055,7 +1077,13 @@ mod tests {
             },
         };
         assert!(service(plan).start(request, &NeverCancelled, None).is_err());
-        assert!(!repo.parent().expect("repo parent").join("escape.txt").exists());
+        assert!(
+            !repo
+                .parent()
+                .expect("repo parent")
+                .join("escape.txt")
+                .exists()
+        );
         fs::remove_dir_all(state_home).expect("state cleanup");
         fs::remove_dir_all(repo).expect("repo cleanup");
     }

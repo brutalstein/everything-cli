@@ -228,9 +228,7 @@ where
                 .ok_or(GatewayError::AttemptOverflow)?;
             match self.adapter.complete(request, cancellation) {
                 Ok(response) => return Ok(GatewayResponse { response, attempts }),
-                Err(error)
-                    if error.retryable() && attempts < self.retry_policy.max_attempts =>
-                {
+                Err(error) if error.retryable() && attempts < self.retry_policy.max_attempts => {
                     let delay_ms = self.retry_policy.delay_ms(attempts, &error);
                     wait_with_cancellation(delay_ms, cancellation)?;
                 }
@@ -386,10 +384,8 @@ mod tests {
             )),
             Ok("done".to_owned()),
         ]);
-        let gateway = ProviderGateway::new(
-            provider,
-            RetryPolicy::new(2, 0, 0).expect("retry policy"),
-        );
+        let gateway =
+            ProviderGateway::new(provider, RetryPolicy::new(2, 0, 0).expect("retry policy"));
         let result = gateway
             .complete(&request(), &NeverCancelled)
             .expect("retry succeeds");
@@ -403,10 +399,8 @@ mod tests {
             ProviderFailureClass::Authentication,
             "expired",
         ))]);
-        let gateway = ProviderGateway::new(
-            provider,
-            RetryPolicy::new(4, 0, 0).expect("retry policy"),
-        );
+        let gateway =
+            ProviderGateway::new(provider, RetryPolicy::new(4, 0, 0).expect("retry policy"));
         assert!(matches!(
             gateway.complete(&request(), &NeverCancelled),
             Err(GatewayError::Provider(ProviderError {
