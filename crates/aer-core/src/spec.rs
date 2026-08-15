@@ -962,7 +962,12 @@ impl From<serde_json::Error> for SpecError {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::Path, process::Command, time::SystemTime};
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+        process::Command,
+        time::SystemTime,
+    };
 
     use serde_json::json;
 

@@ -4,10 +4,7 @@
 //! Phase-2 specification/research APIs are added beside it. Public callers see
 //! one application boundary rather than depending on internal module ownership.
 
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use aer_exec::lowercase_hex;
 use aer_storage::DurableState;
@@ -19,9 +16,8 @@ mod phase1_runtime;
 pub use phase1_runtime::*;
 pub mod spec;
 
-fn open_store(project_root: &Path) -> Result<DurableState, RuntimeError> {
-    fs::create_dir_all(project_root)?;
-    DurableState::open(project_root.join("durable")).map_err(RuntimeError::from)
+fn open_store(project_root: &Path) -> Result<DurableState, aer_storage::StorageError> {
+    DurableState::open(project_root.join("durable"))
 }
 
 fn project_runtime_root(state_home: &Path, project_id: &str) -> PathBuf {
