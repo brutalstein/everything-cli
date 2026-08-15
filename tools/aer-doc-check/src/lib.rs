@@ -84,26 +84,10 @@ pub fn check_repository(root: &Path) -> Result<IntegrityReport, IntegrityError> 
     let docs_dir = root.join("docs");
     let adr_dir = docs_dir.join("adrs");
 
-    let numbered_docs = check_numbered_files(
-        &docs_dir,
-        0,
-        44,
-        2,
-        "",
-        "_",
-        ".md",
-        "architecture doc",
-    )?;
-    let accepted_adrs = check_numbered_files(
-        &adr_dir,
-        1,
-        9,
-        4,
-        "ADR-",
-        "-",
-        ".md",
-        "accepted ADR",
-    )?;
+    let numbered_docs =
+        check_numbered_files(&docs_dir, 0, 44, 2, "", "_", ".md", "architecture doc")?;
+    let accepted_adrs =
+        check_numbered_files(&adr_dir, 1, 9, 4, "ADR-", "-", ".md", "accepted ADR")?;
 
     for contract in CORE_CONTRACTS {
         require_path(root, contract.descriptor().schema_path)?;
