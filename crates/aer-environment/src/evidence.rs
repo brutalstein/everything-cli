@@ -62,11 +62,7 @@ impl CommandExecutionEvidence {
     fn compute_digest(&self) -> String {
         let mut hasher = Sha256::new();
         update(&mut hasher, "repo_id", &self.repo_id);
-        update(
-            &mut hasher,
-            "environment_digest",
-            &self.environment_digest,
-        );
+        update(&mut hasher, "environment_digest", &self.environment_digest);
         for argument in &self.argv {
             update(&mut hasher, "argv", argument);
         }
@@ -116,7 +112,9 @@ pub enum EvidenceError {
 impl fmt::Display for EvidenceError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::EmptyRepoIdentity => formatter.write_str("command evidence requires repo identity"),
+            Self::EmptyRepoIdentity => {
+                formatter.write_str("command evidence requires repo identity")
+            }
             Self::EmptyEnvironmentIdentity => {
                 formatter.write_str("command evidence requires environment identity")
             }
@@ -180,8 +178,9 @@ mod tests {
         let process = result();
         let first = CommandExecutionEvidence::bind("repo-a", &environment("env-a"), &process)
             .expect("first evidence");
-        let repo_changed = CommandExecutionEvidence::bind("repo-b", &environment("env-a"), &process)
-            .expect("repo evidence");
+        let repo_changed =
+            CommandExecutionEvidence::bind("repo-b", &environment("env-a"), &process)
+                .expect("repo evidence");
         let env_changed = CommandExecutionEvidence::bind("repo-a", &environment("env-b"), &process)
             .expect("env evidence");
 

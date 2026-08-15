@@ -1,5 +1,8 @@
 //! Baseline environment/dependency identity for repeatable evidence.
 
+pub mod capabilities;
+pub mod evidence;
+
 use std::{
     env,
     error::Error,
