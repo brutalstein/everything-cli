@@ -14,9 +14,8 @@ use crate::{
 };
 
 pub fn run_cli() -> Result<(), Box<dyn Error>> {
-    let interactive_root = std::env::args_os().len() == 1
-        && io::stdin().is_terminal()
-        && io::stdout().is_terminal();
+    let interactive_root =
+        std::env::args_os().len() == 1 && io::stdin().is_terminal() && io::stdout().is_terminal();
 
     if !interactive_root {
         return commands::run_cli();
