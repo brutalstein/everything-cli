@@ -17,11 +17,7 @@ const TAGLINE: &str = "One CLI for work that spans everything.";
 pub fn render(frame: &mut Frame<'_>, app: &AppState) {
     let area = frame.area();
     frame.render_widget(
-        Block::default().style(
-            Style::default()
-                .bg(app.theme.background)
-                .fg(app.theme.text),
-        ),
+        Block::default().style(Style::default().bg(app.theme.background).fg(app.theme.text)),
         area,
     );
 
@@ -85,8 +81,7 @@ fn render_shell(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
         navigation(frame, body[0], app);
         content(frame, body[1], app);
     } else {
-        let body = Layout::vertical([Constraint::Length(3), Constraint::Min(5)])
-            .split(root[1]);
+        let body = Layout::vertical([Constraint::Length(3), Constraint::Min(5)]).split(root[1]);
         compact_navigation(frame, body[0], app);
         content(frame, body[1], app);
     }
@@ -143,7 +138,10 @@ fn hero(frame: &mut Frame<'_>, area: Rect, t: Theme) {
                 Style::default().fg(t.muted),
             )),
             Line::from(vec![
-                Span::styled("  One CLI for work that spans ", Style::default().fg(t.text)),
+                Span::styled(
+                    "  One CLI for work that spans ",
+                    Style::default().fg(t.text),
+                ),
                 Span::styled(
                     "everything.",
                     Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
@@ -160,7 +158,13 @@ fn workspace_card(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     let clean = app.workspace.is_clean();
     let runtime = runtime_label(app);
     let rows = vec![
-        kv(t.glyphs.workspace, "Workspace", workspace_name(&app.workspace.repo_root), t.accent, t),
+        kv(
+            t.glyphs.workspace,
+            "Workspace",
+            workspace_name(&app.workspace.repo_root),
+            t.accent,
+            t,
+        ),
         kv(
             t.glyphs.branch,
             "Branch",
@@ -179,7 +183,11 @@ fn workspace_card(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
             t.glyphs.activity,
             "Runtime",
             runtime,
-            if app.runtime_error.is_some() { t.danger } else { t.success },
+            if app.runtime_error.is_some() {
+                t.danger
+            } else {
+                t.success
+            },
             t,
         ),
         kv(
@@ -256,8 +264,16 @@ fn surfaces_card(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
             t.glyphs.workspace,
             "Local workspace",
             workspace_name(&app.workspace.repo_root),
-            if app.workspace.is_clean() { "clean" } else { "dirty" },
-            if app.workspace.is_clean() { t.success } else { t.warning },
+            if app.workspace.is_clean() {
+                "clean"
+            } else {
+                "dirty"
+            },
+            if app.workspace.is_clean() {
+                t.success
+            } else {
+                t.warning
+            },
             t,
         ),
         Line::from(""),
@@ -306,12 +322,20 @@ fn next_action_card(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
             Line::from(vec![
                 Span::styled(
                     format!("  {}  ", t.glyphs.arrow),
-                    Style::default().fg(t.accent_alt).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(t.accent_alt)
+                        .add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(title, Style::default().fg(t.text).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    title,
+                    Style::default().fg(t.text).add_modifier(Modifier::BOLD),
+                ),
             ]),
             Line::from(""),
-            Line::from(Span::styled(format!("  {detail}"), Style::default().fg(t.muted))),
+            Line::from(Span::styled(
+                format!("  {detail}"),
+                Style::default().fg(t.muted),
+            )),
             Line::from(""),
             Line::from(vec![
                 Span::styled("  Ctrl+P", Style::default().fg(t.accent)),
@@ -343,7 +367,11 @@ fn navigation(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     let mut state = ListState::default().with_selected(Some(app.nav_index));
     frame.render_stateful_widget(
         List::new(items)
-            .block(card(" EVERYTHING ", t, app.focus == FocusTarget::Navigation))
+            .block(card(
+                " EVERYTHING ",
+                t,
+                app.focus == FocusTarget::Navigation,
+            ))
             .highlight_symbol(" › ")
             .highlight_style(Style::default().fg(t.accent).add_modifier(Modifier::BOLD)),
         area,
@@ -371,7 +399,10 @@ fn compact_navigation(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
             ]
         })
         .collect::<Vec<_>>();
-    frame.render_widget(Paragraph::new(Line::from(spans)).wrap(Wrap { trim: true }), area);
+    frame.render_widget(
+        Paragraph::new(Line::from(spans)).wrap(Wrap { trim: true }),
+        area,
+    );
 }
 
 fn content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
@@ -418,7 +449,11 @@ fn home_content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
                 t.glyphs.activity,
                 "runtime",
                 runtime_label(app),
-                if app.runtime_error.is_some() { t.danger } else { t.success },
+                if app.runtime_error.is_some() {
+                    t.danger
+                } else {
+                    t.success
+                },
                 t,
             ),
             kv(
@@ -474,8 +509,16 @@ fn workspace_content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
             kv(
                 t.glyphs.ready,
                 "tracked",
-                if app.workspace.tracked_dirty { "dirty" } else { "clean" },
-                if app.workspace.tracked_dirty { t.warning } else { t.success },
+                if app.workspace.tracked_dirty {
+                    "dirty"
+                } else {
+                    "clean"
+                },
+                if app.workspace.tracked_dirty {
+                    t.warning
+                } else {
+                    t.success
+                },
                 t,
             ),
             kv(
@@ -588,8 +631,12 @@ fn activity_content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
                     Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
                 )),
                 Line::from(""),
-                Line::from("The single-agent runtime is installed and its durable catalog is healthy."),
-                Line::from("Configure a production provider profile before starting real model work."),
+                Line::from(
+                    "The single-agent runtime is installed and its durable catalog is healthy.",
+                ),
+                Line::from(
+                    "Configure a production provider profile before starting real model work.",
+                ),
             ])
             .wrap(Wrap { trim: true }),
             area,
@@ -607,10 +654,7 @@ fn activity_content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     for run in app.runs.iter().take(8) {
         let color = run_color(run, t);
         lines.push(Line::from(vec![
-            Span::styled(
-                format!(" {} ", t.glyphs.ready),
-                Style::default().fg(color),
-            ),
+            Span::styled(format!(" {} ", t.glyphs.ready), Style::default().fg(color)),
             Span::styled(
                 format!("{}  ", short_id(&run.run_id)),
                 Style::default().fg(t.text).add_modifier(Modifier::BOLD),
@@ -629,7 +673,13 @@ fn settings_content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     let t = app.theme;
     frame.render_widget(
         Paragraph::new(vec![
-            kv(t.glyphs.settings, "interaction", "keyboard first", t.text, t),
+            kv(
+                t.glyphs.settings,
+                "interaction",
+                "keyboard first",
+                t.text,
+                t,
+            ),
             kv(
                 t.glyphs.arrow,
                 "navigation",
@@ -742,7 +792,8 @@ fn render_palette(frame: &mut Frame<'_>, app: &AppState) {
             ]))
         })
         .collect::<Vec<_>>();
-    let selected = (!items.is_empty()).then_some(app.palette_index.min(items.len().saturating_sub(1)));
+    let selected =
+        (!items.is_empty()).then_some(app.palette_index.min(items.len().saturating_sub(1)));
     let mut state = ListState::default().with_selected(selected);
     frame.render_stateful_widget(
         List::new(items)

@@ -651,6 +651,7 @@ dependencies = [
 name = "everything"
 version = "0.0.1"
 dependencies = [
+ "aer-core",
  "aer-environment",
  "aer-workspace",
  "clap",

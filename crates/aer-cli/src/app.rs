@@ -1,4 +1,7 @@
-use std::{error::Error, path::{Path, PathBuf}};
+use std::{
+    error::Error,
+    path::{Path, PathBuf},
+};
 
 use aer_core::{RunSummary, default_state_home, list_runs};
 use aer_environment::EnvironmentFingerprint;
@@ -174,7 +177,8 @@ impl AppState {
         let workspace = WorkspaceIdentity::inspect(path.as_ref())?;
         let environment = EnvironmentFingerprint::discover(&workspace.repo_root)?;
         let state_home = default_state_home();
-        let (runs, runtime_error) = load_runtime_catalog(&workspace.repo_root, state_home.as_deref());
+        let (runs, runtime_error) =
+            load_runtime_catalog(&workspace.repo_root, state_home.as_deref());
         Ok(Self {
             workspace,
             environment,

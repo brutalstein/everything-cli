@@ -98,7 +98,11 @@ fn print_status(path: &Path, json: bool) -> Result<(), Box<dyn Error>> {
         println!("{PRODUCT} · {}", workspace_name(&workspace.repo_root));
         println!(
             "workspace  {}",
-            if workspace.is_clean() { "clean" } else { "dirty" }
+            if workspace.is_clean() {
+                "clean"
+            } else {
+                "dirty"
+            }
         );
         println!(
             "branch     {}",
@@ -127,9 +131,7 @@ fn print_runs(path: &Path, json: bool) -> Result<(), Box<dyn Error>> {
         Ok(runs) if json => {
             println!(
                 "{}",
-                serde_json::to_string_pretty(
-                    &runs.iter().map(run_json).collect::<Vec<_>>()
-                )?
+                serde_json::to_string_pretty(&runs.iter().map(run_json).collect::<Vec<_>>())?
             );
         }
         Ok(runs) => {
@@ -180,7 +182,11 @@ fn print_workspace(path: &Path, json: bool) -> Result<(), Box<dyn Error>> {
         );
         println!(
             "state      {}",
-            if workspace.is_clean() { "clean" } else { "dirty" }
+            if workspace.is_clean() {
+                "clean"
+            } else {
+                "dirty"
+            }
         );
     }
     Ok(())
