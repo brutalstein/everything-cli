@@ -4,6 +4,9 @@ members = [
     "crates/aer-domain",
     "crates/aer-contracts",
     "crates/aer-storage",
+    "crates/aer-exec",
+    "crates/aer-environment",
+    "crates/aer-workspace",
     "tools/aer-doc-check",
     "tools/aer-phase0-check",
 ]

@@ -1,0 +1,11 @@
+[package]
+name = "aer-exec"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+sha2.workspace = true
+
+[lints]
+workspace = true
