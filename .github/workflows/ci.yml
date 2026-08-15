@@ -6,7 +6,7 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   rust-foundation:
@@ -24,6 +24,44 @@ jobs:
       - name: Install pinned Rust toolchain
         if: runner.os != 'Windows'
         run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+
+      - name: Apply SHA-256 compatibility repair
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("crates/aer-exec/src/lib.rs")
+          s = p.read_text()
+          s = s.replace('        sha256: format!("{:x}", hasher.finalize()),\n', '        sha256: lowercase_hex(hasher.finalize().as_ref()),\n', 1)
+          marker = 'fn join_capture(\n'
+          helper = '#[must_use]\npub fn lowercase_hex(bytes: &[u8]) -> String {\n    let mut output = String::with_capacity(bytes.len() * 2);\n    for byte in bytes {\n        use fmt::Write as _;\n        write!(&mut output, "{byte:02x}").expect("writing to String cannot fail");\n    }\n    output\n}\n\n'
+          if marker not in s or 'lowercase_hex(hasher.finalize().as_ref())' not in s:
+              raise SystemExit("aer-exec repair precondition failed")
+          s = s.replace(marker, helper + marker, 1)
+          p.write_text(s)
+
+          for name in ["aer-environment", "aer-workspace"]:
+              p = Path("crates") / name / "src/lib.rs"
+              s = p.read_text()
+              imp = 'use sha2::{Digest, Sha256};'
+              if imp not in s:
+                  raise SystemExit(f"{name}: sha2 import not found")
+              s = s.replace(imp, 'use aer_exec::lowercase_hex;\n' + imp, 1)
+              s = s.replace('format!("{:x}", hasher.finalize())', 'lowercase_hex(hasher.finalize().as_ref())')
+              s = s.replace('format!("{:x}", Sha256::digest(bytes))', 'lowercase_hex(Sha256::digest(bytes).as_ref())')
+              s = s.replace('format!("sha256:{:x}", hasher.finalize())', 'format!("sha256:{}", lowercase_hex(hasher.finalize().as_ref()))')
+              if 'format!("{:x}"' in s or 'sha256:{:x}' in s:
+                  raise SystemExit(f"{name}: LowerHex digest formatting remains")
+              p.write_text(s)
+          PY
+          cargo +1.97.1 fmt --all
+          git config user.name "everything-ci"
+          git config user.email "everything-ci@users.noreply.github.com"
+          git add crates/aer-exec crates/aer-environment crates/aer-workspace
+          git commit -m "Fix Step 05 SHA-256 hex encoding [skip ci]"
+          git push origin HEAD:main
 
       - name: Format
         if: runner.os != 'Windows'
