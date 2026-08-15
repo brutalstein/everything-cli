@@ -46,7 +46,9 @@ impl CompatibilitySurface {
     pub const fn descriptor(self) -> CompatibilityDescriptor {
         match self {
             Self::RuntimeApi => reserved(self, "runtime_api_version"),
-            Self::DatabaseSchema => active(self, "database_schema_version", DATABASE_SCHEMA_VERSION),
+            Self::DatabaseSchema => {
+                active(self, "database_schema_version", DATABASE_SCHEMA_VERSION)
+            }
             Self::EventSchema => active(self, "event_schema_version", EVENT_SCHEMA_VERSION),
             Self::EngineeringIrSchema => active(self, "engineering_ir_schema_version", 1),
             Self::ToolAbi => reserved(self, "tool_abi_version"),
