@@ -4,7 +4,7 @@
 **Architecture baseline:** `docs/` on original `main` commit `6c81fa1d0d18e9f279fe1bc59f56d21f2cbffd55`  
 **Current phase:** Phase 1 — Durable, Safe Single-Agent Runtime  
 **Current step:** 03 / 18 — Durable State Kernel  
-**Repository-side state:** REMEDIATING TARGET WINDOWS ENVIRONMENT ISOLATION — new canonical verifier awaiting CI  
+**Repository-side state:** CI VERIFIED — canonical isolated Windows verifier green; awaiting target Windows reproduction  
 **Step 01 verified implementation:** `6495c77dbc05d7db635062a35bb3bc0eb0857922`  
 **Step 01 verified CI:** `foundation-ci` run `31899011790`  
 **Step 02 verified implementation:** `6f9c4258299a5f9880cdec78c976aaa56bfb884d`  
@@ -15,8 +15,9 @@
 **Step 03 verified implementation:** `c8f1f6153cc076a6e4c1b93e8c8d6da903a80fa5`  
 **Step 03 dependency-lock commit:** `e140f40e791d6fd55a8f82a580008c46ce8dcb53`  
 **Step 03 original verified CI:** `foundation-ci` run `31904709865`  
-**Step 03 Windows verifier hardening:** `scripts/verify-windows.ps1` added after target-machine compiler/target drift was observed  
-**Next gate:** canonical isolated Windows verifier must pass CI and then the target Windows checkout  
+**Step 03 Windows verifier hardening:** final remediation commit `0a16edfda161bdf8d4d9e2b51068a393462671fa`  
+**Step 03 hardened verifier CI:** `foundation-ci` run `31905250522` — Ubuntu PASS, canonical isolated Windows verifier PASS  
+**Next gate:** target Windows checkout must reproduce `.\scripts\verify-windows.ps1`  
 **Next step:** 04 — Runtime State + Resource Safety — BLOCKED until target Windows verification passes
 
 ## Step 02 — Executable Contract System
@@ -85,14 +86,20 @@ Remediation is repository-owned rather than a user-specific workaround:
 
 - `scripts/verify-windows.ps1` is now the canonical Windows gate;
 - it installs/uses exactly `1.97.1-x86_64-pc-windows-msvc`;
+- it resolves and pins the exact `cargo.exe`, `rustc.exe`, and `rustdoc.exe` from that toolchain;
 - it asserts the compiler release and host before compiling;
 - every compile/run gate explicitly targets `x86_64-pc-windows-msvc`;
 - verification uses a dedicated `target/verify-windows-msvc` directory so incompatible local
   artifacts cannot leak into the result;
-- process-level Rust/Cargo/linker/native-build overrides are temporarily neutralized and restored
-  afterward;
-- Windows GitHub Actions now executes this same script, so CI and local verification share one
+- process-level Rust/Cargo/linker/native-build overrides are truly removed from the child-process
+  environment during verification and restored afterward;
+- Windows GitHub Actions executes this same script, so CI and local verification share one
   entrypoint.
+
+The verifier itself was tested fail-closed during remediation. CI first caught a PowerShell
+argument-forwarding bug that lost Clippy's `--` separator, then exposed that empty-valued environment
+variables are not equivalent to absent linker/wrapper variables on Windows. Both were corrected
+rather than bypassed. Final run `31905250522` executed the canonical script successfully on Windows.
 
 ## Step 03 verification ledger
 
@@ -117,8 +124,9 @@ Remediation is repository-owned rather than a user-specific workaround:
 | Original GitHub Linux CI | PASS | `foundation-ci` run `31904709865`. |
 | Original GitHub Windows CI | PASS | `foundation-ci` run `31904709865`. |
 | First target Windows Step-03 reproduction | FAIL — ENVIRONMENT DRIFT | Wrong compiler/target/linker selected locally; no storage invariant failure was reached. |
-| Canonical isolated Windows verifier CI | PENDING | New script must pass under Windows GitHub Actions before local rerun. |
-| Target Windows canonical verification | PENDING | Pull `main` and run only `.\scripts\verify-windows.ps1` after CI is green. |
+| Canonical isolated Windows verifier CI | PASS | `foundation-ci` run `31905250522`; the shared Windows verifier completed successfully. |
+| Hardened Linux regression CI | PASS | `foundation-ci` run `31905250522`; all normal Linux gates remained green. |
+| Target Windows canonical verification | PENDING | Pull `main` and run only `.\scripts\verify-windows.ps1`. |
 
 ## Step 03 architectural ordering decision
 
@@ -133,7 +141,7 @@ can be verified or rebuilt deterministically.
 
 ## Step 03 exit condition
 
-Do **not** start Step 04 until the canonical isolated Windows verifier passes repository CI and the
-target Windows checkout. Any remaining compiler/target/linker drift is a Step-03 tooling defect;
-any crash/replay/compatibility failure is a Step-03 storage defect. Fix and record either class
-rather than weakening the gate.
+Repository-side Step-03 and verifier-remediation gates are satisfied. Do **not** start Step 04 until
+the target Windows checkout runs the same canonical verifier successfully. Any remaining local
+compiler/target/linker drift is a Step-03 tooling defect; any crash/replay/compatibility failure is
+a Step-03 storage defect. Fix and record either class rather than weakening the gate.
