@@ -8,7 +8,7 @@
 use std::{
     error::Error,
     io::{self, IsTerminal},
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 use aer_environment::EnvironmentFingerprint;
@@ -17,7 +17,7 @@ use clap::{Parser, Subcommand};
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use ratatui::{
     Frame,
-    layout::{Alignment, Constraint, Direction, Layout, Rect},
+    layout::{Alignment, Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
@@ -522,7 +522,7 @@ fn print_doctor(path: &Path, json: bool) -> Result<(), Box<dyn Error>> {
 
 fn run_tui(path: &Path) -> Result<(), Box<dyn Error>> {
     let mut app = AppState::discover(path)?;
-    ratatui::run(|terminal| {
+    ratatui::run(|terminal| -> io::Result<()> {
         loop {
             terminal.draw(|frame| render(frame, &app))?;
             match event::read()? {
