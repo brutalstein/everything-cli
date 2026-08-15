@@ -14,6 +14,7 @@ understand, implement, and verify the complete slice without speculative scaffol
 6. Do not claim completion if evidence is unavailable; record the exact pending gate in `STATUS.md`.
 7. Update architecture docs only if semantics changed; otherwise update only implementation/status documentation.
 8. Commit one logical unit to `main` only after the repository-side gates are green.
+9. **Develop the TUI in parallel, but keep the backbone first.** Core/domain/runtime/storage/execution architecture remains the priority and must never be distorted merely to make the interface progress faster. Whenever a newly implemented capability is stable, truthful, and meaningfully usable from the product surface, expose it through the existing `everything` TUI/headless application boundary in the same implementation slice or the immediately adjacent integration commit. Reuse the same application/runtime APIs and authoritative state; do not duplicate business logic in the TUI, invent UI-only state, fabricate unavailable capabilities, or build speculative screens ahead of the backbone. A capability may remain temporarily unexposed only when there is no safe or meaningful user interaction yet; record that gap explicitly so the TUI catches up as soon as the backbone supports it.
 
 ## Step sequence
 
