@@ -84,8 +84,26 @@ pub fn check_repository(root: &Path) -> Result<IntegrityReport, IntegrityError> 
     let docs_dir = root.join("docs");
     let adr_dir = docs_dir.join("adrs");
 
-    let numbered_docs = check_numbered_files(&docs_dir, 0, 44, 2, ".md", "architecture doc")?;
-    let accepted_adrs = check_numbered_files(&adr_dir, 1, 9, 4, ".md", "accepted ADR")?;
+    let numbered_docs = check_numbered_files(
+        &docs_dir,
+        0,
+        44,
+        2,
+        "",
+        "_",
+        ".md",
+        "architecture doc",
+    )?;
+    let accepted_adrs = check_numbered_files(
+        &adr_dir,
+        1,
+        9,
+        4,
+        "ADR-",
+        "-",
+        ".md",
+        "accepted ADR",
+    )?;
 
     for contract in CORE_CONTRACTS {
         require_path(root, contract.descriptor().schema_path)?;
@@ -111,13 +129,15 @@ fn check_numbered_files(
     start: usize,
     end: usize,
     width: usize,
+    leading: &str,
+    separator: &str,
     suffix: &str,
     label: &str,
 ) -> Result<usize, IntegrityError> {
     let names = read_file_names(directory)?;
 
     for number in start..=end {
-        let prefix = format!("{number:0width$}_");
+        let prefix = format!("{leading}{number:0width$}{separator}");
         let matches = names
             .iter()
             .filter(|name| name.starts_with(&prefix) && name.ends_with(suffix))
