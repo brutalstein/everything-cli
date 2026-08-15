@@ -42,6 +42,7 @@ Prerequisites:
 
 - Git
 - `rustup` / Rust toolchain manager
+- Microsoft Visual Studio Build Tools / Visual Studio with the native x64 C++ toolchain
 
 PowerShell:
 
@@ -49,20 +50,39 @@ PowerShell:
 git clone https://github.com/brutalstein/everything-cli.git
 cd everything-cli
 
-rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
-
-rustup run 1.97.1 cargo fmt --all --check
-rustup run 1.97.1 cargo clippy --locked --workspace --all-targets -- -D warnings
-rustup run 1.97.1 cargo test --locked --workspace --all-targets
-rustup run 1.97.1 cargo test --locked -p aer-storage --all-targets
-rustup run 1.97.1 cargo run --locked -p aer-doc-check -- --check
-rustup run 1.97.1 cargo run --locked -p aer-phase0-check -- --check
+.\scripts\verify-windows.ps1
 ```
 
-The verification commands intentionally invoke Cargo through `rustup run`. This remains reliable
-when another `cargo.exe` appears earlier on Windows `PATH` and therefore does not support
-rustup's `cargo +toolchain` shorthand. Dependency-consuming commands also use `--locked`; a stale
-or missing lockfile is a verification failure rather than permission to silently re-resolve.
+For an existing checkout:
+
+```powershell
+cd C:\path\to\everything-cli
+git pull origin main
+.\scripts\verify-windows.ps1
+```
+
+The Windows verifier is intentionally the canonical local gate instead of a copied list of Cargo
+commands. It installs/uses the exact `1.97.1-x86_64-pc-windows-msvc` toolchain, compiles explicitly
+for `x86_64-pc-windows-msvc`, uses an isolated verification target directory, and temporarily
+neutralizes process-level Rust/Cargo/native-build overrides that could otherwise redirect the build
+to another compiler, target, wrapper, linker, or C toolchain. The original environment values are
+restored before the script returns.
+
+This matters on machines that also contain LLVM/MinGW/custom Rust installations: local verification
+must not silently become `x86_64-pc-windows-gnullvm`, inherit an older `RUSTC`, or reuse incompatible
+target artifacts. Dependency-consuming commands remain `--locked`; a stale or missing lockfile is a
+verification failure rather than permission to silently re-resolve.
+
+The verifier runs the same semantic gates as CI:
+
+```text
+format
+locked workspace Clippy with warnings denied
+locked workspace tests
+locked aer-storage tests
+documentation integrity
+Phase-0 executable-contract regression gate
+```
 
 ## Architecture authority
 
