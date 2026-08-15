@@ -40,7 +40,17 @@ jobs:
               raise SystemExit("expected aer-exec digest formatting pattern not found")
           text = text.replace(old, '        sha256: lowercase_hex(hasher.finalize().as_ref()),\n', 1)
           marker = 'fn join_capture(\n'
-          helper = '''#[must_use]\npub fn lowercase_hex(bytes: &[u8]) -> String {\n    let mut output = String::with_capacity(bytes.len() * 2);\n    for byte in bytes {\n        use fmt::Write as _;\n        write!(&mut output, "{byte:02x}").expect("writing to String cannot fail");\n    }\n    output\n}\n\n'''
+          helper = '''#[must_use]
+pub fn lowercase_hex(bytes: &[u8]) -> String {
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        use fmt::Write as _;
+        write!(&mut output, "{byte:02x}").expect("writing to String cannot fail");
+    }
+    output
+}
+
+'''
           if marker not in text:
               raise SystemExit("expected aer-exec helper insertion marker not found")
           text = text.replace(marker, helper + marker, 1)
@@ -48,11 +58,10 @@ jobs:
 
           env_path = Path("crates/aer-environment/src/lib.rs")
           text = env_path.read_text()
-          text = text.replace(
-              'use aer_exec::{CommandSpec, ExecutionPolicy, LocalProcessExecutor, SideEffectClass};',
-              'use aer_exec::{\\n    CommandSpec, ExecutionPolicy, LocalProcessExecutor, SideEffectClass, lowercase_hex,\\n};',
-              1,
-          )
+          sha_import = 'use sha2::{Digest, Sha256};'
+          if sha_import not in text:
+              raise SystemExit("expected aer-environment sha2 import not found")
+          text = text.replace(sha_import, 'use aer_exec::lowercase_hex;\n' + sha_import, 1)
           text = text.replace('        format!("{:x}", hasher.finalize())', '        lowercase_hex(hasher.finalize().as_ref())', 1)
           text = text.replace('    format!("{:x}", Sha256::digest(bytes))', '    lowercase_hex(Sha256::digest(bytes).as_ref())', 1)
           if 'format!("{:x}"' in text:
@@ -61,11 +70,9 @@ jobs:
 
           workspace_path = Path("crates/aer-workspace/src/lib.rs")
           text = workspace_path.read_text()
-          text = text.replace(
-              'use aer_exec::{\\n    CommandSpec, ExecutionPolicy, LocalProcessExecutor, ProcessResult, SideEffectClass,\\n};',
-              'use aer_exec::{\\n    CommandSpec, ExecutionPolicy, LocalProcessExecutor, ProcessResult, SideEffectClass, lowercase_hex,\\n};',
-              1,
-          )
+          if sha_import not in text:
+              raise SystemExit("expected aer-workspace sha2 import not found")
+          text = text.replace(sha_import, 'use aer_exec::lowercase_hex;\n' + sha_import, 1)
           text = text.replace('    format!("sha256:{:x}", hasher.finalize())', '    format!("sha256:{}", lowercase_hex(hasher.finalize().as_ref()))', 1)
           text = text.replace('    format!("{:x}", Sha256::digest(bytes))', '    lowercase_hex(Sha256::digest(bytes).as_ref())', 1)
           if 'format!("{:x}"' in text or 'sha256:{:x}' in text:
