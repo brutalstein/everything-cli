@@ -19,7 +19,7 @@ function Invoke-Checked {
     param(
         [Parameter(Mandatory = $true)]
         [string]$FilePath,
-        [Parameter(ValueFromRemainingArguments = $true)]
+        [Parameter(Mandatory = $true)]
         [string[]]$Arguments
     )
 
@@ -31,11 +31,12 @@ function Invoke-Checked {
 
 function Invoke-PinnedCargo {
     param(
-        [Parameter(ValueFromRemainingArguments = $true)]
-        [string[]]$Arguments
+        [Parameter(Mandatory = $true)]
+        [string[]]$CargoArguments
     )
 
-    Invoke-Checked rustup run $Toolchain cargo @Arguments
+    $RustupArguments = @("run", $Toolchain, "cargo") + $CargoArguments
+    Invoke-Checked -FilePath "rustup" -Arguments $RustupArguments
 }
 
 $IsCi = $env:CI -eq "true"
@@ -65,11 +66,18 @@ foreach ($Name in $OverrideNames) {
     [Environment]::SetEnvironmentVariable($Name, $null, "Process")
 }
 
+$LocationPushed = $false
 try {
     Push-Location $RepoRoot
+    $LocationPushed = $true
 
     if (-not $SkipToolchainInstall) {
-        Invoke-Checked rustup toolchain install $Toolchain --profile minimal --component rustfmt --component clippy
+        Invoke-Checked -FilePath "rustup" -Arguments @(
+            "toolchain", "install", $Toolchain,
+            "--profile", "minimal",
+            "--component", "rustfmt",
+            "--component", "clippy"
+        )
     }
 
     $RustcInfoLines = & rustup run $Toolchain rustc -vV
@@ -88,22 +96,35 @@ try {
 
     if (-not $IsCi) {
         Write-Host "AER Windows verification"
-        Write-Host "  toolchain: $Toolchain"
-        Write-Host "  target:    $Target"
+        Write-Host "  toolchain:  $Toolchain"
+        Write-Host "  target:     $Target"
         Write-Host "  target dir: $TargetDir"
     }
 
-    Invoke-PinnedCargo fmt --all --check
-    Invoke-PinnedCargo clippy --locked --workspace --all-targets --target $Target -- -D warnings
-    Invoke-PinnedCargo test --locked --workspace --all-targets --target $Target
-    Invoke-PinnedCargo test --locked -p aer-storage --all-targets --target $Target
-    Invoke-PinnedCargo run --locked --target $Target -p aer-doc-check -- --check
-    Invoke-PinnedCargo run --locked --target $Target -p aer-phase0-check -- --check
+    Invoke-PinnedCargo -CargoArguments @("fmt", "--all", "--check")
+    Invoke-PinnedCargo -CargoArguments @(
+        "clippy", "--locked", "--workspace", "--all-targets", "--target", $Target,
+        "--", "-D", "warnings"
+    )
+    Invoke-PinnedCargo -CargoArguments @(
+        "test", "--locked", "--workspace", "--all-targets", "--target", $Target
+    )
+    Invoke-PinnedCargo -CargoArguments @(
+        "test", "--locked", "-p", "aer-storage", "--all-targets", "--target", $Target
+    )
+    Invoke-PinnedCargo -CargoArguments @(
+        "run", "--locked", "--target", $Target, "-p", "aer-doc-check", "--", "--check"
+    )
+    Invoke-PinnedCargo -CargoArguments @(
+        "run", "--locked", "--target", $Target, "-p", "aer-phase0-check", "--", "--check"
+    )
 
     Write-Host "AER Windows verification: PASS"
 }
 finally {
-    Pop-Location
+    if ($LocationPushed) {
+        Pop-Location
+    }
     foreach ($Name in $OverrideNames) {
         [Environment]::SetEnvironmentVariable($Name, $SavedEnvironment[$Name], "Process")
     }
