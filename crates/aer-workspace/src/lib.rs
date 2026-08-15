@@ -455,10 +455,10 @@ fn sanitize_remote_url(raw: &str) -> String {
         .next()
         .unwrap_or(without_fragment);
     for scheme in ["https://", "http://", "ssh://"] {
-        if let Some(rest) = without_query.strip_prefix(scheme) {
-            if let Some(at) = rest.rfind('@') {
-                return format!("{scheme}{}", &rest[at + 1..]);
-            }
+        if let Some(rest) = without_query.strip_prefix(scheme)
+            && let Some(at) = rest.rfind('@')
+        {
+            return format!("{scheme}{}", &rest[at + 1..]);
         }
     }
     without_query.to_owned()
