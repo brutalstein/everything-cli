@@ -13,7 +13,7 @@ use ratatui::{
     widgets::{Block, Borders, List, ListItem, ListState, Paragraph, Wrap},
 };
 
-use crate::{material_icons, Theme};
+use crate::{Theme, material_icons};
 
 const HERO: [&str; 5] = [
     "  ___ _   _____ _ __ _   _| |_| |__ (_)_ __   __ _",
@@ -335,7 +335,10 @@ fn render_daemon_state(frame: &mut Frame<'_>, area: Rect, state: &LauncherState)
                 format!(" {}  provider   ", material_icons::ATTENTION.compact),
                 Style::default().fg(t.warning),
             ),
-            Span::styled("production profile not configured", Style::default().fg(t.muted)),
+            Span::styled(
+                "production profile not configured",
+                Style::default().fg(t.muted),
+            ),
         ]),
         Line::from(Span::styled(
             "The launcher is a control surface over the existing local runtime; it does not invent a background service.",
@@ -510,7 +513,10 @@ mod tests {
     #[test]
     fn relative_workspace_path_resolves_from_launcher_cwd() {
         let cwd = Path::new("base");
-        assert_eq!(resolve_path(cwd, "project"), PathBuf::from("base").join("project"));
+        assert_eq!(
+            resolve_path(cwd, "project"),
+            PathBuf::from("base").join("project")
+        );
     }
 
     #[test]

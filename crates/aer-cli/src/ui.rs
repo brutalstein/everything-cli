@@ -89,7 +89,11 @@ fn render_header(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
         Span::styled(surface, Style::default().fg(t.accent_alt)),
         Span::styled("  ·  ", Style::default().fg(t.border)),
         Span::styled(
-            if app.workspace.is_clean() { "clean" } else { "dirty" },
+            if app.workspace.is_clean() {
+                "clean"
+            } else {
+                "dirty"
+            },
             Style::default().fg(if app.workspace.is_clean() {
                 t.success
             } else {
@@ -110,13 +114,11 @@ fn render_header(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
         columns[0],
     );
     frame.render_widget(
-        Paragraph::new(right)
-            .alignment(Alignment::Right)
-            .block(
-                Block::default()
-                    .borders(Borders::BOTTOM)
-                    .border_style(Style::default().fg(t.border)),
-            ),
+        Paragraph::new(right).alignment(Alignment::Right).block(
+            Block::default()
+                .borders(Borders::BOTTOM)
+                .border_style(Style::default().fg(t.border)),
+        ),
         columns[1],
     );
 }
@@ -389,7 +391,11 @@ fn ir_lines(app: &AppState) -> Vec<Line<'static>> {
             t,
         ),
         metric("goals", ir.goals.len().to_string(), t),
-        metric("requirements", ir.functional_requirements.len().to_string(), t),
+        metric(
+            "requirements",
+            ir.functional_requirements.len().to_string(),
+            t,
+        ),
         metric("constraints", ir.constraints.len().to_string(), t),
         metric(
             "acceptance criteria",
@@ -419,7 +425,11 @@ fn ir_lines(app: &AppState) -> Vec<Line<'static>> {
 fn workspace_lines(app: &AppState) -> Vec<Line<'static>> {
     let t = app.theme;
     vec![
-        metric("repository", app.workspace.repo_root.display().to_string(), t),
+        metric(
+            "repository",
+            app.workspace.repo_root.display().to_string(),
+            t,
+        ),
         metric(
             "branch",
             app.workspace
@@ -462,9 +472,7 @@ fn environment_lines(app: &AppState) -> Vec<Line<'static>> {
             lines.push(Line::from(vec![
                 Span::styled(format!("{:<20}", tool.name), Style::default().fg(t.text)),
                 Span::styled(
-                    tool.version
-                        .clone()
-                        .unwrap_or_else(|| "unknown".to_owned()),
+                    tool.version.clone().unwrap_or_else(|| "unknown".to_owned()),
                     Style::default().fg(t.muted),
                 ),
             ]));
@@ -661,7 +669,11 @@ fn render_statusline(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
         ),
         Span::styled(" · ", Style::default().fg(t.border)),
         Span::styled(
-            if app.workspace.is_clean() { "clean" } else { "dirty" },
+            if app.workspace.is_clean() {
+                "clean"
+            } else {
+                "dirty"
+            },
             Style::default().fg(if app.workspace.is_clean() {
                 t.success
             } else {
@@ -686,7 +698,10 @@ fn render_statusline(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     let columns =
         Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)]).split(area);
     frame.render_widget(Paragraph::new(left), columns[0]);
-    frame.render_widget(Paragraph::new(right).alignment(Alignment::Right), columns[1]);
+    frame.render_widget(
+        Paragraph::new(right).alignment(Alignment::Right),
+        columns[1],
+    );
 }
 
 fn render_help(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
@@ -739,10 +754,7 @@ fn detail_block<'a>(title: &'a str, t: Theme) -> Block<'a> {
 
 fn metric(label_text: &str, value: String, t: Theme) -> Line<'static> {
     Line::from(vec![
-        Span::styled(
-            format!("{label_text:<22}"),
-            Style::default().fg(t.muted),
-        ),
+        Span::styled(format!("{label_text:<22}"), Style::default().fg(t.muted)),
         Span::styled(value, Style::default().fg(t.text)),
     ])
 }
