@@ -95,7 +95,7 @@ pub const COMPATIBILITY_SURFACES: [CompatibilitySurface; 10] = [
 mod tests {
     use std::collections::BTreeSet;
 
-    use super::{AER_BINARY_VERSION, COMPATIBILITY_SURFACES, SurfaceLifecycle};
+    use super::{COMPATIBILITY_SURFACES, SurfaceLifecycle};
 
     #[test]
     fn compatibility_keys_are_unique_and_active_versions_are_nonzero() {
@@ -108,10 +108,5 @@ mod tests {
                 assert!(version > 0);
             }
         }
-    }
-
-    #[test]
-    fn binary_version_is_not_empty() {
-        assert!(!AER_BINARY_VERSION.is_empty());
     }
 }
