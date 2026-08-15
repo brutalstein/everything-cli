@@ -30,6 +30,14 @@ jobs:
       - name: Lint
         run: cargo +1.97.1 clippy --workspace --all-targets -- -D warnings
 
+      - name: Capture resolved Cargo lock
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: phase0-cargo-lock-bootstrap
+          path: Cargo.lock
+          retention-days: 1
+
       - name: Test
         run: cargo +1.97.1 test --workspace --all-targets
 
