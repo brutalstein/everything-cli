@@ -66,11 +66,7 @@ pub fn validate(bundle: &SemanticBundle) -> Vec<SemanticIssue> {
                         };
 
                         if let Some(requirement_id) = requirement_id
-                            && !string_array_contains(
-                                evidence,
-                                "requirement_refs",
-                                requirement_id,
-                            )
+                            && !string_array_contains(evidence, "requirement_refs", requirement_id)
                         {
                             issues.push(issue(
                                 "semantic.evidence_requirement_mismatch",

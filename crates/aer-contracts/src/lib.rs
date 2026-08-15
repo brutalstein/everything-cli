@@ -17,9 +17,7 @@ pub mod telemetry;
 /// integrity so adding a new deterministic pass cannot be silently skipped by
 /// callers that follow the public contract entry point.
 #[must_use]
-pub fn validate_semantic_bundle(
-    bundle: &semantic::SemanticBundle,
-) -> Vec<semantic::SemanticIssue> {
+pub fn validate_semantic_bundle(bundle: &semantic::SemanticBundle) -> Vec<semantic::SemanticIssue> {
     let mut issues = bundle.validate();
     issues.extend(proof_integrity::validate(bundle));
     issues
