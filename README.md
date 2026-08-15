@@ -20,6 +20,7 @@ The current foundation contains:
 - `aer-doc-check` for architecture/ADR/schema/example inventory and manifest coverage;
 - `aer-phase0-check` for shipped examples, negative boundary fixtures, semantic fixtures,
   compatibility fixtures, and normative configuration examples;
+- a checked-in `Cargo.lock` and `--locked` CI gates so dependency resolution is reproducible;
 - Linux + Windows CI for format, lint, tests, documentation integrity, and the Phase-0 gate.
 
 It does **not** yet implement the daemon, model providers, durable storage, sandboxing, or the
@@ -41,15 +42,16 @@ cd everything-cli
 rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
 
 rustup run 1.97.1 cargo fmt --all --check
-rustup run 1.97.1 cargo clippy --workspace --all-targets -- -D warnings
-rustup run 1.97.1 cargo test --workspace --all-targets
-rustup run 1.97.1 cargo run -p aer-doc-check -- --check
-rustup run 1.97.1 cargo run -p aer-phase0-check -- --check
+rustup run 1.97.1 cargo clippy --locked --workspace --all-targets -- -D warnings
+rustup run 1.97.1 cargo test --locked --workspace --all-targets
+rustup run 1.97.1 cargo run --locked -p aer-doc-check -- --check
+rustup run 1.97.1 cargo run --locked -p aer-phase0-check -- --check
 ```
 
 The verification commands intentionally invoke Cargo through `rustup run`. This remains reliable
 when another `cargo.exe` appears earlier on Windows `PATH` and therefore does not support
-rustup's `cargo +toolchain` shorthand.
+rustup's `cargo +toolchain` shorthand. Dependency-consuming commands also use `--locked`; a stale
+or missing lockfile is a verification failure rather than permission to silently re-resolve.
 
 All five commands must pass before Step 02 is marked Windows-verified and Phase 0 is closed.
 
