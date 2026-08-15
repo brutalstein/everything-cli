@@ -77,7 +77,9 @@ pub enum QueuePolicyError {
 impl fmt::Display for QueuePolicyError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::ZeroCapacity => formatter.write_str("queue capacity must be finite and greater than zero"),
+            Self::ZeroCapacity => {
+                formatter.write_str("queue capacity must be finite and greater than zero")
+            }
             Self::AuthoritativeDataCannotBeCoalesced => {
                 formatter.write_str("authoritative queue data cannot use coalescing overflow")
             }
@@ -93,11 +95,8 @@ mod tests {
 
     #[test]
     fn zero_capacity_is_rejected() {
-        let result = BoundedQueuePolicy::new(
-            QueuePurpose::Authoritative,
-            0,
-            OverflowPolicy::Backpressure,
-        );
+        let result =
+            BoundedQueuePolicy::new(QueuePurpose::Authoritative, 0, OverflowPolicy::Backpressure);
 
         assert_eq!(result, Err(QueuePolicyError::ZeroCapacity));
     }

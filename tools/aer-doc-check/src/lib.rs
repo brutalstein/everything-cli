@@ -26,12 +26,24 @@ pub struct IntegrityReport {
 
 #[derive(Debug)]
 pub enum IntegrityError {
-    Io { path: PathBuf, source: io::Error },
-    ExpectedExactlyOne { label: String, matches: usize },
+    Io {
+        path: PathBuf,
+        source: io::Error,
+    },
+    ExpectedExactlyOne {
+        label: String,
+        matches: usize,
+    },
     MissingPath(PathBuf),
-    MalformedManifestLine { line: usize, text: String },
+    MalformedManifestLine {
+        line: usize,
+        text: String,
+    },
     DuplicateManifestPath(String),
-    ManifestCoverageMismatch { missing: Vec<String>, stale: Vec<String> },
+    ManifestCoverageMismatch {
+        missing: Vec<String>,
+        stale: Vec<String>,
+    },
 }
 
 impl std::fmt::Display for IntegrityError {
@@ -41,11 +53,18 @@ impl std::fmt::Display for IntegrityError {
             Self::ExpectedExactlyOne { label, matches } => {
                 write!(formatter, "expected exactly one {label}, found {matches}")
             }
-            Self::MissingPath(path) => write!(formatter, "required path is missing: {}", path.display()),
-            Self::MalformedManifestLine { line, text } => {
-                write!(formatter, "malformed docs/MANIFEST.sha256 line {line}: {text}")
+            Self::MissingPath(path) => {
+                write!(formatter, "required path is missing: {}", path.display())
             }
-            Self::DuplicateManifestPath(path) => write!(formatter, "duplicate manifest path: {path}"),
+            Self::MalformedManifestLine { line, text } => {
+                write!(
+                    formatter,
+                    "malformed docs/MANIFEST.sha256 line {line}: {text}"
+                )
+            }
+            Self::DuplicateManifestPath(path) => {
+                write!(formatter, "duplicate manifest path: {path}")
+            }
             Self::ManifestCoverageMismatch { missing, stale } => write!(
                 formatter,
                 "manifest coverage mismatch; missing entries: {missing:?}; stale entries: {stale:?}"

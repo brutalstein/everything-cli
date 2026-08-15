@@ -34,16 +34,36 @@ impl CoreContract {
     #[must_use]
     pub const fn descriptor(self) -> ContractDescriptor {
         match self {
-            Self::EngineeringIr => descriptor(self, "EngineeringIR", "docs/schemas/engineering-ir.schema.json"),
+            Self::EngineeringIr => descriptor(
+                self,
+                "EngineeringIR",
+                "docs/schemas/engineering-ir.schema.json",
+            ),
             Self::TaskEnvelope => descriptor(self, "TaskEnvelope", "docs/schemas/task.schema.json"),
             Self::RunState => descriptor(self, "RunState", "docs/schemas/run.schema.json"),
             Self::Budget => descriptor(self, "Budget", "docs/schemas/budget.schema.json"),
-            Self::ContextPack => descriptor(self, "ContextPack", "docs/schemas/context-pack.schema.json"),
-            Self::HandoffEnvelope => descriptor(self, "HandoffEnvelope", "docs/schemas/handoff.schema.json"),
-            Self::WorkResult => descriptor(self, "WorkResult", "docs/schemas/work-result.schema.json"),
-            Self::EvidenceRecord => descriptor(self, "EvidenceRecord", "docs/schemas/evidence.schema.json"),
-            Self::ProofManifest => descriptor(self, "ProofManifest", "docs/schemas/proof-manifest.schema.json"),
-            Self::ResearchArtifact => descriptor(self, "ResearchArtifact", "docs/schemas/research-artifact.schema.json"),
+            Self::ContextPack => {
+                descriptor(self, "ContextPack", "docs/schemas/context-pack.schema.json")
+            }
+            Self::HandoffEnvelope => {
+                descriptor(self, "HandoffEnvelope", "docs/schemas/handoff.schema.json")
+            }
+            Self::WorkResult => {
+                descriptor(self, "WorkResult", "docs/schemas/work-result.schema.json")
+            }
+            Self::EvidenceRecord => {
+                descriptor(self, "EvidenceRecord", "docs/schemas/evidence.schema.json")
+            }
+            Self::ProofManifest => descriptor(
+                self,
+                "ProofManifest",
+                "docs/schemas/proof-manifest.schema.json",
+            ),
+            Self::ResearchArtifact => descriptor(
+                self,
+                "ResearchArtifact",
+                "docs/schemas/research-artifact.schema.json",
+            ),
             Self::EnvironmentFingerprint => descriptor(
                 self,
                 "EnvironmentFingerprint",
@@ -54,9 +74,15 @@ impl CoreContract {
                 "ModelCapabilityRecord",
                 "docs/schemas/model-capability.schema.json",
             ),
-            Self::PolicyArtifact => descriptor(self, "PolicyArtifact", "docs/schemas/policy-artifact.schema.json"),
+            Self::PolicyArtifact => descriptor(
+                self,
+                "PolicyArtifact",
+                "docs/schemas/policy-artifact.schema.json",
+            ),
             Self::RunEvent => descriptor(self, "RunEvent", "docs/schemas/run-event.schema.json"),
-            Self::Configuration => descriptor(self, "Configuration", "docs/schemas/config.schema.json"),
+            Self::Configuration => {
+                descriptor(self, "Configuration", "docs/schemas/config.schema.json")
+            }
         }
     }
 }

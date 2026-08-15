@@ -54,10 +54,7 @@ impl CompatibilitySurface {
     }
 }
 
-const fn reserved(
-    surface: CompatibilitySurface,
-    key: &'static str,
-) -> CompatibilityDescriptor {
+const fn reserved(surface: CompatibilitySurface, key: &'static str) -> CompatibilityDescriptor {
     CompatibilityDescriptor {
         surface,
         key,
