@@ -6,7 +6,7 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   rust-foundation:
@@ -24,19 +24,6 @@ jobs:
       - name: Install pinned Rust toolchain
         if: runner.os != 'Windows'
         run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
-
-      - name: Apply final Step 05 source repair
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 .github/scripts/fix_step05_clippy.py
-          cargo +1.97.1 fmt --all
-          git config user.name "everything-ci"
-          git config user.email "everything-ci@users.noreply.github.com"
-          git add crates/aer-workspace/src/lib.rs
-          git commit -m "Fix Step 05 remote sanitizer lint [skip ci]"
-          git push origin HEAD:main
 
       - name: Format
         if: runner.os != 'Windows'
