@@ -144,14 +144,14 @@ impl ContractRegistry {
             });
         }
 
-        if let Some(inline_version) = instance.get("schema_version").and_then(Value::as_u64) {
-            if inline_version != u64::from(declared_version) {
-                return Err(ContractValidationError::InlineVersionMismatch {
-                    contract,
-                    declared: declared_version,
-                    inline: inline_version,
-                });
-            }
+        if let Some(inline_version) = instance.get("schema_version").and_then(Value::as_u64)
+            && inline_version != u64::from(declared_version)
+        {
+            return Err(ContractValidationError::InlineVersionMismatch {
+                contract,
+                declared: declared_version,
+                inline: inline_version,
+            });
         }
 
         let validator = self

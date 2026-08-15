@@ -96,14 +96,14 @@ fn collect_ids(
     let mut ids = BTreeSet::new();
     if let Some(items) = root.get(key).and_then(Value::as_array) {
         for (index, item) in items.iter().enumerate() {
-            if let Some(id) = item.get("id").and_then(Value::as_str) {
-                if !ids.insert(id.to_owned()) {
-                    issues.push(issue(
-                        "semantic.duplicate_id",
-                        format!("{path}/{index}/id"),
-                        format!("duplicate semantic id {id}"),
-                    ));
-                }
+            if let Some(id) = item.get("id").and_then(Value::as_str)
+                && !ids.insert(id.to_owned())
+            {
+                issues.push(issue(
+                    "semantic.duplicate_id",
+                    format!("{path}/{index}/id"),
+                    format!("duplicate semantic id {id}"),
+                ));
             }
         }
     }
@@ -119,14 +119,14 @@ fn collect_objects_by_id<'a>(
 ) -> BTreeMap<String, &'a Value> {
     let mut by_id = BTreeMap::new();
     for (index, object) in objects.iter().enumerate() {
-        if let Some(id) = object.get(id_key).and_then(Value::as_str) {
-            if by_id.insert(id.to_owned(), object).is_some() {
-                issues.push(issue(
-                    duplicate_code,
-                    format!("{path}/{index}/{id_key}"),
-                    format!("duplicate {id_key} {id}"),
-                ));
-            }
+        if let Some(id) = object.get(id_key).and_then(Value::as_str)
+            && by_id.insert(id.to_owned(), object).is_some()
+        {
+            issues.push(issue(
+                duplicate_code,
+                format!("{path}/{index}/{id_key}"),
+                format!("duplicate {id_key} {id}"),
+            ));
         }
     }
     by_id
@@ -300,14 +300,14 @@ fn validate_proofs(
     for (proof_index, proof) in proofs.iter().enumerate() {
         let task_id = proof.get("task_id").and_then(Value::as_str);
         let task = task_id.and_then(|id| tasks_by_id.get(id).copied());
-        if let Some(task_id) = task_id {
-            if task.is_none() {
-                issues.push(issue(
-                    "semantic.dangling_proof_task",
-                    format!("/proof_manifests/{proof_index}/task_id"),
-                    format!("proof references unknown task {task_id}"),
-                ));
-            }
+        if let Some(task_id) = task_id
+            && task.is_none()
+        {
+            issues.push(issue(
+                "semantic.dangling_proof_task",
+                format!("/proof_manifests/{proof_index}/task_id"),
+                format!("proof references unknown task {task_id}"),
+            ));
         }
 
         if let Some(task) = task {
@@ -318,14 +318,14 @@ fn validate_proofs(
                     "proof spec_version does not match its task".to_owned(),
                 ));
             }
-            if let Some(task_snapshot) = task.get("repo_snapshot").and_then(Value::as_str) {
-                if proof.get("repo_snapshot").and_then(Value::as_str) != Some(task_snapshot) {
-                    issues.push(issue(
-                        "semantic.proof_repo_snapshot_mismatch",
-                        format!("/proof_manifests/{proof_index}/repo_snapshot"),
-                        "proof repo_snapshot does not match its task".to_owned(),
-                    ));
-                }
+            if let Some(task_snapshot) = task.get("repo_snapshot").and_then(Value::as_str)
+                && proof.get("repo_snapshot").and_then(Value::as_str) != Some(task_snapshot)
+            {
+                issues.push(issue(
+                    "semantic.proof_repo_snapshot_mismatch",
+                    format!("/proof_manifests/{proof_index}/repo_snapshot"),
+                    "proof repo_snapshot does not match its task".to_owned(),
+                ));
             }
         }
 
@@ -399,18 +399,18 @@ fn validate_proofs(
             }
         }
 
-        if proof.get("overall_verdict").and_then(Value::as_str) == Some("pass") {
-            if let Some(requirements) = proof.get("requirements").and_then(Value::as_array) {
-                for (requirement_index, requirement) in requirements.iter().enumerate() {
-                    if requirement.get("verdict").and_then(Value::as_str) == Some("fail") {
-                        issues.push(issue(
-                            "semantic.passing_proof_contains_failed_requirement",
-                            format!(
-                                "/proof_manifests/{proof_index}/requirements/{requirement_index}/verdict"
-                            ),
-                            "overall passing proof contains a failed requirement".to_owned(),
-                        ));
-                    }
+        if proof.get("overall_verdict").and_then(Value::as_str) == Some("pass")
+            && let Some(requirements) = proof.get("requirements").and_then(Value::as_array)
+        {
+            for (requirement_index, requirement) in requirements.iter().enumerate() {
+                if requirement.get("verdict").and_then(Value::as_str) == Some("fail") {
+                    issues.push(issue(
+                        "semantic.passing_proof_contains_failed_requirement",
+                        format!(
+                            "/proof_manifests/{proof_index}/requirements/{requirement_index}/verdict"
+                        ),
+                        "overall passing proof contains a failed requirement".to_owned(),
+                    ));
                 }
             }
         }
