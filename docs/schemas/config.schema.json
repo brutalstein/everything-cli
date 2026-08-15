@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aer.local/schemas/config.schema.json",
+  "title": "AER User Configuration",
+  "type": "object",
+  "properties": {
+    "quality_mode": {"enum": ["economy", "balanced", "maximum-quality"]},
+    "security_profile": {"enum": ["read-only", "sandboxed", "networked-build", "privileged-special"]},
+    "autonomy": {"enum": ["read", "workspace", "commit", "remote-write"]},
+    "models": {
+      "type": "object",
+      "properties": {
+        "allowed_providers": {"type": "array", "items": {"type": "string"}},
+        "max_run_cost_usd": {"type": "number", "minimum": 0}
+      },
+      "additionalProperties": false
+    },
+    "context": {
+      "type": "object",
+      "properties": {
+        "max_tokens_per_call": {"type": "integer", "minimum": 1024}
+      },
+      "additionalProperties": false
+    },
+    "parallelism": {
+      "type": "object",
+      "properties": {
+        "max_workers": {"type": "integer", "minimum": 1}
+      },
+      "additionalProperties": false
+    },
+    "privacy": {
+      "type": "object",
+      "properties": {
+        "store_prompt_content": {"type": "boolean"},
+        "cross_project_learning": {"enum": ["off", "aggregate_only", "explicit"]}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

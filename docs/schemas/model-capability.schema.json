@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aer.local/schemas/model-capability.schema.json",
+  "title": "AER Model Capability Record",
+  "type": "object",
+  "required": ["provider", "model_id", "observed_at", "capabilities"],
+  "properties": {
+    "provider": {"type": "string"},
+    "model_family": {"type": "string"},
+    "model_id": {"type": "string"},
+    "version_or_snapshot": {"type": ["string", "null"]},
+    "observed_at": {"type": "string", "format": "date-time"},
+    "capabilities": {"type": "object"},
+    "pricing": {"type": "object"},
+    "privacy": {"type": "object"},
+    "empirical_stats": {"type": "array", "items": {"type": "object"}}
+  },
+  "additionalProperties": false
+}

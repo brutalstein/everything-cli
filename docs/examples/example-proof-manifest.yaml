@@ -1,0 +1,19 @@
+task_id: TASK-042
+repo_snapshot: repo:fedcba9
+spec_version: 3
+requirements:
+  - id: REQ-INGEST-001
+    implementation:
+      - path: src/ingest/session.rs
+        symbol: ResumeCursor::commit_ack
+    evidence:
+      - EVID-900
+      - EVID-901
+    verdict: pass
+architecture_health:
+  verdict: pass
+  evidence: EVID-902
+integrity:
+  verifier_snapshot: verifier:77aa11
+  generator_could_modify_verifier: false
+overall_verdict: pass

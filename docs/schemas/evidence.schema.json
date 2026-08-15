@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aer.local/schemas/evidence.schema.json",
+  "title": "AER Evidence Record",
+  "type": "object",
+  "required": ["evidence_id", "type", "repo_snapshot", "result", "timestamp"],
+  "properties": {
+    "evidence_id": {"type": "string"},
+    "type": {"enum": ["command", "test", "static_analysis", "security", "performance", "architecture", "semantic_review", "runtime_trace", "manual"]},
+    "requirement_refs": {"type": "array", "items": {"type": "string"}},
+    "repo_snapshot": {"type": "string"},
+    "command_or_tool": {"type": "object"},
+    "environment_fingerprint": {"type": "string"},
+    "input_artifact_hashes": {"type": "array", "items": {"type": "string"}},
+    "output_artifact_hashes": {"type": "array", "items": {"type": "string"}},
+    "result": {"enum": ["pass", "fail", "error", "inconclusive"]},
+    "measurements": {"type": "object"},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "integrity": {"type": "object"}
+  },
+  "additionalProperties": false
+}

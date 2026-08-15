@@ -1,0 +1,41 @@
+{
+  "handoff_id": "HO-042-02",
+  "task_id": "TASK-042",
+  "objective": "Implement resumable realtime ingestion without duplicate committed segments.",
+  "spec_version": 3,
+  "repo_snapshot": "repo:abc123+diff:def456",
+  "requirements": ["REQ-INGEST-001"],
+  "constraints": ["CON-PRIVACY-001"],
+  "invariants": ["INV-TASK-001"],
+  "current_state": {"phase": "diagnosis", "working_tree": "wt-task-042"},
+  "known_facts": [
+    {
+      "id": "FACT-91",
+      "statement": "Reconnect reproducer duplicates one segment when acknowledgement arrives after connection close.",
+      "confidence": 1.0,
+      "evidence_refs": ["EVID-770"]
+    }
+  ],
+  "hypotheses": [
+    {
+      "id": "HYP-22",
+      "statement": "Commit acknowledgement and resume cursor are updated non-atomically.",
+      "status": "supported",
+      "evidence_refs": ["EVID-770", "EVID-771"]
+    },
+    {
+      "id": "HYP-19",
+      "statement": "Redis pub/sub replay causes the duplicate.",
+      "status": "disproven",
+      "evidence_refs": ["EVID-768"]
+    }
+  ],
+  "attempts": [],
+  "failures": [],
+  "evidence_refs": ["EVID-768", "EVID-770", "EVID-771"],
+  "relevant_context_refs": ["CTX-119"],
+  "unresolved_dependencies": [],
+  "requested_action": "Implement the smallest fix for cursor/ack atomicity and add a deterministic reconnect regression test.",
+  "budget": {"input_tokens": 18000, "tool_calls": 50},
+  "expected_output_contract": {"patch": true, "evidence": true, "no_spec_changes": true}
+}

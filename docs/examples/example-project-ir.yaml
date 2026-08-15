@@ -1,0 +1,59 @@
+schema_version: 1
+project:
+  id: meeting-assistant
+  title: Realtime Meeting Assistant
+  summary: Analyze live or uploaded meetings and turn them into structured decisions and assigned tasks.
+
+goals:
+  - id: GOAL-001
+    statement: Convert meeting conversation into reliable actionable work with low user effort.
+
+non_goals:
+  - id: NONGOAL-001
+    statement: Replace the user's video-conferencing platform.
+
+functional_requirements:
+  - id: REQ-INGEST-001
+    statement: The system must support live meeting ingestion and uploaded recordings.
+    priority: must
+    status: accepted
+    risk: high
+    verification_strategy: [integration, end_to_end]
+    dependencies: []
+
+quality_attributes:
+  - id: QA-LATENCY-001
+    statement: Live extracted actions should appear within the agreed interaction latency target.
+
+constraints:
+  - id: CON-PRIVACY-001
+    statement: Raw meeting audio must follow project-configured retention policy.
+
+invariants:
+  - id: INV-TASK-001
+    statement: Replayed transcript segments must not create duplicate durable tasks.
+
+acceptance_criteria:
+  - id: AC-INGEST-001
+    statement: A simulated reconnect resumes ingestion without duplicating committed transcript segments.
+    requirement_refs: [REQ-INGEST-001]
+
+security_privacy: []
+performance_targets: []
+compatibility: []
+risks: []
+decisions:
+  - id: DEC-MODE-001
+    choice: Support both live analysis and uploaded recordings.
+    authority: user
+    rationale: Explicit user choice during intent elicitation.
+    confidence: 1.0
+    reversibility: moderate
+
+unknowns: []
+assumptions: []
+research_findings: []
+stakeholders: []
+user_flows: []
+interfaces: []
+data_contracts: []

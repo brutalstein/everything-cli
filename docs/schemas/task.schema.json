@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aer.local/schemas/task.schema.json",
+  "title": "AER Task Envelope",
+  "type": "object",
+  "required": ["task_id", "kind", "objective", "state", "spec_version", "risk"],
+  "properties": {
+    "task_id": {"type": "string"},
+    "kind": {"enum": ["research", "specification", "architecture", "implementation", "migration", "integration", "verification", "security_review", "performance_review", "documentation", "recovery"]},
+    "objective": {"type": "string"},
+    "requirement_refs": {"type": "array", "items": {"type": "string"}},
+    "acceptance_refs": {"type": "array", "items": {"type": "string"}},
+    "invariant_refs": {"type": "array", "items": {"type": "string"}},
+    "dependencies": {"type": "array", "items": {"type": "string"}},
+    "expected_read_scope": {"type": "array", "items": {"type": "string"}},
+    "expected_write_scope": {"type": "array", "items": {"type": "string"}},
+    "risk": {"enum": ["low", "medium", "high", "critical"]},
+    "uncertainty": {"type": "number", "minimum": 0, "maximum": 1},
+    "budget": {"type": "object"},
+    "state": {"enum": ["pending", "ready", "running", "blocked", "verifying", "accepted", "rejected", "stale", "cancelled"]},
+    "spec_version": {"type": "integer", "minimum": 1},
+    "repo_snapshot": {"type": ["string", "null"]}
+  },
+  "additionalProperties": false
+}

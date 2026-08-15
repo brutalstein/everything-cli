@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aer.local/schemas/run-event.schema.json",
+  "title": "AER Run Event",
+  "type": "object",
+  "required": ["event_id", "project_id", "event_type", "schema_version", "timestamp"],
+  "properties": {
+    "event_id": {"type": "string"},
+    "project_id": {"type": "string"},
+    "run_id": {"type": ["string", "null"]},
+    "task_id": {"type": ["string", "null"]},
+    "event_type": {"type": "string"},
+    "schema_version": {"type": "integer", "minimum": 1},
+    "timestamp": {"type": "string", "format": "date-time"},
+    "payload": {"type": ["object", "null"]},
+    "payload_artifact_hash": {"type": ["string", "null"]},
+    "causation_id": {"type": ["string", "null"]},
+    "correlation_id": {"type": ["string", "null"]}
+  },
+  "additionalProperties": false
+}
