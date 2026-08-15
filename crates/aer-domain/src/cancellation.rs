@@ -54,7 +54,9 @@ impl CancellationProtocol {
     pub fn poll_deadline(&mut self, now_ms: u64) -> Result<CancellationPhase, CancellationError> {
         match self.phase {
             CancellationPhase::Requested | CancellationPhase::Draining => {
-                let deadline = self.cleanup_deadline_ms.ok_or(CancellationError::InvalidPhase)?;
+                let deadline = self
+                    .cleanup_deadline_ms
+                    .ok_or(CancellationError::InvalidPhase)?;
                 if now_ms >= deadline {
                     self.phase = CancellationPhase::ForceRequired;
                 }

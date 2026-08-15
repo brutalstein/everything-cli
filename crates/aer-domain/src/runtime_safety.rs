@@ -68,7 +68,11 @@ impl RuntimeSafetyKernel {
         if run_id.trim().is_empty() {
             return Err(RuntimeSafetyError::EmptyIdentity);
         }
-        if self.runs.insert(run_id.clone(), RunState::Pending).is_some() {
+        if self
+            .runs
+            .insert(run_id.clone(), RunState::Pending)
+            .is_some()
+        {
             return Err(RuntimeSafetyError::DuplicateRun(run_id));
         }
         Ok(())
@@ -408,9 +412,7 @@ mod tests {
     use crate::{
         cancellation::CancellationPhase,
         leases::{EffectClass, LeasePolicy},
-        resource_governor::{
-            AdmissionClass, ResourceEstimate, ResourceLimits, ResourceVector,
-        },
+        resource_governor::{AdmissionClass, ResourceEstimate, ResourceLimits, ResourceVector},
         state_machines::{TaskState, TaskTransitionContext},
     };
 
@@ -432,11 +434,7 @@ mod tests {
     fn ready_task(kernel: &mut RuntimeSafetyKernel, task_id: &str) {
         kernel.add_task(task_id, 1).expect("task");
         kernel
-            .transition_task(
-                task_id,
-                TaskState::Ready,
-                TaskTransitionContext::default(),
-            )
+            .transition_task(task_id, TaskState::Ready, TaskTransitionContext::default())
             .expect("ready");
     }
 
@@ -469,9 +467,7 @@ mod tests {
             Ok(CancellationPhase::Requested)
         );
         assert_eq!(kernel.child_actions_allowed("task"), Some(false));
-        kernel
-            .begin_cancellation_cleanup("task")
-            .expect("draining");
+        kernel.begin_cancellation_cleanup("task").expect("draining");
         assert_eq!(
             kernel.poll_cancellation("task", 5),
             Ok(CancellationPhase::ForceRequired)
@@ -499,21 +495,12 @@ mod tests {
             .expect("start");
         kernel.observe_expired_lease("task", 20).expect("expire");
         assert_eq!(kernel.resource_usage(), ResourceVector::default());
-        assert!(
-            kernel
-                .task("task")
-                .expect("task")
-                .reconciliation_required
-        );
+        assert!(kernel.task("task").expect("task").reconciliation_required);
         kernel
             .reconcile_expired_lease("task", 20)
             .expect("reconcile");
         kernel
-            .transition_task(
-                "task",
-                TaskState::Ready,
-                TaskTransitionContext::default(),
-            )
+            .transition_task("task", TaskState::Ready, TaskTransitionContext::default())
             .expect("recovery returns task to ready");
         kernel
             .start_task(

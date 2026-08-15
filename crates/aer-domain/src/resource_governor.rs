@@ -35,7 +35,9 @@ impl ResourceVector {
             wall_time_ms: self.wall_time_ms.checked_add(other.wall_time_ms)?,
             network_bytes: self.network_bytes.checked_add(other.network_bytes)?,
             local_ports: self.local_ports.checked_add(other.local_ports)?,
-            provider_requests: self.provider_requests.checked_add(other.provider_requests)?,
+            provider_requests: self
+                .provider_requests
+                .checked_add(other.provider_requests)?,
             provider_input_tokens: self
                 .provider_input_tokens
                 .checked_add(other.provider_input_tokens)?,
@@ -45,7 +47,9 @@ impl ResourceVector {
             provider_concurrency: self
                 .provider_concurrency
                 .checked_add(other.provider_concurrency)?,
-            monetary_microusd: self.monetary_microusd.checked_add(other.monetary_microusd)?,
+            monetary_microusd: self
+                .monetary_microusd
+                .checked_add(other.monetary_microusd)?,
             gpu_memory_bytes: self.gpu_memory_bytes.checked_add(other.gpu_memory_bytes)?,
         })
     }
@@ -61,7 +65,9 @@ impl ResourceVector {
             wall_time_ms: self.wall_time_ms.checked_sub(other.wall_time_ms)?,
             network_bytes: self.network_bytes.checked_sub(other.network_bytes)?,
             local_ports: self.local_ports.checked_sub(other.local_ports)?,
-            provider_requests: self.provider_requests.checked_sub(other.provider_requests)?,
+            provider_requests: self
+                .provider_requests
+                .checked_sub(other.provider_requests)?,
             provider_input_tokens: self
                 .provider_input_tokens
                 .checked_sub(other.provider_input_tokens)?,
@@ -71,7 +77,9 @@ impl ResourceVector {
             provider_concurrency: self
                 .provider_concurrency
                 .checked_sub(other.provider_concurrency)?,
-            monetary_microusd: self.monetary_microusd.checked_sub(other.monetary_microusd)?,
+            monetary_microusd: self
+                .monetary_microusd
+                .checked_sub(other.monetary_microusd)?,
             gpu_memory_bytes: self.gpu_memory_bytes.checked_sub(other.gpu_memory_bytes)?,
         })
     }
@@ -109,7 +117,9 @@ impl ResourceVector {
             local_ports: self.local_ports.min(other.local_ports),
             provider_requests: self.provider_requests.min(other.provider_requests),
             provider_input_tokens: self.provider_input_tokens.min(other.provider_input_tokens),
-            provider_output_tokens: self.provider_output_tokens.min(other.provider_output_tokens),
+            provider_output_tokens: self
+                .provider_output_tokens
+                .min(other.provider_output_tokens),
             provider_concurrency: self.provider_concurrency.min(other.provider_concurrency),
             monetary_microusd: self.monetary_microusd.min(other.monetary_microusd),
             gpu_memory_bytes: self.gpu_memory_bytes.min(other.gpu_memory_bytes),
@@ -179,10 +189,7 @@ impl ResourceLimits {
 /// Applies organization -> project -> run -> task resource restrictions.
 #[must_use]
 pub fn resolve_resource_limits(layers: &[ResourceLimits]) -> Option<ResourceLimits> {
-    layers
-        .iter()
-        .copied()
-        .reduce(ResourceLimits::restrict_with)
+    layers.iter().copied().reduce(ResourceLimits::restrict_with)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -323,14 +330,19 @@ impl fmt::Display for ResourceError {
                 formatter.write_str("verifier reservation exceeds total worker capacity")
             }
             Self::OwnerAlreadyReserved(owner) => {
-                write!(formatter, "owner already has an active reservation: {owner}")
+                write!(
+                    formatter,
+                    "owner already has an active reservation: {owner}"
+                )
             }
             Self::HardLimitExceeded => formatter.write_str("hard resource limit exceeded"),
             Self::VerifierCapacityProtected => {
                 formatter.write_str("admission would consume verifier-reserved worker capacity")
             }
             Self::ArithmeticOverflow => formatter.write_str("resource accounting overflow"),
-            Self::AccountingInvariant => formatter.write_str("resource accounting invariant violated"),
+            Self::AccountingInvariant => {
+                formatter.write_str("resource accounting invariant violated")
+            }
             Self::UnknownReservation(id) => write!(formatter, "unknown reservation: {id}"),
         }
     }
@@ -401,7 +413,11 @@ mod tests {
         let mut governor = ResourceGovernor::new(limits);
         assert!(
             governor
-                .admit("unknown", AdmissionClass::Generator, ResourceEstimate::Unknown)
+                .admit(
+                    "unknown",
+                    AdmissionClass::Generator,
+                    ResourceEstimate::Unknown,
+                )
                 .is_err()
         );
     }

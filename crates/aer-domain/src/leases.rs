@@ -224,14 +224,25 @@ pub enum LeaseError {
 impl fmt::Display for LeaseError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidPolicy => formatter.write_str("lease policy requires 0 < suspect < expiry"),
-            Self::EmptyIdentity => formatter.write_str("lease task/owner identity must be non-empty"),
-            Self::AlreadyActive(task) => write!(formatter, "task already has an active lease: {task}"),
+            Self::InvalidPolicy => {
+                formatter.write_str("lease policy requires 0 < suspect < expiry")
+            }
+            Self::EmptyIdentity => {
+                formatter.write_str("lease task/owner identity must be non-empty")
+            }
+            Self::AlreadyActive(task) => {
+                write!(formatter, "task already has an active lease: {task}")
+            }
             Self::ReconciliationRequired(task) => {
-                write!(formatter, "expired lease requires reconciliation before retry: {task}")
+                write!(
+                    formatter,
+                    "expired lease requires reconciliation before retry: {task}"
+                )
             }
             Self::UnknownTask(task) => write!(formatter, "task has no lease: {task}"),
-            Self::LeaseMismatch => formatter.write_str("lease identifier does not match active lease"),
+            Self::LeaseMismatch => {
+                formatter.write_str("lease identifier does not match active lease")
+            }
             Self::NotExpired => formatter.write_str("lease has not expired"),
             Self::ArithmeticOverflow => formatter.write_str("lease deadline arithmetic overflow"),
         }
@@ -276,12 +287,7 @@ mod tests {
         let policy = LeasePolicy::new(10, 20).expect("policy");
         let mut leases = LeaseBook::new(policy);
         let first = leases
-            .acquire(
-                "task",
-                "worker",
-                EffectClass::Pure,
-                u64::MAX - 30,
-            )
+            .acquire("task", "worker", EffectClass::Pure, u64::MAX - 30)
             .expect("lease");
         assert_eq!(
             leases.heartbeat("task", first.id, u64::MAX - 15),

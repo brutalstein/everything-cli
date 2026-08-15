@@ -19,10 +19,12 @@ impl ProjectRuntimeState {
                 | (Self::Draining, Self::Paused)
                 | (Self::Paused, Self::Active)
         );
-        valid.then_some(next).ok_or(TransitionError::InvalidProjectTransition {
-            from: self,
-            to: next,
-        })
+        valid
+            .then_some(next)
+            .ok_or(TransitionError::InvalidProjectTransition {
+                from: self,
+                to: next,
+            })
     }
 
     #[must_use]
@@ -96,7 +98,10 @@ impl RunState {
                     | S::Failed
                     | S::Cancelled
             ),
-            S::Verifying => matches!(next, S::Completed | S::Recovering | S::Failed | S::Cancelled),
+            S::Verifying => matches!(
+                next,
+                S::Completed | S::Recovering | S::Failed | S::Cancelled
+            ),
             S::Recovering => matches!(
                 next,
                 S::Planning
@@ -109,10 +114,12 @@ impl RunState {
             ),
             S::Completed | S::Failed | S::Cancelled => false,
         };
-        valid.then_some(next).ok_or(TransitionError::InvalidRunTransition {
-            from: self,
-            to: next,
-        })
+        valid
+            .then_some(next)
+            .ok_or(TransitionError::InvalidRunTransition {
+                from: self,
+                to: next,
+            })
     }
 
     #[must_use]
@@ -165,10 +172,12 @@ impl TaskState {
             S::Stale => matches!(next, S::Pending | S::Cancelled),
             S::Accepted | S::Cancelled => false,
         };
-        valid.then_some(next).ok_or(TransitionError::InvalidTaskTransition {
-            from: self,
-            to: next,
-        })
+        valid
+            .then_some(next)
+            .ok_or(TransitionError::InvalidTaskTransition {
+                from: self,
+                to: next,
+            })
     }
 
     #[must_use]
@@ -183,8 +192,14 @@ pub enum TransitionError {
         from: ProjectRuntimeState,
         to: ProjectRuntimeState,
     },
-    InvalidRunTransition { from: RunState, to: RunState },
-    InvalidTaskTransition { from: TaskState, to: TaskState },
+    InvalidRunTransition {
+        from: RunState,
+        to: RunState,
+    },
+    InvalidTaskTransition {
+        from: TaskState,
+        to: TaskState,
+    },
     AcceptedRequiresProof,
     CancelledRequiresFinalization,
 }
@@ -193,7 +208,10 @@ impl fmt::Display for TransitionError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidProjectTransition { from, to } => {
-                write!(formatter, "invalid project runtime transition: {from:?} -> {to:?}")
+                write!(
+                    formatter,
+                    "invalid project runtime transition: {from:?} -> {to:?}"
+                )
             }
             Self::InvalidRunTransition { from, to } => {
                 write!(formatter, "invalid run transition: {from:?} -> {to:?}")

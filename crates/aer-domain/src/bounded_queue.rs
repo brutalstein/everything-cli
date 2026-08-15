@@ -88,12 +88,9 @@ mod tests {
 
     #[test]
     fn authoritative_queue_backpressures_without_dropping() {
-        let policy = BoundedQueuePolicy::new(
-            QueuePurpose::Authoritative,
-            1,
-            OverflowPolicy::Backpressure,
-        )
-        .expect("policy");
+        let policy =
+            BoundedQueuePolicy::new(QueuePurpose::Authoritative, 1, OverflowPolicy::Backpressure)
+                .expect("policy");
         let mut queue = BoundedQueue::new(policy);
         assert_eq!(queue.push("first"), PushOutcome::Enqueued);
         assert_eq!(queue.push("second"), PushOutcome::Backpressured("second"));
