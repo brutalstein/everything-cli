@@ -218,14 +218,31 @@ where
                 record.summary.worktree_path.display()
             )));
         }
+        let previous_state = record.summary.state;
+        let resume_target = match previous_state {
+            RunState::Executing | RunState::Recovering => RunState::Executing,
+            RunState::Verifying => RunState::Verifying,
+            unsupported => {
+                return Err(RuntimeError::RecoveryRequired(format!(
+                    "run {run_id} cannot be resumed safely from {unsupported:?} by runtime 0.1"
+                )));
+            }
+        };
+        if previous_state != RunState::Recovering {
+            transition_state(&mut store, &mut record, RunState::Recovering)?;
+        }
         append_json(
             &mut store,
             &record.summary.project_id,
             run_id,
             "run.resumed",
-            json!({"previous_state": run_state_name(record.summary.state)}),
+            json!({
+                "previous_state": run_state_name(previous_state),
+                "resume_target": run_state_name(resume_target),
+            }),
         )?;
         record.summary.interrupted = false;
+        transition_state(&mut store, &mut record, resume_target)?;
         if record.plan_hash.is_none() {
             self.obtain_plan(&mut store, &mut record, cancellation)?;
         }
@@ -798,6 +815,11 @@ fn validate_relative_path(value: &str) -> Result<(), RuntimeError> {
     if value.trim().is_empty() {
         return Err(RuntimeError::InvalidPlan("edit path is empty".to_owned()));
     }
+    if value.contains('\\') || value.contains(':') || value.contains('\0') {
+        return Err(RuntimeError::InvalidPlan(format!(
+            "edit path must use portable forward-slash relative syntax: {value}"
+        )));
+    }
     let path = Path::new(value);
     if path.is_absolute()
         || path
@@ -807,6 +829,23 @@ fn validate_relative_path(value: &str) -> Result<(), RuntimeError> {
         return Err(RuntimeError::InvalidPlan(format!(
             "edit path must be a clean relative path: {value}"
         )));
+    }
+    for segment in value.split('/') {
+        if segment.is_empty() || segment == "." || segment == ".." {
+            return Err(RuntimeError::InvalidPlan(format!(
+                "edit path contains an invalid component: {value}"
+            )));
+        }
+        if segment.eq_ignore_ascii_case(".git") || segment.eq_ignore_ascii_case(".aer") {
+            return Err(RuntimeError::InvalidPlan(format!(
+                "edit path targets protected control-plane state: {value}"
+            )));
+        }
+        if segment.chars().any(char::is_control) {
+            return Err(RuntimeError::InvalidPlan(format!(
+                "edit path contains control characters: {value}"
+            )));
+        }
     }
     Ok(())
 }
@@ -956,7 +995,7 @@ mod tests {
 
     use super::{
         ExpectedFile, InterruptAfter, RunRequest, RuntimeService, VerificationCommand,
-        VerificationSpec, list_runs,
+        VerificationSpec, list_runs, parse_edit_plan,
     };
 
     fn temp_dir(label: &str) -> PathBuf {
@@ -1057,6 +1096,30 @@ mod tests {
 
         fs::remove_dir_all(state_home).expect("state cleanup");
         fs::remove_dir_all(repo).expect("repo cleanup");
+    }
+
+    #[test]
+    fn provider_plan_rejects_control_plane_and_nonportable_paths() {
+        for relative_path in [
+            ".git/config",
+            "nested/.GIT/config",
+            ".aer/state.db",
+            "nested/.AeR/object",
+            "src\\value.txt",
+            "C:/escape.txt",
+            "src/value.txt:stream",
+            "src//value.txt",
+        ] {
+            let plan = serde_json::json!({
+                "summary":"bad path",
+                "edits":[{"path":relative_path,"content":"bad"}]
+            })
+            .to_string();
+            assert!(
+                parse_edit_plan(&plan).is_err(),
+                "provider plan unexpectedly accepted {relative_path}"
+            );
+        }
     }
 
     #[test]
