@@ -132,12 +132,16 @@ pub(crate) const PALETTE: &[PaletteEntry] = &[
     PaletteEntry {
         label: "New run",
         hint: "Available when the single-agent runtime is connected",
-        intent: PaletteIntent::Unavailable("New runs are being connected to the single-agent runtime."),
+        intent: PaletteIntent::Unavailable(
+            "New runs are being connected to the single-agent runtime.",
+        ),
     },
     PaletteEntry {
         label: "Resume run",
         hint: "Available when resumable runtime state is connected",
-        intent: PaletteIntent::Unavailable("Resume is being connected to the single-agent runtime."),
+        intent: PaletteIntent::Unavailable(
+            "Resume is being connected to the single-agent runtime.",
+        ),
     },
     PaletteEntry {
         label: "Quit",
@@ -228,7 +232,8 @@ impl AppState {
                 self.notice = Some("New runs are being connected to the runtime.".to_owned());
             }
             UiAction::ResumeRun => {
-                self.notice = Some("Resume is being connected to durable runtime state.".to_owned());
+                self.notice =
+                    Some("Resume is being connected to durable runtime state.".to_owned());
             }
             UiAction::Quit => self.should_quit = true,
             UiAction::MoveUp

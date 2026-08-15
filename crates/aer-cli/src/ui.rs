@@ -16,11 +16,7 @@ const TAGLINE: &str = "One CLI for work that spans everything.";
 pub fn render(frame: &mut Frame<'_>, app: &AppState) {
     let area = frame.area();
     frame.render_widget(
-        Block::default().style(
-            Style::default()
-                .bg(app.theme.background)
-                .fg(app.theme.text),
-        ),
+        Block::default().style(Style::default().bg(app.theme.background).fg(app.theme.text)),
         area,
     );
 
@@ -84,8 +80,7 @@ fn render_application_shell(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
         render_navigation(frame, body[0], app);
         render_content(frame, body[1], app);
     } else {
-        let body = Layout::vertical([Constraint::Length(3), Constraint::Min(5)])
-            .split(root[1]);
+        let body = Layout::vertical([Constraint::Length(3), Constraint::Min(5)]).split(root[1]);
         render_compact_navigation(frame, body[0], app);
         render_content(frame, body[1], app);
     }
@@ -148,7 +143,10 @@ fn render_hero(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
             Style::default().fg(theme.muted),
         )),
         Line::from(vec![
-            Span::styled("  One CLI for work that spans ", Style::default().fg(theme.text)),
+            Span::styled(
+                "  One CLI for work that spans ",
+                Style::default().fg(theme.text),
+            ),
             Span::styled(
                 "everything.",
                 Style::default()
@@ -163,14 +161,24 @@ fn render_hero(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
 fn render_workspace_card(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     let theme = app.theme;
     let workspace = workspace_name(&app.workspace.repo_root);
-    let state = if app.workspace.is_clean() { "clean" } else { "dirty" };
+    let state = if app.workspace.is_clean() {
+        "clean"
+    } else {
+        "dirty"
+    };
     let state_style = if app.workspace.is_clean() {
         Style::default().fg(theme.success)
     } else {
         Style::default().fg(theme.warning)
     };
     let rows = vec![
-        status_row(theme.glyphs.workspace, "Workspace", workspace, theme.accent, theme),
+        status_row(
+            theme.glyphs.workspace,
+            "Workspace",
+            workspace,
+            theme.accent,
+            theme,
+        ),
         status_row(
             theme.glyphs.branch,
             "Branch",
@@ -195,13 +203,20 @@ fn render_workspace_card(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
                 format!("  {}  ", theme.glyphs.providers),
                 Style::default().fg(theme.accent_alt),
             ),
-            Span::styled(format!("{:<13}", "Providers"), Style::default().fg(theme.muted)),
+            Span::styled(
+                format!("{:<13}", "Providers"),
+                Style::default().fg(theme.muted),
+            ),
             Span::styled("setup required", Style::default().fg(theme.accent_alt)),
         ]),
     ];
     frame.render_widget(
         Paragraph::new(rows)
-            .block(card(" WORKSPACE ", theme, app.focus == FocusTarget::Content))
+            .block(card(
+                " WORKSPACE ",
+                theme,
+                app.focus == FocusTarget::Content,
+            ))
             .wrap(Wrap { trim: true }),
         area,
     );
@@ -237,7 +252,11 @@ fn render_command_card(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     let mut state = ListState::default().with_selected(Some(app.nav_index));
     frame.render_stateful_widget(
         List::new(items)
-            .block(card(" COMMAND MENU ", theme, app.focus == FocusTarget::Navigation))
+            .block(card(
+                " COMMAND MENU ",
+                theme,
+                app.focus == FocusTarget::Navigation,
+            ))
             .highlight_symbol("  › ")
             .highlight_style(Style::default().fg(theme.accent)),
         area,
@@ -262,8 +281,16 @@ fn render_surfaces_card(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
             theme.glyphs.workspace,
             "Local workspace",
             workspace_name(&app.workspace.repo_root),
-            if app.workspace.is_clean() { "clean" } else { "dirty" },
-            if app.workspace.is_clean() { theme.success } else { theme.warning },
+            if app.workspace.is_clean() {
+                "clean"
+            } else {
+                "dirty"
+            },
+            if app.workspace.is_clean() {
+                theme.success
+            } else {
+                theme.warning
+            },
             theme,
         ),
         Line::from(""),
@@ -306,9 +333,7 @@ fn render_next_action(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
             ),
             Span::styled(
                 "Connect a provider",
-                Style::default()
-                    .fg(theme.text)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
             ),
         ]),
         Line::from(""),
@@ -349,7 +374,11 @@ fn render_navigation(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     let mut state = ListState::default().with_selected(Some(app.nav_index));
     frame.render_stateful_widget(
         List::new(items)
-            .block(card(" EVERYTHING ", theme, app.focus == FocusTarget::Navigation))
+            .block(card(
+                " EVERYTHING ",
+                theme,
+                app.focus == FocusTarget::Navigation,
+            ))
             .highlight_symbol(" › ")
             .highlight_style(
                 Style::default()
@@ -383,7 +412,10 @@ fn render_compact_navigation(frame: &mut Frame<'_>, area: Rect, app: &AppState) 
             ]
         })
         .collect::<Vec<_>>();
-    frame.render_widget(Paragraph::new(Line::from(line)).wrap(Wrap { trim: true }), area);
+    frame.render_widget(
+        Paragraph::new(Line::from(line)).wrap(Wrap { trim: true }),
+        area,
+    );
 }
 
 fn render_content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
@@ -498,7 +530,11 @@ fn render_workspace_content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
         key_value(
             theme.glyphs.ready,
             "tracked",
-            if app.workspace.tracked_dirty { "dirty" } else { "clean" },
+            if app.workspace.tracked_dirty {
+                "dirty"
+            } else {
+                "clean"
+            },
             theme,
         ),
         key_value(
@@ -576,7 +612,9 @@ fn render_providers_content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
             theme,
         ),
         Line::from(""),
-        Line::from("Provider setup will use official OAuth flows where a provider supports third-party CLI OAuth; otherwise its supported API-key/token mechanism."),
+        Line::from(
+            "Provider setup will use official OAuth flows where a provider supports third-party CLI OAuth; otherwise its supported API-key/token mechanism.",
+        ),
         Line::from(""),
         Line::from(Span::styled(
             "No provider connectivity is fabricated before the runtime gateway exists.",
@@ -597,7 +635,9 @@ fn render_activity_content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
                     .add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
-            Line::from("Activity will project durable runtime events and resumable execution state."),
+            Line::from(
+                "Activity will project durable runtime events and resumable execution state.",
+            ),
             Line::from(""),
             Line::from(Span::styled(
                 "Ctrl+N · new run    Ctrl+R · resume",
@@ -725,9 +765,7 @@ fn render_palette(frame: &mut Frame<'_>, app: &AppState) {
             ListItem::new(Line::from(vec![
                 Span::styled(
                     entry.label,
-                    Style::default()
-                        .fg(theme.text)
-                        .add_modifier(Modifier::BOLD),
+                    Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
                 ),
                 Span::styled(
                     format!("  {}", entry.hint),
@@ -777,12 +815,7 @@ fn render_help(frame: &mut Frame<'_>, theme: &Theme) {
             key_value(theme.glyphs.activity, "Ctrl+L", "activity", *theme),
             key_value(theme.glyphs.settings, "Ctrl+,", "settings", *theme),
             key_value(theme.glyphs.command, "?", "help", *theme),
-            key_value(
-                theme.glyphs.command,
-                "q",
-                "quit outside text input",
-                *theme,
-            ),
+            key_value(theme.glyphs.command, "q", "quit outside text input", *theme),
         ])
         .block(card(" EVERYTHING HELP ", *theme, true))
         .wrap(Wrap { trim: true }),
@@ -795,15 +828,15 @@ fn card<'a>(title: &'a str, theme: Theme, focused: bool) -> Block<'a> {
         .title(Span::styled(
             title,
             Style::default()
-                .fg(if focused { theme.accent } else { theme.accent_alt })
+                .fg(if focused {
+                    theme.accent
+                } else {
+                    theme.accent_alt
+                })
                 .add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(if focused {
-            theme.accent
-        } else {
-            theme.border
-        }))
+        .border_style(Style::default().fg(if focused { theme.accent } else { theme.border }))
         .style(Style::default().bg(theme.panel).fg(theme.text))
 }
 
@@ -816,10 +849,7 @@ fn status_row(
 ) -> Line<'static> {
     Line::from(vec![
         Span::styled(format!("  {icon}  "), Style::default().fg(theme.accent)),
-        Span::styled(
-            format!("{label:<13}"),
-            Style::default().fg(theme.muted),
-        ),
+        Span::styled(format!("{label:<13}"), Style::default().fg(theme.muted)),
         Span::styled(value.into(), Style::default().fg(value_color)),
     ])
 }
@@ -836,9 +866,7 @@ fn surface_row(
         Span::styled(format!(" {icon}  "), Style::default().fg(theme.accent)),
         Span::styled(
             format!("{label:<18}"),
-            Style::default()
-                .fg(theme.text)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             format!("{}  ", detail.into()),
@@ -851,12 +879,7 @@ fn surface_row(
     ])
 }
 
-fn key_value(
-    icon: &str,
-    key: &str,
-    value: impl Into<String>,
-    theme: Theme,
-) -> Line<'static> {
+fn key_value(icon: &str, key: &str, value: impl Into<String>, theme: Theme) -> Line<'static> {
     Line::from(vec![
         Span::styled(format!(" {icon}  "), Style::default().fg(theme.accent)),
         Span::styled(format!("{key:<13}"), Style::default().fg(theme.muted)),

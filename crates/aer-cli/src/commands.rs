@@ -55,7 +55,9 @@ pub fn run_cli() -> Result<(), Box<dyn Error>> {
         Some(Command::Providers) => {
             println!("everything providers");
             println!("  status       not configured");
-            println!("  next         open the interactive Providers surface or configure runtime access");
+            println!(
+                "  next         open the interactive Providers surface or configure runtime access"
+            );
             Ok(())
         }
         None if io::stdin().is_terminal() && io::stdout().is_terminal() => run_tui(&cwd),
@@ -83,7 +85,11 @@ fn print_status(path: &Path, json: bool) -> Result<(), Box<dyn Error>> {
         println!("{PRODUCT} · {}", workspace_name(&workspace.repo_root));
         println!(
             "workspace  {}",
-            if workspace.is_clean() { "clean" } else { "dirty" }
+            if workspace.is_clean() {
+                "clean"
+            } else {
+                "dirty"
+            }
         );
         println!(
             "branch     {}",
@@ -121,7 +127,11 @@ fn print_workspace(path: &Path, json: bool) -> Result<(), Box<dyn Error>> {
         );
         println!(
             "state      {}",
-            if workspace.is_clean() { "clean" } else { "dirty" }
+            if workspace.is_clean() {
+                "clean"
+            } else {
+                "dirty"
+            }
         );
     }
     Ok(())

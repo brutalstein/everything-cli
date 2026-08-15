@@ -99,7 +99,11 @@ impl Theme {
                 success: Color::Reset,
                 warning: Color::Reset,
                 danger: Color::Reset,
-                glyphs: if ascii { Glyphs::ascii() } else { Glyphs::unicode() },
+                glyphs: if ascii {
+                    Glyphs::ascii()
+                } else {
+                    Glyphs::unicode()
+                },
             };
         }
 
@@ -115,7 +119,11 @@ impl Theme {
                 success: Color::Rgb(74, 222, 128),
                 warning: Color::Rgb(250, 204, 21),
                 danger: Color::Rgb(248, 113, 113),
-                glyphs: if ascii { Glyphs::ascii() } else { Glyphs::unicode() },
+                glyphs: if ascii {
+                    Glyphs::ascii()
+                } else {
+                    Glyphs::unicode()
+                },
             }
         } else {
             Self {
@@ -129,7 +137,11 @@ impl Theme {
                 success: Color::Green,
                 warning: Color::Yellow,
                 danger: Color::Red,
-                glyphs: if ascii { Glyphs::ascii() } else { Glyphs::unicode() },
+                glyphs: if ascii {
+                    Glyphs::ascii()
+                } else {
+                    Glyphs::unicode()
+                },
             }
         }
     }
