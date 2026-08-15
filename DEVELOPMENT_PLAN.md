@@ -1,0 +1,44 @@
+# AER Development Plan
+
+This plan converts the architecture roadmap into **large but coherent model-sized implementation slices**.
+A step is intentionally not a tiny file-by-file task: one GPT-5.6 Sol implementation pass should be able to
+understand, implement, and verify the complete slice without speculative scaffolding.
+
+## Execution rule for every step
+
+1. Read `docs/00_READ_ME_FIRST.md`, the current roadmap phase, accepted ADRs, and only the domain docs needed by the slice.
+2. Inspect the current implementation and `STATUS.md` before changing structure.
+3. Write executable acceptance gates before broad implementation.
+4. Implement the smallest architecture-complete vertical slice that satisfies the step.
+5. Run format/lint/unit/property/contract checks and the step-specific domain verification.
+6. Do not claim completion if evidence is unavailable; record the exact pending gate in `STATUS.md`.
+7. Update architecture docs only if semantics changed; otherwise update only implementation/status documentation.
+8. Commit one logical unit to `main` only after the repository-side gates are green.
+
+## Step sequence
+
+| Step | Architecture phase | Coherent deliverable | Exit evidence |
+|---|---|---|---|
+| **01** | Phase 0 | **Foundation Bootstrap:** Rust workspace, pure `aer-domain`, executable contract registry, independent compatibility-surface registry, bounded queue policy primitives, docs/manifest integrity tool, Windows+Linux CI, status ledger. | Format + clippy + unit tests + docs integrity on Windows/Linux CI; local Windows rerun. |
+| **02** | Phase 0 | **Executable Contract System:** Draft 2020-12 schema compiler/registry, schema meta-validation, relative `$ref` resolution, JSON/YAML example validation, strict unknown-field/boundary fixtures, semantic cross-reference validator, config-doc conformance, compatibility fixtures, benchmark fixture interface, minimal OTel abstraction. Close Phase 0. | Every shipped schema compiles; examples validate; negative fixtures fail correctly; Phase-0 exit-gate report green on Windows/Linux. |
+| **03** | Phase 1 | **Durable State Kernel:** SQLite WAL store, append-only event journal, content-addressed objects, migrations baseline, transactional write ordering, deterministic projection/replay, crash-safe storage tests. | Replay equivalence + object hashing + migration/preflight + crash-boundary tests. |
+| **04** | Phase 1 | **Runtime State + Resource Safety:** project/run/task state machines, leases/heartbeats, Resource Governor admission, bounded queues/backpressure, cancellation protocol, policy precedence and resource property tests. | Adversarial state/resource tests prove one active lease, hard caps, verifier reservation, eventual release. |
+| **05** | Phase 1 | **Workspace + Execution Boundary:** repo/workspace identity, dirty-state snapshot, isolated worktrees, command Tool ABI, process lifecycle, environment fingerprint baseline, OS capability reporting, Windows path/locking fixtures. | Dirty user tree is never mutated; command evidence binds repo+environment; cleanup/recovery tests pass. |
+| **06** | Phase 1 | **Single-Agent Runtime 0.1:** provider abstraction + normalized gateway with one reference adapter, bounded retries/cancellation, local daemon/application API, minimal headless/line CLI, resumable run and interruption recovery, end-to-end accepted coding task. | Start→interrupt→resume→execute→verify→accept works with replay and bounded resources on Windows/Linux. |
+| **07** | Phase 2 | **Intent + Research + Engineering IR:** explicit unknown/decision state, selective questions, bounded research artifacts, IR compiler/versioning/SpecDelta, structural+semantic validation and semantic checksum. | Greenfield prompts produce stable IR; material omissions/distortions are blocked; research cannot self-promote to authority. |
+| **08** | Phase 3 | **Repository Intelligence:** commit-aware inventory, lexical retrieval, syntax/symbol adapters, dependency/test/git views, incremental invalidation, abstention and snapshot identity. | Repo fixtures prove no stale-index reuse; relevant-file/symbol baseline measured. |
+| **09** | Phase 3 | **Context Economy Engine:** hybrid retrieval fusion, progressive tiers, token-budget selection, source-anchored compression, executable Context Pack and fidelity checks. | ContextBench beats naive whole-context baseline on relevant yield/token with resolvable provenance. |
+| **10** | Phase 4 | **Verification + Proof System:** evidence collector, verifier composition, immutable verifier boundary, Domain Profiles, environment-aware caching/invalidation, Proof Manifest, integrity/reward-hacking defenses. | Requirement→diff→evidence proof is auditable; deliberate test weakening/tampering is detected. |
+| **11** | Phase 5 | **Provider Resilience + Cost Router:** full provider fault semantics, capability registry, health/circuit/rate-limit governor, cost accounting, deterministic scout/escalate routing and inspectable decisions. | ProviderBench + RouterBench show bounded retry/failover and measured quality/cost behavior. |
+| **12** | Phase 6 | **Long-Horizon Engineering State + Recovery:** verified facts/hypotheses/failure fingerprints, invalidation, trajectory compaction, stagnation detection, typed fresh-context takeover and recovery ladder. | HandoffBench reduces rediscovery after forced interruption without material quality loss. |
+| **13** | Phase 7 | **Bounded Parallel Execution:** dependency scheduler, fairness, reservations, multiple isolated worktrees, write-set overlap checks, merge/integration verification, preemption/cancellation/orphan cleanup. | ResourceBench proves boundedness/no verifier starvation; selected parallel tasks show positive measured utility. |
+| **14** | Phase 8 | **Architecture Health Controller:** language adapters, boundary rules, structural erosion/complexity deltas, debt records and acceptance gates. | EvolutionBench shows less long-horizon degradation than control runs without health gating. |
+| **15** | Phase 9 | **Ecosystem + Supply Chain:** MCP adapter, optional A2A boundary, skill lifecycle/router, package provenance/network policy, SBOM/provenance hooks and adversarial dependency fixtures. | Protocol/security conformance and supply-chain fixtures pass without weakening internal authority. |
+| **16** | Phase 10 | **Compatibility + Distribution:** complete compatibility matrix, state/API/IR migrations, crash injection, downgrade refusal, release channels, signed/attested artifacts, secure-update metadata, installation/rollback smoke tests. | Historical states upgrade safely; incompatible states fail closed; release/update verification passes per platform. |
+| **17** | Phase 11 | **Policy Lab + Measured Self-Evolution:** replay datasets, candidate policy artifacts, held-out offline evaluation, shadow/canary promotion and deterministic fallback. | At least one candidate improves held-out metrics; no candidate can self-promote or modify its judge. |
+| **18** | 1.0 gate | **Whole-System Hardening:** cross-platform E2E, adversarial integrity/security, performance/resource soak, architecture audit, compatibility/recovery drills, UX/headless proof inspection and release evidence. | All mandatory architecture completeness dimensions and 1.0 acceptance matrices have current proof. |
+
+## Scope control
+
+A later step may be split only when implementation evidence shows that one coherent slice cannot be verified safely in one pass.
+A step must not be split merely to create activity, and future-step scaffolding must not be added without current architectural pressure.

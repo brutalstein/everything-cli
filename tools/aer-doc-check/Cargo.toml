@@ -1,0 +1,11 @@
+[package]
+name = "aer-doc-check"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+aer-domain = { path = "../../crates/aer-domain" }
+
+[lints]
+workspace = true

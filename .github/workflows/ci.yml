@@ -1,0 +1,37 @@
+name: foundation-ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  rust-foundation:
+    name: Rust foundation (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.85.0 --profile minimal --component rustfmt --component clippy
+
+      - name: Format
+        run: cargo +1.85.0 fmt --all --check
+
+      - name: Lint
+        run: cargo +1.85.0 clippy --workspace --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo +1.85.0 test --workspace --all-targets
+
+      - name: Documentation integrity
+        run: cargo +1.85.0 run -p aer-doc-check -- --check
