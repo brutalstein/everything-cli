@@ -417,11 +417,7 @@ fn validate_proofs(
     }
 }
 
-fn validate_accepted_tasks(
-    tasks: &[Value],
-    proofs: &[Value],
-    issues: &mut Vec<SemanticIssue>,
-) {
+fn validate_accepted_tasks(tasks: &[Value], proofs: &[Value], issues: &mut Vec<SemanticIssue>) {
     for (index, task) in tasks.iter().enumerate() {
         if task.get("state").and_then(Value::as_str) != Some("accepted") {
             continue;
@@ -615,7 +611,11 @@ mod tests {
             "repo_snapshot": "repo:1"
         }));
         let issues = bundle.validate();
-        assert!(issues.iter().any(|issue| issue.code == "semantic.task_cycle"));
+        assert!(
+            issues
+                .iter()
+                .any(|issue| issue.code == "semantic.task_cycle")
+        );
     }
 
     #[test]

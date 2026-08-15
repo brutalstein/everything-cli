@@ -14,14 +14,20 @@ fn main() -> ExitCode {
     match check_repository(&repository_root()) {
         Ok(report) => {
             println!("AER Phase 0 executable contracts: ok");
-            println!("  compiled Draft 2020-12 schemas: {}", report.compiled_schemas);
+            println!(
+                "  compiled Draft 2020-12 schemas: {}",
+                report.compiled_schemas
+            );
             println!("  shipped examples validated: {}", report.shipped_examples);
             println!(
                 "  structural negative fixtures: {}",
                 report.structural_negative_fixtures
             );
             println!("  semantic fixtures: {}", report.semantic_fixtures);
-            println!("  compatibility fixtures: {}", report.compatibility_fixtures);
+            println!(
+                "  compatibility fixtures: {}",
+                report.compatibility_fixtures
+            );
             println!(
                 "  normative config YAML blocks: {}",
                 report.normative_config_blocks

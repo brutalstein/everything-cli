@@ -174,12 +174,7 @@ fn validate_bundle_structure(
     registry
         .validate_current(CoreContract::EngineeringIr, &bundle.engineering_ir)
         .map_err(|error| format!("semantic fixture {path} IR is structurally invalid: {error}"))?;
-    validate_instances(
-        path,
-        registry,
-        CoreContract::TaskEnvelope,
-        &bundle.tasks,
-    )?;
+    validate_instances(path, registry, CoreContract::TaskEnvelope, &bundle.tasks)?;
     validate_instances(
         path,
         registry,
@@ -201,25 +196,25 @@ fn validate_instances(
     instances: &[Value],
 ) -> Result<(), String> {
     for (index, instance) in instances.iter().enumerate() {
-        registry.validate_current(contract, instance).map_err(|error| {
-            format!(
-                "semantic fixture {fixture_path} {}[{index}] is structurally invalid: {error}",
-                contract.descriptor().canonical_name
-            )
-        })?;
+        registry
+            .validate_current(contract, instance)
+            .map_err(|error| {
+                format!(
+                    "semantic fixture {fixture_path} {}[{index}] is structurally invalid: {error}",
+                    contract.descriptor().canonical_name
+                )
+            })?;
     }
     Ok(())
 }
 
-fn validate_compatibility_fixtures(
-    root: &Path,
-    registry: &ContractRegistry,
-) -> Result<(), String> {
+fn validate_compatibility_fixtures(root: &Path, registry: &ContractRegistry) -> Result<(), String> {
     for path in COMPATIBILITY_FIXTURES {
         let fixture = load_document(&root.join(path)).map_err(|error| error.to_string())?;
         let contract_name = required_str(path, &fixture, "contract")?;
-        let contract = contract_by_name(contract_name)
-            .ok_or_else(|| format!("compatibility fixture {path}: unknown contract {contract_name}"))?;
+        let contract = contract_by_name(contract_name).ok_or_else(|| {
+            format!("compatibility fixture {path}: unknown contract {contract_name}")
+        })?;
         let declared_version = fixture
             .get("declared_version")
             .and_then(Value::as_u64)
@@ -241,7 +236,11 @@ fn validate_compatibility_fixtures(
                 result,
                 Err(ContractValidationError::InlineVersionMismatch { .. })
             ),
-            other => return Err(format!("compatibility fixture {path}: unknown expect {other}")),
+            other => {
+                return Err(format!(
+                    "compatibility fixture {path}: unknown expect {other}"
+                ));
+            }
         };
         if !matched {
             return Err(format!(
@@ -270,8 +269,7 @@ fn validate_normative_config_blocks(
     registry: &ContractRegistry,
 ) -> Result<usize, String> {
     let path = root.join("docs/29_CONFIGURATION_AND_POLICY_MODEL.md");
-    let text = fs::read_to_string(&path)
-        .map_err(|error| format!("{}: {error}", path.display()))?;
+    let text = fs::read_to_string(&path).map_err(|error| format!("{}: {error}", path.display()))?;
     let blocks = fenced_blocks(&text, "yaml")?;
     if blocks.is_empty() {
         return Err("configuration documentation contains no normative YAML blocks".to_owned());

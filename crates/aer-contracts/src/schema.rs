@@ -245,7 +245,11 @@ impl std::fmt::Display for SchemaRegistryError {
         match self {
             Self::Io { path, source } => write!(formatter, "{}: {source}", path.display()),
             Self::JsonSchemaParse { path, source } => {
-                write!(formatter, "invalid JSON schema {}: {source}", path.display())
+                write!(
+                    formatter,
+                    "invalid JSON schema {}: {source}",
+                    path.display()
+                )
             }
             Self::UnsupportedDraft { contract, found } => write!(
                 formatter,
@@ -356,7 +360,11 @@ impl std::fmt::Display for DocumentError {
                 path.display()
             ),
             Self::UnsupportedExtension(path) => {
-                write!(formatter, "unsupported document extension: {}", path.display())
+                write!(
+                    formatter,
+                    "unsupported document extension: {}",
+                    path.display()
+                )
             }
         }
     }
