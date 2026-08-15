@@ -4,12 +4,12 @@
 **Architecture baseline:** `docs/` on original `main` commit `6c81fa1d0d18e9f279fe1bc59f56d21f2cbffd55`  
 **Public product / executable:** `everything`  
 **Internal architecture terminology:** AER remains valid where the architecture uses it  
-**Current phase:** Phase 1 — Durable, Safe Single-Agent Runtime  
-**Current step:** 06 / 18 — Single-Agent Runtime 0.1  
-**Repository-side state:** CI VERIFIED — awaiting target Windows reproduction  
-**Verified Step-06 HEAD:** `6b7f1067c2fff104aa68f021a4c713d5cbc273d8`  
-**Verified Step-06 CI:** `foundation-ci` run `31911224304` — Ubuntu PASS, canonical isolated Windows verifier PASS  
-**Next step:** 07 — Intent + Research + Engineering IR — BLOCKED until Step-06 target Windows verification passes
+**Current phase:** Phase 2 — Intent, Research, and Engineering IR  
+**Current step:** 07 / 18 — Intent + Research + Engineering IR  
+**Repository-side state:** CI VERIFIED — awaiting target Windows reproduction of the Step-07 HEAD  
+**Verified Step-07 HEAD:** `d5668b5d87a3b8a3f598b9cd016cc11cc5504837`  
+**Verified Step-07 CI:** `foundation-ci` run `31913483431` — Ubuntu PASS, canonical isolated Windows verifier PASS  
+**Next step:** 08 — Repository Intelligence — BLOCKED until Step-07 target Windows verification passes
 
 ## Completed milestones
 
@@ -19,138 +19,173 @@
 - **Step 03 — Durable State Kernel:** COMPLETE — canonical hardened CI `31905250522`; target Windows PASS.
 - **Step 04 — Runtime State + Resource Safety:** COMPLETE — CI `31906368065`; target Windows PASS.
 - **Step 05 — Workspace + Execution Boundary:** COMPLETE — CI `31909059844`; target Windows verifier and real interactive `everything.exe` launch confirmed by the user on 2026-08-16.
+- **Step 06 — Single-Agent Runtime 0.1:** COMPLETE — repository CI `31911224304`; target Windows canonical verifier, headless runtime checks, and real interactive TUI launch confirmed by the user on 2026-08-16.
 
-## Product-surface development rule
+## Product-surface rule
 
-Backbone first, TUI in parallel. Core/domain/runtime/storage/execution design is never distorted for interface progress. Once a capability is stable, truthful, and meaningfully usable, it is projected through the same `everything` application APIs into the TUI/headless CLI in the same implementation slice or immediately adjacent integration commit. The TUI may not duplicate business logic, invent authority, or fabricate unavailable state.
+Backbone first, TUI in parallel. Domain/runtime/storage/execution semantics remain authoritative. The TUI and headless CLI project the same application APIs and durable state; they may not duplicate business logic, fabricate unavailable capabilities, or promote presentation state into authority.
 
-## Premium `everything` terminal surface
+## Terminal interaction model
 
-The terminal product is now a modular Ratatui/Crossterm presentation layer rather than the original minimal shell.
+The interactive product now follows the architecture's conversation-plus-semantic-progress model with a **persistent bottom composer**.
 
-Implemented and repository-verified:
+Current interaction behavior:
 
-- prominent `everything` hero/wordmark and tagline;
-- near-black premium shell with cyan primary and violet secondary accents;
-- centralized Material-like terminal glyph set with `EVERYTHING_ASCII=1` fallback;
-- `NO_COLOR` support and truecolor use only when the terminal advertises it;
-- wide premium Home composition with Workspace, Command Menu, Connected Surfaces, and Next Recommended Action cards;
-- compact/narrow application shell for smaller terminals;
-- Home, Workspace, Environment, Providers, Activity, and Settings surfaces;
-- arrows, Enter, Esc, Tab/Shift+Tab, `Ctrl+K`, `Ctrl+P`, `Ctrl+L`, `Ctrl+,`, `?`, and safe `q` behavior;
-- searchable command palette and contextual help;
-- deterministic render/navigation tests across wide and narrow terminal sizes;
-- premium base independently verified on Ubuntu + canonical Windows in CI run `31910231344`.
+- the composer is always rendered at the bottom of the TUI;
+- ordinary text is accepted as user intent and persisted through `SpecService`;
+- slash commands are the primary explicit activation surface;
+- arrow keys remain first-class for navigation, slash-command selection, composer cursor movement, and history;
+- `Tab` / `Shift+Tab` cycle composer → navigation → content;
+- `Esc` / `Ctrl+C` clear the composer or return to Home without silently cancelling durable work;
+- `/quit` is the explicit exit command; ordinary `q` remains normal text;
+- slash completion is prefix-based and deterministic; no unknown commands are invented.
 
-The terminal does not require a specific icon font. Unicode glyphs are centralized and degrade to ASCII rather than turning missing Material/Nerd fonts into broken boxes.
+Current slash commands:
 
-## Step 06 — Single-Agent Runtime 0.1
+```text
+/home
+/intent
+/research
+/ir
+/workspace
+/environment
+/providers
+/activity
+/settings
+/goal <statement>
+/non-goal <statement>
+/constraint <statement>
+/accept <observable criterion>
+/assumption <statement>
+/quality <attribute>
+/decision <choice>
+/research-import <artifact.json>
+/refresh
+/clear
+/help
+/quit
+```
+
+`/providers` intentionally projects the real current provider state. The gateway exists, but no authenticated production provider profile/secure credential transport has been implemented yet, so the surface truthfully reports `not configured` instead of presenting a mock settings form.
+
+## Material Symbols asset system
+
+The previous generic Material-like glyph layer has been replaced by a source-backed asset system.
+
+- canonical assets are vendored **Google Material Symbols Rounded** SVGs under `crates/aer-cli/assets/material-symbols/rounded/`;
+- each asset records upstream symbol identity, upstream Git blob, and local SHA-256 provenance;
+- the upstream Apache-2.0 license is vendored alongside the SVGs;
+- terminal icons are mechanically derived compact 8×4 Braille raster projections of those SVGs rather than arbitrary decorative glyph choices;
+- runtime asset-integrity checks verify SVG identity against recorded SHA-256 values;
+- `EVERYTHING_ASCII=1` remains an explicit fallback and asset-integrity failure also prevents pretending a broken icon source is healthy;
+- no Material/Nerd font installation is required and no binary font asset is part of the product dependency surface.
+
+## Step 07 — Intent + Research + Engineering IR
 
 **State:** REPOSITORY CI VERIFIED — TARGET WINDOWS PENDING
 
-### Provider-neutral gateway
+### Deterministic domain semantics
 
-New `aer-provider` crate provides:
+`aer-domain::spec` now owns deterministic model-independent semantics for:
 
-- normalized `ProviderRequest` / `ProviderResponse` contracts;
-- provider descriptor and declared authentication methods;
-- normalized failure classes: authentication, invalid request, rate limited, transient, cancelled, permanent;
-- only rate-limit/transient failures are retryable;
-- hard bounded attempt count and clamped exponential/provider retry delay;
-- cancellation before attempts and during retry backoff;
-- deterministic `ReferenceProvider` for CI/E2E only.
+- source/provenance references;
+- semantic status/risk/priority values;
+- requirements and acceptance criteria;
+- user/system/organization decisions with reversibility and confidence;
+- explicit unknowns and resolution modes;
+- deterministic question-value ordering;
+- `IntentState`;
+- `EngineeringIr`;
+- monotonic `SpecDelta`;
+- semantic checksum and severity.
 
-The reference provider is explicitly `production_ready=false` and `AuthenticationMethod::TestOnly`. It is never presented in the product as a connected user account.
+The question policy ranks user questions from uncertainty × impact × irreversibility / friction with stable-ID tie breaking. Accepted semantics cannot silently disappear, change meaning under the same stable ID, or appear as unsupported accepted additions without the checksum becoming `High` severity.
 
-### Single-agent application/runtime API
+### Durable specification application boundary
 
-New `aer-core` crate provides the shared in-process application API consumed by product surfaces. Phase 1 does not add a speculative always-running daemon where a second-process client is not yet required.
+`aer-core::spec::SpecService` is the shared application boundary used by TUI and headless surfaces.
 
-A run now performs a real bounded vertical slice:
+It supports:
 
-1. inspect/capture exact user workspace state;
-2. derive stable project identity;
-3. create runtime state outside the user repository;
-4. materialize an owned detached worktree;
-5. append durable `run.created` and state events;
-6. call the provider-neutral gateway;
-7. structurally validate a bounded JSON edit plan;
-8. persist the provider response as a project-scoped CAS artifact;
-9. support deliberate interruption after provider response or applied edits;
-10. reconstruct the run from durable events and CAS on resume;
-11. enter explicit `Recovering`, then transition back to the safe execution/verification target;
-12. apply edits only inside the owned worktree;
-13. execute a trusted verifier command through the existing explicit-argv process boundary;
-14. bind command evidence to exact repository/environment identity;
-15. require both verifier success and independently supplied expected-file hashes;
-16. publish minimal operational acceptance and terminal run state;
-17. verify project event/object integrity.
+- `inspect` of durable specification state;
+- natural-language `submit_message` without fabricating unavailable model extraction;
+- explicit user-authoritative semantic recording;
+- explicit user decision recording;
+- bounded ResearchArtifact ingestion;
+- deterministic Engineering IR compilation;
+- executable structural + semantic validation;
+- semantic checksum gating before persistence;
+- content-addressed persisted IR documents;
+- monotonic revision numbers;
+- durable `SpecDelta` records;
+- replay from the existing event journal/CAS.
 
-### Runtime safety / injection boundaries
+For a greenfield project, the first user request is preserved verbatim as a provenance-backed goal. The current deterministic minimum compiler then opens an explicit high-value unknown for observable completion criteria rather than guessing acceptance semantics. Explicit `/accept` input resolves that unknown and creates the next IR revision.
 
-- provider output never receives shell-command authority;
-- the provider may propose only bounded file-content replacements;
-- verifier executable/argv come from trusted application/user acceptance input, not model output;
-- maximum plan/edit counts and byte budgets are enforced;
-- absolute, parent, empty-component, backslash, colon/NTFS-ADS-like, NUL/control-character paths fail closed;
-- `.git` and `.aer` path components are rejected case-insensitively even inside the owned worktree;
-- target symlinks are rejected;
-- canonical parent paths must remain inside the owned worktree;
-- verification has a fixed timeout and bounded captured output;
-- user working-tree identity is compared before/after in E2E tests and must remain unchanged.
+### Research authority boundary
 
-Full ProofManifest composition, held-out verifier immutability, anti-reward-hacking verification, and domain-profile proof policy remain Step 10; Step 06 intentionally implements only the minimum trusted acceptance path needed for the first resumable single-agent runtime.
+`aer-research` accepts only schema-valid, bounded, claim-oriented ResearchArtifact data.
 
-### Durable interruption / resume evidence
+Hard bounds and integrity checks include artifact bytes, source count, claim count, URI/claim sizes, duplicate source/claim IDs, source-reference resolution, and non-empty source content identity.
 
-The principal E2E test creates a real Git repository with tracked and untracked user state, starts a run, persists the provider plan, intentionally interrupts, then resumes with a fresh runtime instance whose provider output must not be called again. The run reconstructs from durable events/CAS, edits only the owned worktree, verifies, accepts, completes, and leaves the original user workspace byte/state identity unchanged.
+External research is **evidence, not authority**:
 
-A second adversarial test rejects provider plans attempting to escape or target control-plane/non-portable paths.
+- incoming non-empty `promoted_refs` are rejected;
+- imported claims remain `ResearchFinding` values with source references/status/confidence;
+- research cannot self-promote into accepted requirements or decisions;
+- contradictions/insufficient claims remain representable rather than being collapsed into a fabricated conclusion;
+- acquisition/network search remains a separate future adapter boundary, so Step 07 does not fake web results.
 
-### TUI/headless integration
+### TUI and headless projections
 
-Step-06 runtime capabilities were integrated immediately into the product surface rather than waiting for a later UI project:
+The TUI has real architecture-backed surfaces for:
 
-- `AppState` reads the real durable run catalog from `aer-core`;
-- Home projects runtime health/run count;
-- Connected Surfaces includes the real runtime state;
-- Activity shows durable runs, states, goals, accepted/interrupted state, or an explicit runtime read error;
-- Next Recommended Action prioritizes an existing resumable run, otherwise provider setup;
-- Providers truthfully says gateway ready but production profile not configured;
-- runtime/catalog errors are never converted into fake zero-run success;
-- headless `everything runs [--json]` is available;
-- `everything status` and `everything doctor` now include runtime health/catalog information.
+- `/intent` — messages, goals, decisions, explicit unknowns and next high-value question;
+- `/research` — source-backed imported research evidence only;
+- `/ir` — current Engineering IR, semantic checksum, revision, and latest SpecDelta;
+- `/providers`, `/activity`, `/workspace`, `/environment`, `/settings` — existing authoritative projections.
 
-A production provider profile is deliberately not fabricated. The previously recorded authentication rule remains: use official OAuth 2.0 + PKCE/device authorization only where the provider officially supports third-party CLI OAuth; otherwise use the provider-supported API-key/token flow, and never persist raw credentials in normal durable state/logs/prompts/telemetry.
+Headless equivalents are available from the same binary:
 
-## Step 06 acceptance ledger
+```text
+everything status [--json]
+everything doctor [--json]
+everything intent [--json]
+everything ir [--json]
+everything research [--json]
+everything runs [--json]
+everything workspace [--json]
+everything providers
+```
+
+## Step 07 acceptance ledger
 
 | Gate | State | Evidence |
 |---|---|---|
-| Provider failures are normalized | PASS | `aer-provider` tests. |
-| Retry count/backoff is bounded | PASS | retry-policy + transient-retry tests. |
-| Authentication failure is not blindly retried | PASS | provider failure-class test. |
-| Provider request cancellation is honored | PASS | cancellation test. |
-| Provider output cannot directly execute shell commands | PASS | edit-plan-only runtime contract. |
-| Provider edits cannot escape owned worktree | PASS | adversarial E2E test. |
-| `.git` / `.aer` and non-portable path forms fail closed | PASS | hardened edit-path tests. |
-| Start can be interrupted after durable provider response | PASS | single-agent E2E. |
-| Resume reconstructs from durable events/CAS | PASS | fresh-runtime E2E. |
-| Resume explicitly passes through `Recovering` | PASS | runtime state transition implementation exercised by E2E. |
-| Persisted provider response prevents unnecessary re-call on resume | PASS | E2E resumes with an unusable replacement provider. |
-| User working tree remains unchanged | PASS | before/after `WorkspaceIdentity` equality in E2E. |
-| Verification evidence binds repo + environment | PASS | `CommandExecutionEvidence` path. |
-| Runtime catalog is projected into TUI/headless CLI | PASS | `everything` terminal tests + integration. |
-| Linux format + `-D warnings` Clippy + full workspace tests | PASS | `31911224304`. |
-| Dedicated Single-Agent Runtime 0.1 gate | PASS | `31911224304`. |
-| Dedicated terminal product surface gate | PASS | `31911224304`. |
-| Workspace/storage/docs/contracts regressions | PASS | `31911224304`. |
-| Canonical isolated Windows CI verifier | PASS | `31911224304`. |
-| Target Windows canonical verification + interactive launch | PENDING | Pull `main`, run verifier, launch `everything.exe`. |
+| Stable source-backed greenfield IR | PASS | `aer-core::spec` greenfield E2E test. |
+| Explicit high-value unknown/question | PASS | deterministic question-value policy + greenfield test. |
+| Explicit acceptance resolves unknown | PASS | spec E2E creates revision 2 + SpecDelta. |
+| Stable semantic IDs | PASS | SHA-256 based deterministic ID derivation + replay test. |
+| Structural Engineering IR validation | PASS | embedded Draft-2020-12 contract registry. |
+| Semantic Engineering IR validation | PASS | executable semantic validator. |
+| Material omission/distortion blocked | PASS | semantic checksum tests. |
+| Unsupported accepted additions blocked | PASS | semantic checksum tests. |
+| Monotonic IR revisions + SpecDelta | PASS | durable compilation tests. |
+| Research artifact budgets/integrity | PASS | `aer-research` tests. |
+| Research cannot self-promote to authority | PASS | research authority tests + core integration test. |
+| TUI uses authoritative spec state | PASS | `everything` product tests. |
+| Persistent composer + slash command parser | PASS | TUI/parser/render tests. |
+| Arrow-key navigation/history/slash selection | PASS | deterministic AppState tests. |
+| Official Material SVG asset integrity | PASS | asset SHA-256 test. |
+| Linux format + `-D warnings` Clippy + full workspace tests | PASS | `31913483431`. |
+| Dedicated Intent + Research + Engineering IR gate | PASS | `31913483431`. |
+| Existing runtime/workspace/storage/contracts regressions | PASS | `31913483431`. |
+| Canonical isolated Windows CI verifier | PASS | `31913483431`. |
+| Target Windows Step-07 verifier + interactive launch | PENDING | Pull current `main`, run verifier, launch `everything.exe`, exercise slash surfaces. |
 
-## Step 06 exit condition
+## Step 07 exit condition
 
-Repository-side Step-06 gates are satisfied. Do **not** start Step 07 until the target Windows checkout reproduces the current canonical verifier and the updated terminal product launches successfully:
+Repository-side Step-07 gates are satisfied. Do **not** start Step 08 until the target Windows checkout reproduces the current verifier and the updated product launches successfully.
 
 ```powershell
 cd C:\Users\cenke\OneDrive\Desktop\everything
@@ -159,14 +194,29 @@ git pull origin main
 & ".\target\verify-windows-msvc\x86_64-pc-windows-msvc\debug\everything.exe"
 ```
 
+Inside the TUI, exercise at least:
+
+```text
+/help
+/providers
+/intent
+/ir
+/research
+/activity
+/workspace
+```
+
+For a real local Step-07 smoke test, enter a natural request, inspect `/intent`, then explicitly provide an observable acceptance criterion with `/accept <criterion>` and inspect `/ir` again. This must create durable real specification state; no mock/sample data is injected.
+
 Useful headless checks:
 
 ```powershell
 $everything = ".\target\verify-windows-msvc\x86_64-pc-windows-msvc\debug\everything.exe"
 & $everything status
-& $everything runs
+& $everything intent
+& $everything ir
+& $everything research
 & $everything doctor
-& $everything providers
 ```
 
-A final `everything Windows verification: PASS` plus successful interactive launch closes Step 06 and makes Step 07 READY.
+A final `everything Windows verification: PASS` plus a successful interactive Step-07 smoke test closes Step 07 and makes Step 08 READY.
