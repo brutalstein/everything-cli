@@ -4,7 +4,7 @@
 **Architecture baseline:** `docs/` on original `main` commit `6c81fa1d0d18e9f279fe1bc59f56d21f2cbffd55`  
 **Current phase:** Phase 1 — Durable, Safe Single-Agent Runtime  
 **Current step:** 03 / 18 — Durable State Kernel  
-**Repository-side state:** CI VERIFIED — awaiting target Windows verification  
+**Repository-side state:** REMEDIATING TARGET WINDOWS ENVIRONMENT ISOLATION — new canonical verifier awaiting CI  
 **Step 01 verified implementation:** `6495c77dbc05d7db635062a35bb3bc0eb0857922`  
 **Step 01 verified CI:** `foundation-ci` run `31899011790`  
 **Step 02 verified implementation:** `6f9c4258299a5f9880cdec78c976aaa56bfb884d`  
@@ -14,8 +14,9 @@
 **Phase 0:** COMPLETE  
 **Step 03 verified implementation:** `c8f1f6153cc076a6e4c1b93e8c8d6da903a80fa5`  
 **Step 03 dependency-lock commit:** `e140f40e791d6fd55a8f82a580008c46ce8dcb53`  
-**Step 03 verified CI:** `foundation-ci` run `31904709865`  
-**Next gate:** reproduce the Step-03 locked verification commands on the target Windows checkout  
+**Step 03 original verified CI:** `foundation-ci` run `31904709865`  
+**Step 03 Windows verifier hardening:** `scripts/verify-windows.ps1` added after target-machine compiler/target drift was observed  
+**Next gate:** canonical isolated Windows verifier must pass CI and then the target Windows checkout  
 **Next step:** 04 — Runtime State + Resource Safety — BLOCKED until target Windows verification passes
 
 ## Step 02 — Executable Contract System
@@ -29,7 +30,7 @@ and Phase-0 executable-contract reports. Phase 0 is closed.
 
 ## Step 03 scope
 
-Implemented and repository-verified:
+Implemented and repository-verified before target-machine reproduction:
 
 - dedicated `aer-storage` crate with no provider/model dependency;
 - SQLite database schema v1 activated as an independent compatibility surface;
@@ -65,6 +66,34 @@ secure credential-store adapter and AER durable state stores only opaque referen
 profile metadata. The future CLI must also support multiple profiles, re-auth/revocation,
 headless non-interactive behavior, and mocked auth lifecycle tests without live paid credentials.
 
+## Step 03 target-Windows remediation
+
+The first target-machine Step-03 reproduction exposed an environment-isolation defect in the
+verification procedure, not a storage-domain failure:
+
+- one invocation resolved `rustc 1.96.1` even though the repository requires Rust 1.97;
+- storage tests then compiled for `x86_64-pc-windows-gnullvm` and linked through
+  `x86_64-w64-mingw32-clang` instead of the supported Windows MSVC host;
+- that linker failed on missing `libOLDNAMES.a`;
+- documentation integrity and the Phase-0 executable-contract gate still passed in the same local
+  session.
+
+Repository search found no `gnullvm` target or custom linker configuration, so the drift came from
+process/user environment or an alternate local Rust/native-toolchain installation.
+
+Remediation is repository-owned rather than a user-specific workaround:
+
+- `scripts/verify-windows.ps1` is now the canonical Windows gate;
+- it installs/uses exactly `1.97.1-x86_64-pc-windows-msvc`;
+- it asserts the compiler release and host before compiling;
+- every compile/run gate explicitly targets `x86_64-pc-windows-msvc`;
+- verification uses a dedicated `target/verify-windows-msvc` directory so incompatible local
+  artifacts cannot leak into the result;
+- process-level Rust/Cargo/linker/native-build overrides are temporarily neutralized and restored
+  afterward;
+- Windows GitHub Actions now executes this same script, so CI and local verification share one
+  entrypoint.
+
 ## Step 03 verification ledger
 
 | Gate | State | Evidence / action |
@@ -72,7 +101,7 @@ headless non-interactive behavior, and mocked auth lifecycle tests without live 
 | Phase-0 target Windows gate | PASS | User-provided local output on 2026-08-15; all visible tests and integrity gates green. |
 | Architecture authority re-read | PASS | `03`, `24`, `25`, `34`, `40`, `42`, ADR-0005 and ADR-0008 re-checked before implementation. |
 | Database compatibility preflight | PASS | Future/foreign durable state fixtures fail before migration mutation. |
-| SQLite WAL + FULL durability | PASS | File-backed conformance tests pass under final CI on Linux and Windows. |
+| SQLite WAL + FULL durability | PASS | File-backed conformance tests pass under repository CI on Linux and Windows. |
 | Baseline migration atomicity | PASS | Injected pre-commit failure leaves no partially claimable v1 database; clean retry succeeds. |
 | Migration identity/checksum | PASS | Existing v1 state is checked against migration identity/checksum before normal write mode. |
 | Object hashing/idempotence | PASS | Same bytes map to one SHA-256 identity; content is re-hashed on read. |
@@ -85,17 +114,11 @@ headless non-interactive behavior, and mocked auth lifecycle tests without live 
 | Artifact corruption detection | PASS | Referenced bytes whose content hash changes fail project-integrity verification. |
 | Reopen/recovery | PASS | Close/reopen preserves schema identity, object integrity, and replay equivalence. |
 | Dependency lock | PASS | CI resolved and committed `Cargo.lock` at `e140f40e...`; bootstrap write permission was then removed. |
-| CI permission hardening | PASS | Final workflow has `contents: read`; no lock-writing/bootstrap step remains. |
-| GitHub Linux CI | PASS | `foundation-ci` run `31904709865`: format, locked Clippy, workspace tests, storage gate, docs and Phase-0 regression all passed. |
-| GitHub Windows CI | PASS | `foundation-ci` run `31904709865`: format, locked Clippy, workspace tests, storage gate, docs and Phase-0 regression all passed. |
-| Target Windows verification | PENDING | Pull `main` and run the Step-03 commands in `README.md`. |
-
-## Step 03 CI remediation history
-
-1. The first run generated and committed the new dependency graph as `Cargo.lock`; temporary `contents: write` permission was immediately removed.
-2. Canonical Rust formatting differences were applied exactly rather than bypassed.
-3. Clippy then found one runtime import that existed only for a test helper; the import was removed from the production surface instead of suppressing the warning.
-4. Final run `31904709865` passed every gate on both Ubuntu and Windows with the checked lockfile and read-only workflow permissions.
+| Original GitHub Linux CI | PASS | `foundation-ci` run `31904709865`. |
+| Original GitHub Windows CI | PASS | `foundation-ci` run `31904709865`. |
+| First target Windows Step-03 reproduction | FAIL — ENVIRONMENT DRIFT | Wrong compiler/target/linker selected locally; no storage invariant failure was reached. |
+| Canonical isolated Windows verifier CI | PENDING | New script must pass under Windows GitHub Actions before local rerun. |
+| Target Windows canonical verification | PENDING | Pull `main` and run only `.\scripts\verify-windows.ps1` after CI is green. |
 
 ## Step 03 architectural ordering decision
 
@@ -110,6 +133,7 @@ can be verified or rebuilt deterministically.
 
 ## Step 03 exit condition
 
-Repository-side Step-03 gates are satisfied. Do **not** start Step 04 until the target Windows
-checkout reproduces the Step-03 verification commands. Any local-only crash/replay/compatibility
-failure is a Step-03 defect; fix and record it here rather than weakening the gate.
+Do **not** start Step 04 until the canonical isolated Windows verifier passes repository CI and the
+target Windows checkout. Any remaining compiler/target/linker drift is a Step-03 tooling defect;
+any crash/replay/compatibility failure is a Step-03 storage defect. Fix and record either class
+rather than weakening the gate.
