@@ -10,6 +10,7 @@ $Toolchain = "1.97.1-x86_64-pc-windows-msvc"
 $Target = "x86_64-pc-windows-msvc"
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $TargetDir = Join-Path $RepoRoot "target\verify-windows-msvc"
+$EverythingExe = Join-Path $TargetDir "$Target\debug\everything.exe"
 
 if ([System.Environment]::OSVersion.Platform -ne [System.PlatformID]::Win32NT) {
     throw "scripts/verify-windows.ps1 must run on Windows."
@@ -149,7 +150,7 @@ try {
     }
 
     if (-not $IsCi) {
-        Write-Host "AER Windows verification"
+        Write-Host "everything Windows verification"
         Write-Host "  toolchain:  $Toolchain"
         Write-Host "  cargo:      $CargoPath"
         Write-Host "  rustc:      $RustcPath"
@@ -174,8 +175,19 @@ try {
     Invoke-Checked -FilePath $CargoPath -Arguments @(
         "run", "--locked", "--target", $Target, "-p", "aer-phase0-check", "--", "--check"
     )
+    Invoke-Checked -FilePath $CargoPath -Arguments @(
+        "build", "--locked", "--target", $Target, "-p", "everything"
+    )
 
-    Write-Host "AER Windows verification: PASS"
+    if (-not (Test-Path -LiteralPath $EverythingExe -PathType Leaf)) {
+        throw "everything binary was not produced at expected path: $EverythingExe"
+    }
+
+    Write-Host "everything Windows verification: PASS"
+    if (-not $IsCi) {
+        Write-Host "  product:    $EverythingExe"
+        Write-Host "  launch:     & `"$EverythingExe`""
+    }
 }
 finally {
     if ($LocationPushed) {
