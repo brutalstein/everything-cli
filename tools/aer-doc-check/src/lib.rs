@@ -15,6 +15,37 @@ const EXAMPLES: [&str; 3] = [
     "docs/examples/example-proof-manifest.yaml",
 ];
 
+const ARCHITECTURE_DOCS: NumberedFilePattern = NumberedFilePattern {
+    start: 0,
+    end: 44,
+    width: 2,
+    leading: "",
+    separator: "_",
+    suffix: ".md",
+    label: "architecture doc",
+};
+
+const ACCEPTED_ADRS: NumberedFilePattern = NumberedFilePattern {
+    start: 1,
+    end: 9,
+    width: 4,
+    leading: "ADR-",
+    separator: "-",
+    suffix: ".md",
+    label: "accepted ADR",
+};
+
+#[derive(Clone, Copy, Debug)]
+struct NumberedFilePattern {
+    start: usize,
+    end: usize,
+    width: usize,
+    leading: &'static str,
+    separator: &'static str,
+    suffix: &'static str,
+    label: &'static str,
+}
+
 #[derive(Debug)]
 pub struct IntegrityReport {
     pub numbered_docs: usize,
@@ -84,10 +115,8 @@ pub fn check_repository(root: &Path) -> Result<IntegrityReport, IntegrityError> 
     let docs_dir = root.join("docs");
     let adr_dir = docs_dir.join("adrs");
 
-    let numbered_docs =
-        check_numbered_files(&docs_dir, 0, 44, 2, "", "_", ".md", "architecture doc")?;
-    let accepted_adrs =
-        check_numbered_files(&adr_dir, 1, 9, 4, "ADR-", "-", ".md", "accepted ADR")?;
+    let numbered_docs = check_numbered_files(&docs_dir, ARCHITECTURE_DOCS)?;
+    let accepted_adrs = check_numbered_files(&adr_dir, ACCEPTED_ADRS)?;
 
     for contract in CORE_CONTRACTS {
         require_path(root, contract.descriptor().schema_path)?;
@@ -110,31 +139,31 @@ pub fn check_repository(root: &Path) -> Result<IntegrityReport, IntegrityError> 
 
 fn check_numbered_files(
     directory: &Path,
-    start: usize,
-    end: usize,
-    width: usize,
-    leading: &str,
-    separator: &str,
-    suffix: &str,
-    label: &str,
+    pattern: NumberedFilePattern,
 ) -> Result<usize, IntegrityError> {
     let names = read_file_names(directory)?;
 
-    for number in start..=end {
-        let prefix = format!("{leading}{number:0width$}{separator}");
+    for number in pattern.start..=pattern.end {
+        let prefix = format!(
+            "{}{:0width$}{}",
+            pattern.leading,
+            number,
+            pattern.separator,
+            width = pattern.width
+        );
         let matches = names
             .iter()
-            .filter(|name| name.starts_with(&prefix) && name.ends_with(suffix))
+            .filter(|name| name.starts_with(&prefix) && name.ends_with(pattern.suffix))
             .count();
         if matches != 1 {
             return Err(IntegrityError::ExpectedExactlyOne {
-                label: format!("{label} with prefix {prefix}"),
+                label: format!("{} with prefix {prefix}", pattern.label),
                 matches,
             });
         }
     }
 
-    Ok(end - start + 1)
+    Ok(pattern.end - pattern.start + 1)
 }
 
 fn read_file_names(directory: &Path) -> Result<Vec<String>, IntegrityError> {
