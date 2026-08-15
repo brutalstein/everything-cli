@@ -3,7 +3,6 @@ name = "aer-core"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
 
 [dependencies]
 aer-domain = { path = "../aer-domain" }
