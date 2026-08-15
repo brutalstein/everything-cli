@@ -10,6 +10,7 @@ use std::{
     time::Duration,
 };
 
+use aer_exec::lowercase_hex;
 use aer_exec::{
     CommandSpec, ExecutionPolicy, LocalProcessExecutor, ProcessResult, SideEffectClass,
 };
@@ -444,7 +445,7 @@ fn compute_repo_id(repo_root: &Path, remotes: &[RemoteIdentity]) -> String {
         hasher.update(b"local-root\0");
         hasher.update(repo_root.to_string_lossy().as_bytes());
     }
-    format!("sha256:{:x}", hasher.finalize())
+    format!("sha256:{}", lowercase_hex(hasher.finalize().as_ref()))
 }
 
 fn sanitize_remote_url(raw: &str) -> String {
@@ -573,7 +574,7 @@ fn parse_nul_paths(bytes: &[u8]) -> Result<Vec<PathBuf>, WorkspaceError> {
 }
 
 fn sha256(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    lowercase_hex(Sha256::digest(bytes).as_ref())
 }
 
 #[derive(Debug)]

@@ -8,6 +8,7 @@ use std::{
     time::Duration,
 };
 
+use aer_exec::lowercase_hex;
 use aer_exec::{CommandSpec, ExecutionPolicy, LocalProcessExecutor, SideEffectClass};
 use sha2::{Digest, Sha256};
 
@@ -136,7 +137,7 @@ impl EnvironmentFingerprint {
             update_field(&mut hasher, "env.name", &signal.name);
             update_field(&mut hasher, "env.sha256", &signal.value_sha256);
         }
-        format!("{:x}", hasher.finalize())
+        lowercase_hex(hasher.finalize().as_ref())
     }
 }
 
@@ -234,7 +235,7 @@ fn update_field(hasher: &mut Sha256, name: &str, value: &str) {
 }
 
 fn sha256(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
+    lowercase_hex(Sha256::digest(bytes).as_ref())
 }
 
 #[derive(Debug)]

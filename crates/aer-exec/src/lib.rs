@@ -325,9 +325,19 @@ fn capture_stream(mut reader: impl Read, limit: usize) -> io::Result<CapturedStr
     Ok(CapturedStream {
         truncated: total_bytes > preview.len() as u64,
         preview,
-        sha256: format!("{:x}", hasher.finalize()),
+        sha256: lowercase_hex(hasher.finalize().as_ref()),
         total_bytes,
     })
+}
+
+#[must_use]
+pub fn lowercase_hex(bytes: &[u8]) -> String {
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        use fmt::Write as _;
+        write!(&mut output, "{byte:02x}").expect("writing to String cannot fail");
+    }
+    output
 }
 
 fn join_capture(
