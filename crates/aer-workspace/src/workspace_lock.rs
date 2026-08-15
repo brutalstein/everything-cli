@@ -197,7 +197,12 @@ mod tests {
         let second = WorkspaceMutationLock::try_acquire(&identity("sha256:second"), &root)
             .expect("second repo");
         assert_ne!(first.path(), second.path());
-        assert!(!first.path().to_string_lossy().contains(':'));
+        let lock_filename = first
+            .path()
+            .file_name()
+            .expect("lock path has filename")
+            .to_string_lossy();
+        assert!(!lock_filename.contains(':'));
         drop((first, second));
         fs::remove_dir_all(root).expect("cleanup");
     }
