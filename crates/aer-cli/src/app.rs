@@ -418,7 +418,7 @@ pub fn normalize_key(key: KeyEvent, overlay: Overlay) -> Option<UiAction> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::path::PathBuf;
 
     use aer_environment::EnvironmentFingerprint;
