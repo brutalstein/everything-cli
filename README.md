@@ -36,11 +36,15 @@ cd everything-cli
 
 rustup toolchain install 1.85.0 --profile minimal --component rustfmt --component clippy
 
-cargo +1.85.0 fmt --all --check
-cargo +1.85.0 clippy --workspace --all-targets -- -D warnings
-cargo +1.85.0 test --workspace --all-targets
-cargo +1.85.0 run -p aer-doc-check -- --check
+rustup run 1.85.0 cargo fmt --all --check
+rustup run 1.85.0 cargo clippy --workspace --all-targets -- -D warnings
+rustup run 1.85.0 cargo test --workspace --all-targets
+rustup run 1.85.0 cargo run -p aer-doc-check -- --check
 ```
+
+The verification commands intentionally invoke Cargo through `rustup run`. This remains reliable
+when another `cargo.exe` appears earlier on Windows `PATH` and therefore does not support
+rustup's `cargo +toolchain` shorthand.
 
 All four commands must pass before Step 1 is marked Windows-verified.
 
