@@ -22,22 +22,34 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install pinned Rust toolchain
+        if: runner.os != 'Windows'
         run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
 
       - name: Format
+        if: runner.os != 'Windows'
         run: cargo +1.97.1 fmt --all --check
 
       - name: Lint
+        if: runner.os != 'Windows'
         run: cargo +1.97.1 clippy --locked --workspace --all-targets -- -D warnings
 
       - name: Test
+        if: runner.os != 'Windows'
         run: cargo +1.97.1 test --locked --workspace --all-targets
 
       - name: Durable state kernel
+        if: runner.os != 'Windows'
         run: cargo +1.97.1 test --locked -p aer-storage --all-targets
 
       - name: Documentation integrity
+        if: runner.os != 'Windows'
         run: cargo +1.97.1 run --locked -p aer-doc-check -- --check
 
       - name: Phase 0 executable contract gate
+        if: runner.os != 'Windows'
         run: cargo +1.97.1 run --locked -p aer-phase0-check -- --check
+
+      - name: Canonical isolated Windows verification
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/verify-windows.ps1
