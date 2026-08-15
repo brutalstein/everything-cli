@@ -21,6 +21,7 @@ use crate::WorkspaceIdentity;
 pub struct WorkspaceMutationLock {
     file: File,
     path: PathBuf,
+    locked: bool,
 }
 
 impl WorkspaceMutationLock {
@@ -60,7 +61,11 @@ impl WorkspaceMutationLock {
         }
 
         write_owner_metadata(&mut file, workspace)?;
-        Ok(Self { file, path })
+        Ok(Self {
+            file,
+            path,
+            locked: true,
+        })
     }
 
     #[must_use]
@@ -68,10 +73,29 @@ impl WorkspaceMutationLock {
         &self.path
     }
 
-    /// Explicitly releases the lock. Dropping the value also closes the handle
-    /// and therefore releases the OS lock.
-    pub fn release(self) -> Result<(), WorkspaceLockError> {
-        self.file.unlock().map_err(WorkspaceLockError::Io)
+    /// Explicitly releases the lock. Drop follows the same unlock path, so
+    /// normal scope exit and explicit release have deterministic semantics.
+    pub fn release(mut self) -> Result<(), WorkspaceLockError> {
+        self.unlock_if_held().map_err(WorkspaceLockError::Io)
+    }
+
+    fn unlock_if_held(&mut self) -> std::io::Result<()> {
+        if self.locked {
+            self.file.unlock()?;
+            self.locked = false;
+        }
+        Ok(())
+    }
+}
+
+impl Drop for WorkspaceMutationLock {
+    fn drop(&mut self) {
+        // Closing the underlying handle is documented to release file locks,
+        // but an explicit unlock makes normal scope exit deterministic across
+        // the supported Unix/Windows implementations. If unlock itself fails,
+        // File still closes immediately after Drop and the OS gets the final
+        // release opportunity.
+        let _ = self.unlock_if_held();
     }
 }
 
