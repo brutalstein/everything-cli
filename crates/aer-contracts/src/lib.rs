@@ -5,6 +5,7 @@
 //! deterministic validation primitives that later runtime layers can reuse.
 
 pub mod benchmark;
+pub mod embedded;
 pub mod proof_integrity;
 pub mod schema;
 pub mod semantic;

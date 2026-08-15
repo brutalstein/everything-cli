@@ -1,0 +1,13 @@
+[package]
+name = "aer-research"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+aer-contracts = { path = "../aer-contracts" }
+aer-domain = { path = "../aer-domain" }
+serde_json.workspace = true
+
+[lints]
+workspace = true

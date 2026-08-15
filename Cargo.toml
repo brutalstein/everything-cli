@@ -8,6 +8,7 @@ members = [
     "crates/aer-environment",
     "crates/aer-workspace",
     "crates/aer-provider",
+    "crates/aer-research",
     "crates/aer-core",
     "crates/aer-cli",
     "tools/aer-doc-check",

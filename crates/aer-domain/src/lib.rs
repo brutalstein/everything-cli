@@ -12,4 +12,5 @@ pub mod leases;
 pub mod resource_governor;
 pub mod resources;
 pub mod runtime_safety;
+pub mod spec;
 pub mod state_machines;

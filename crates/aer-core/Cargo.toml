@@ -4,11 +4,16 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 
+[lib]
+path = "src/root.rs"
+
 [dependencies]
+aer-contracts = { path = "../aer-contracts" }
 aer-domain = { path = "../aer-domain" }
 aer-environment = { path = "../aer-environment" }
 aer-exec = { path = "../aer-exec" }
 aer-provider = { path = "../aer-provider" }
+aer-research = { path = "../aer-research" }
 aer-storage = { path = "../aer-storage" }
 aer-workspace = { path = "../aer-workspace" }
 serde_json.workspace = true
