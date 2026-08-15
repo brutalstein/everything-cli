@@ -52,6 +52,11 @@ fn run_interactive(start: &Path) -> Result<(), Box<dyn Error>> {
 }
 
 fn handle_workspace_action(app: &mut AppState, action: UiAction) {
+    if matches!(action, UiAction::NextFocus | UiAction::PreviousFocus) {
+        app.focus = FocusTarget::Composer;
+        return;
+    }
+
     if app.overlay == Overlay::None
         && app.focus == FocusTarget::Composer
         && app.composer.is_empty()
@@ -93,7 +98,7 @@ fn handle_workspace_action(app: &mut AppState, action: UiAction) {
 
 #[cfg(test)]
 mod tests {
-    use crate::app::{UiAction, tests::app};
+    use crate::app::{FocusTarget, UiAction, tests::app};
 
     use super::handle_workspace_action;
 
@@ -110,5 +115,14 @@ mod tests {
         app.history.push("last prompt".to_owned());
         handle_workspace_action(&mut app, UiAction::MoveUp);
         assert_eq!(app.composer, "last prompt");
+    }
+
+    #[test]
+    fn tab_never_moves_focus_to_a_hidden_navigation_surface() {
+        let mut app = app();
+        handle_workspace_action(&mut app, UiAction::NextFocus);
+        assert_eq!(app.focus, FocusTarget::Composer);
+        handle_workspace_action(&mut app, UiAction::PreviousFocus);
+        assert_eq!(app.focus, FocusTarget::Composer);
     }
 }
