@@ -5,7 +5,11 @@
 //! binary can validate its own wire/domain contracts while operating on an
 //! arbitrary user repository that does not contain AER's `docs/` tree.
 
-use std::{collections::{BTreeMap, BTreeSet}, error::Error, fmt};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    error::Error,
+    fmt,
+};
 
 use aer_domain::contracts::{CORE_CONTRACTS, CoreContract};
 use jsonschema::{Registry, Validator};
@@ -64,7 +68,11 @@ impl EmbeddedContractRegistry {
                     message: format!("duplicate embedded schema id: {id}"),
                 });
             }
-            sources.push(Source { contract, id, schema });
+            sources.push(Source {
+                contract,
+                id,
+                schema,
+            });
         }
 
         let registry = Registry::new()
@@ -122,7 +130,10 @@ impl EmbeddedContractRegistry {
 
 #[derive(Debug)]
 pub enum EmbeddedRegistryError {
-    InvalidSchema { contract: CoreContract, message: String },
+    InvalidSchema {
+        contract: CoreContract,
+        message: String,
+    },
     Registry(String),
 }
 
@@ -130,7 +141,10 @@ impl fmt::Display for EmbeddedRegistryError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidSchema { contract, message } => {
-                write!(formatter, "embedded {contract:?} schema is invalid: {message}")
+                write!(
+                    formatter,
+                    "embedded {contract:?} schema is invalid: {message}"
+                )
             }
             Self::Registry(message) => write!(formatter, "embedded schema registry: {message}"),
         }
@@ -147,7 +161,11 @@ pub struct EmbeddedValidationError {
 
 impl fmt::Display for EmbeddedValidationError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "{:?} structural validation failed", self.contract)?;
+        write!(
+            formatter,
+            "{:?} structural validation failed",
+            self.contract
+        )?;
         for issue in &self.issues {
             write!(formatter, "; {issue}")?;
         }
@@ -159,7 +177,9 @@ impl Error for EmbeddedValidationError {}
 
 const fn embedded_schema(contract: CoreContract) -> &'static str {
     match contract {
-        CoreContract::EngineeringIr => include_str!("../../../docs/schemas/engineering-ir.schema.json"),
+        CoreContract::EngineeringIr => {
+            include_str!("../../../docs/schemas/engineering-ir.schema.json")
+        }
         CoreContract::TaskEnvelope => include_str!("../../../docs/schemas/task.schema.json"),
         CoreContract::RunState => include_str!("../../../docs/schemas/run.schema.json"),
         CoreContract::Budget => include_str!("../../../docs/schemas/budget.schema.json"),
@@ -167,11 +187,21 @@ const fn embedded_schema(contract: CoreContract) -> &'static str {
         CoreContract::HandoffEnvelope => include_str!("../../../docs/schemas/handoff.schema.json"),
         CoreContract::WorkResult => include_str!("../../../docs/schemas/work-result.schema.json"),
         CoreContract::EvidenceRecord => include_str!("../../../docs/schemas/evidence.schema.json"),
-        CoreContract::ProofManifest => include_str!("../../../docs/schemas/proof-manifest.schema.json"),
-        CoreContract::ResearchArtifact => include_str!("../../../docs/schemas/research-artifact.schema.json"),
-        CoreContract::EnvironmentFingerprint => include_str!("../../../docs/schemas/environment-fingerprint.schema.json"),
-        CoreContract::ModelCapabilityRecord => include_str!("../../../docs/schemas/model-capability.schema.json"),
-        CoreContract::PolicyArtifact => include_str!("../../../docs/schemas/policy-artifact.schema.json"),
+        CoreContract::ProofManifest => {
+            include_str!("../../../docs/schemas/proof-manifest.schema.json")
+        }
+        CoreContract::ResearchArtifact => {
+            include_str!("../../../docs/schemas/research-artifact.schema.json")
+        }
+        CoreContract::EnvironmentFingerprint => {
+            include_str!("../../../docs/schemas/environment-fingerprint.schema.json")
+        }
+        CoreContract::ModelCapabilityRecord => {
+            include_str!("../../../docs/schemas/model-capability.schema.json")
+        }
+        CoreContract::PolicyArtifact => {
+            include_str!("../../../docs/schemas/policy-artifact.schema.json")
+        }
         CoreContract::RunEvent => include_str!("../../../docs/schemas/run-event.schema.json"),
         CoreContract::Configuration => include_str!("../../../docs/schemas/config.schema.json"),
     }

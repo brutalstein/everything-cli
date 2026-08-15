@@ -204,12 +204,13 @@ impl ValidatedResearchArtifact {
             });
         }
 
+        let source_count = sources.len();
         Ok(Self {
             value,
             research_id,
             question,
             findings,
-            source_count: sources.len(),
+            source_count,
         })
     }
 
@@ -323,7 +324,11 @@ mod tests {
         value["promoted_refs"] = json!(["DEC-1"]);
         let error = ValidatedResearchArtifact::ingest_untrusted(value)
             .expect_err("promotion must be rejected");
-        assert!(error.to_string().contains("cannot arrive with promoted_refs"));
+        assert!(
+            error
+                .to_string()
+                .contains("cannot arrive with promoted_refs")
+        );
     }
 
     #[test]

@@ -4,7 +4,10 @@
 //! Phase-2 specification/research APIs are added beside it. Public callers see
 //! one application boundary rather than depending on internal module ownership.
 
-use std::{fs, path::{Path, PathBuf}};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
 
 use aer_exec::lowercase_hex;
 use aer_storage::DurableState;

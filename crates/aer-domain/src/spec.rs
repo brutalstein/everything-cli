@@ -290,7 +290,9 @@ pub fn semantic_checksum(intent: &IntentState, ir: &EngineeringIr) -> SemanticCh
     for expected in &intent.acceptance_criteria {
         compare_one(
             &expected.item,
-            ir.acceptance_criteria.iter().map(|criterion| &criterion.item),
+            ir.acceptance_criteria
+                .iter()
+                .map(|criterion| &criterion.item),
             &mut missing,
             &mut distorted,
         );
@@ -298,7 +300,9 @@ pub fn semantic_checksum(intent: &IntentState, ir: &EngineeringIr) -> SemanticCh
     for expected in &intent.functional_requirements {
         compare_one(
             &expected.item,
-            ir.functional_requirements.iter().map(|requirement| &requirement.item),
+            ir.functional_requirements
+                .iter()
+                .map(|requirement| &requirement.item),
             &mut missing,
             &mut distorted,
         );
@@ -312,8 +316,16 @@ pub fn semantic_checksum(intent: &IntentState, ir: &EngineeringIr) -> SemanticCh
         .chain(ir.quality_attributes.iter())
         .chain(ir.invariants.iter())
         .chain(ir.assumptions.iter())
-        .chain(ir.acceptance_criteria.iter().map(|criterion| &criterion.item))
-        .chain(ir.functional_requirements.iter().map(|requirement| &requirement.item))
+        .chain(
+            ir.acceptance_criteria
+                .iter()
+                .map(|criterion| &criterion.item),
+        )
+        .chain(
+            ir.functional_requirements
+                .iter()
+                .map(|requirement| &requirement.item),
+        )
     {
         if item.status == SemanticStatus::Accepted && item.source_refs.is_empty() {
             unsupported_additions.push(item.id.clone());
@@ -327,14 +339,12 @@ pub fn semantic_checksum(intent: &IntentState, ir: &EngineeringIr) -> SemanticCh
     unsupported_additions.sort();
     unsupported_additions.dedup();
 
-    let severity = if !missing.is_empty()
-        || !distorted.is_empty()
-        || !unsupported_additions.is_empty()
-    {
-        ChecksumSeverity::High
-    } else {
-        ChecksumSeverity::None
-    };
+    let severity =
+        if !missing.is_empty() || !distorted.is_empty() || !unsupported_additions.is_empty() {
+            ChecksumSeverity::High
+        } else {
+            ChecksumSeverity::None
+        };
 
     SemanticChecksum {
         missing,
@@ -350,7 +360,10 @@ fn compare_items(
     missing: &mut Vec<String>,
     distorted: &mut Vec<String>,
 ) {
-    for item in expected.iter().filter(|item| item.status == SemanticStatus::Accepted) {
+    for item in expected
+        .iter()
+        .filter(|item| item.status == SemanticStatus::Accepted)
+    {
         compare_one(item, actual.iter(), missing, distorted);
     }
 }
@@ -449,7 +462,10 @@ mod tests {
         intent.goals.push(expected.clone());
 
         let valid = ir(expected.clone());
-        assert_eq!(semantic_checksum(&intent, &valid).severity, ChecksumSeverity::None);
+        assert_eq!(
+            semantic_checksum(&intent, &valid).severity,
+            ChecksumSeverity::None
+        );
 
         let mut distorted = valid.clone();
         distorted.goals[0].statement = "changed meaning".to_owned();

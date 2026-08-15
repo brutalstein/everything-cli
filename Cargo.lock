@@ -17,10 +17,12 @@ dependencies = [
 name = "aer-core"
 version = "0.0.1"
 dependencies = [
+ "aer-contracts",
  "aer-domain",
  "aer-environment",
  "aer-exec",
  "aer-provider",
+ "aer-research",
  "aer-storage",
  "aer-workspace",
  "serde_json",
@@ -68,6 +70,15 @@ dependencies = [
 name = "aer-provider"
 version = "0.0.1"
 dependencies = [
+ "serde_json",
+]
+
+[[package]]
+name = "aer-research"
+version = "0.0.1"
+dependencies = [
+ "aer-contracts",
+ "aer-domain",
  "serde_json",
 ]
 

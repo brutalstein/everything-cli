@@ -1,16 +1,9 @@
 //! Phase-2 intent, research-evidence, Engineering-IR, and SpecDelta application boundary.
 
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    error::Error,
-    fmt,
-    path::{Path, PathBuf},
-};
+use std::{collections::BTreeMap, error::Error, fmt, path::Path};
 
 use aer_contracts::{
-    embedded::EmbeddedContractRegistry,
-    semantic::SemanticBundle,
-    validate_semantic_bundle,
+    embedded::EmbeddedContractRegistry, semantic::SemanticBundle, validate_semantic_bundle,
 };
 use aer_domain::{
     contracts::CoreContract,
@@ -354,8 +347,8 @@ fn compile_snapshot(
 }
 
 fn validate_engineering_ir(document: &Value) -> Result<(), SpecError> {
-    let registry = EmbeddedContractRegistry::load()
-        .map_err(|error| SpecError::Contract(error.to_string()))?;
+    let registry =
+        EmbeddedContractRegistry::load().map_err(|error| SpecError::Contract(error.to_string()))?;
     registry
         .validate_current(CoreContract::EngineeringIr, document)
         .map_err(|error| SpecError::Contract(error.to_string()))?;
@@ -675,7 +668,7 @@ fn semantic_item_json(item: &SemanticItem) -> Value {
 }
 
 fn source_ref_json(source: &SourceRef) -> Value {
-    json!({
+    let mut value = json!({
         "type": match source.kind {
             SourceKind::UserMessage => "user_message",
             SourceKind::ResearchClaim => "research_claim",
@@ -684,8 +677,14 @@ fn source_ref_json(source: &SourceRef) -> Value {
             SourceKind::ArchitectureDecision => "adr",
         },
         "id": source.id,
-        "detail": source.detail,
-    })
+    });
+    if let Some(detail) = source.detail.as_deref() {
+        value
+            .as_object_mut()
+            .expect("source ref is object")
+            .insert("detail".to_owned(), json!(detail));
+    }
+    value
 }
 
 fn decision_json(decision: &Decision) -> Value {
@@ -774,8 +773,16 @@ fn ir_semantic_map(ir: &EngineeringIr) -> BTreeMap<String, String> {
         .chain(ir.quality_attributes.iter())
         .chain(ir.invariants.iter())
         .chain(ir.assumptions.iter())
-        .chain(ir.acceptance_criteria.iter().map(|criterion| &criterion.item))
-        .chain(ir.functional_requirements.iter().map(|requirement| &requirement.item))
+        .chain(
+            ir.acceptance_criteria
+                .iter()
+                .map(|criterion| &criterion.item),
+        )
+        .chain(
+            ir.functional_requirements
+                .iter()
+                .map(|requirement| &requirement.item),
+        )
     {
         map.insert(item.id.clone(), item.statement.clone());
     }
@@ -821,7 +828,11 @@ fn latest_delta(events: &[StoredEvent]) -> Result<Option<SpecDelta>, SpecError> 
         Some("system_default") => SourceKind::SystemDefault,
         Some("repository") => SourceKind::Repository,
         Some("adr") => SourceKind::ArchitectureDecision,
-        _ => return Err(SpecError::Integrity("delta source_ref type invalid".to_owned())),
+        _ => {
+            return Err(SpecError::Integrity(
+                "delta source_ref type invalid".to_owned(),
+            ));
+        }
     };
     Ok(Some(SpecDelta {
         base_revision: value
@@ -884,7 +895,10 @@ pub enum SpecError {
     Semantic(Vec<String>),
     SemanticChecksum(SemanticChecksum),
     Integrity(String),
-    LowerLayer { context: &'static str, message: String },
+    LowerLayer {
+        context: &'static str,
+        message: String,
+    },
     Storage(aer_storage::StorageError),
     Research(aer_research::ResearchError),
     Json(serde_json::Error),
@@ -895,7 +909,9 @@ impl fmt::Display for SpecError {
         match self {
             Self::InvalidInput(message) => write!(formatter, "invalid intent input: {message}"),
             Self::Contract(message) => write!(formatter, "spec contract validation: {message}"),
-            Self::Semantic(issues) => write!(formatter, "spec semantic validation: {}", issues.join("; ")),
+            Self::Semantic(issues) => {
+                write!(formatter, "spec semantic validation: {}", issues.join("; "))
+            }
             Self::SemanticChecksum(checksum) => write!(
                 formatter,
                 "semantic checksum blocked IR: missing={:?}, distorted={:?}, unsupported={:?}",
@@ -946,7 +962,7 @@ impl From<serde_json::Error> for SpecError {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::{Path, PathBuf}, process::Command, time::SystemTime};
+    use std::{fs, path::Path, process::Command, time::SystemTime};
 
     use serde_json::json;
 
@@ -1031,12 +1047,7 @@ mod tests {
         assert_eq!(snapshot.revision, 2);
         assert_eq!(snapshot.open_unknown_count(), 0);
         assert_eq!(
-            snapshot
-                .ir
-                .as_ref()
-                .expect("IR")
-                .acceptance_criteria
-                .len(),
+            snapshot.ir.as_ref().expect("IR").acceptance_criteria.len(),
             1
         );
         assert!(
@@ -1080,7 +1091,10 @@ mod tests {
         let snapshot = SpecService::ingest_research(&repo, &state, artifact).expect("research");
         let ir = snapshot.ir.as_ref().expect("IR");
         assert_eq!(ir.research_findings.len(), 1);
-        assert!(ir.decisions.is_empty(), "research self-promoted to decision");
+        assert!(
+            ir.decisions.is_empty(),
+            "research self-promoted to decision"
+        );
         assert!(
             ir.functional_requirements.is_empty(),
             "research self-promoted to requirement"
