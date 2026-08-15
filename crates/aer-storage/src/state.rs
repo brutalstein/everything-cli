@@ -87,15 +87,15 @@ impl DurableState {
     }
 
     pub fn durability_diagnostics(&self) -> Result<DurabilityDiagnostics> {
-        let journal_mode: String = self
-            .connection
-            .pragma_query_value(None, "journal_mode", |row| row.get(0))?;
+        let journal_mode: String =
+            self.connection
+                .pragma_query_value(None, "journal_mode", |row| row.get(0))?;
         let synchronous: i64 = self
             .connection
             .pragma_query_value(None, "synchronous", |row| row.get(0))?;
-        let foreign_keys: i64 = self
-            .connection
-            .pragma_query_value(None, "foreign_keys", |row| row.get(0))?;
+        let foreign_keys: i64 =
+            self.connection
+                .pragma_query_value(None, "foreign_keys", |row| row.get(0))?;
         Ok(DurabilityDiagnostics {
             journal_mode,
             synchronous,
@@ -305,8 +305,7 @@ fn configure_connection(connection: &Connection) -> Result<()> {
          PRAGMA foreign_keys = ON;
          PRAGMA trusted_schema = OFF;",
     )?;
-    let synchronous: i64 =
-        connection.pragma_query_value(None, "synchronous", |row| row.get(0))?;
+    let synchronous: i64 = connection.pragma_query_value(None, "synchronous", |row| row.get(0))?;
     let foreign_keys: i64 =
         connection.pragma_query_value(None, "foreign_keys", |row| row.get(0))?;
     if synchronous != 2 || foreign_keys != 1 {
