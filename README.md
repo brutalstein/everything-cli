@@ -6,8 +6,8 @@ verified engineering outcome rather than model activity.
 
 ## Current implementation state
 
-**Phase 1 / Step 03: Durable State Kernel** is under repository verification.
-See [`STATUS.md`](STATUS.md) for the authoritative development checkpoint and
+**Phase 1 / Step 03: Durable State Kernel** is repository-verified and awaiting target Windows
+reproduction. See [`STATUS.md`](STATUS.md) for the authoritative development checkpoint and
 [`DEVELOPMENT_PLAN.md`](DEVELOPMENT_PLAN.md) for the execution sequence.
 
 The current foundation contains:
