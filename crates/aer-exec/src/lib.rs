@@ -453,10 +453,13 @@ mod tests {
     #[test]
     fn direct_executor_captures_trusted_command_without_shell() {
         let root = temp_dir("capture");
-        let policy = ExecutionPolicy::trusted_workspace(&root, std::time::Duration::from_secs(5), 4096)
-            .expect("policy");
+        let policy =
+            ExecutionPolicy::trusted_workspace(&root, std::time::Duration::from_secs(5), 4096)
+                .expect("policy");
         let spec = CommandSpec::new("git", &root, SideEffectClass::PureRead).args(["--version"]);
-        let result = LocalProcessExecutor.execute(&policy, spec).expect("execute git");
+        let result = LocalProcessExecutor
+            .execute(&policy, spec)
+            .expect("execute git");
         assert!(result.success);
         assert!(!result.timed_out);
         assert_eq!(result.security_profile, SecurityProfile::DirectHostProcess);
@@ -468,8 +471,9 @@ mod tests {
     fn cwd_escape_is_rejected_before_spawn() {
         let root = temp_dir("root");
         let outside = temp_dir("outside");
-        let policy = ExecutionPolicy::trusted_workspace(&root, std::time::Duration::from_secs(1), 1024)
-            .expect("policy");
+        let policy =
+            ExecutionPolicy::trusted_workspace(&root, std::time::Duration::from_secs(1), 1024)
+                .expect("policy");
         let spec = CommandSpec::new("git", &outside, SideEffectClass::PureRead).args(["--version"]);
         assert!(matches!(
             LocalProcessExecutor.execute(&policy, spec),
@@ -482,9 +486,10 @@ mod tests {
     #[test]
     fn strong_isolation_requirement_fails_closed() {
         let root = temp_dir("isolation");
-        let policy = ExecutionPolicy::trusted_workspace(&root, std::time::Duration::from_secs(1), 1024)
-            .expect("policy")
-            .require_strong_isolation(true);
+        let policy =
+            ExecutionPolicy::trusted_workspace(&root, std::time::Duration::from_secs(1), 1024)
+                .expect("policy")
+                .require_strong_isolation(true);
         let spec = CommandSpec::new("git", &root, SideEffectClass::PureRead).args(["--version"]);
         assert!(matches!(
             LocalProcessExecutor.execute(&policy, spec),
@@ -496,10 +501,12 @@ mod tests {
     #[test]
     fn high_authority_side_effect_is_refused_even_if_requested() {
         let root = temp_dir("authority");
-        let policy = ExecutionPolicy::trusted_workspace(&root, std::time::Duration::from_secs(1), 1024)
-            .expect("policy")
-            .allow(SideEffectClass::CredentialUse);
-        let spec = CommandSpec::new("git", &root, SideEffectClass::CredentialUse).args(["--version"]);
+        let policy =
+            ExecutionPolicy::trusted_workspace(&root, std::time::Duration::from_secs(1), 1024)
+                .expect("policy")
+                .allow(SideEffectClass::CredentialUse);
+        let spec =
+            CommandSpec::new("git", &root, SideEffectClass::CredentialUse).args(["--version"]);
         assert!(matches!(
             LocalProcessExecutor.execute(&policy, spec),
             Err(ExecutionError::UnsupportedAuthority(

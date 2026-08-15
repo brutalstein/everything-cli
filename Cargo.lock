@@ -25,6 +25,21 @@ name = "aer-domain"
 version = "0.0.1"
 
 [[package]]
+name = "aer-environment"
+version = "0.0.1"
+dependencies = [
+ "aer-exec",
+ "sha2",
+]
+
+[[package]]
+name = "aer-exec"
+version = "0.0.1"
+dependencies = [
+ "sha2",
+]
+
+[[package]]
 name = "aer-phase0-check"
 version = "0.0.1"
 dependencies = [
@@ -43,6 +58,14 @@ dependencies = [
  "serde_json",
  "sha2",
  "ulid",
+]
+
+[[package]]
+name = "aer-workspace"
+version = "0.0.1"
+dependencies = [
+ "aer-exec",
+ "sha2",
 ]
 
 [[package]]

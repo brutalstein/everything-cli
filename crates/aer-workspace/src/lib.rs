@@ -10,7 +10,9 @@ use std::{
     time::Duration,
 };
 
-use aer_exec::{CommandSpec, ExecutionPolicy, LocalProcessExecutor, ProcessResult, SideEffectClass};
+use aer_exec::{
+    CommandSpec, ExecutionPolicy, LocalProcessExecutor, ProcessResult, SideEffectClass,
+};
 use sha2::{Digest, Sha256};
 
 const INSPECTION_OUTPUT_LIMIT: usize = 4 * 1024 * 1024;
@@ -128,8 +130,7 @@ impl WorkspaceSnapshot {
 
         let after = collect_state(path.as_ref(), policy.max_tracked_patch_bytes)?;
         if before.identity.head_commit != after.identity.head_commit
-            || before.identity.dirty_tracked_diff_sha256
-                != after.identity.dirty_tracked_diff_sha256
+            || before.identity.dirty_tracked_diff_sha256 != after.identity.dirty_tracked_diff_sha256
             || before.identity.untracked_inventory_sha256
                 != after.identity.untracked_inventory_sha256
         {
@@ -162,7 +163,12 @@ impl WorkspaceSnapshot {
         let destination = destination.as_ref().to_path_buf();
         if destination.exists() {
             let mut entries = fs::read_dir(&destination).map_err(WorkspaceError::Io)?;
-            if entries.next().transpose().map_err(WorkspaceError::Io)?.is_some() {
+            if entries
+                .next()
+                .transpose()
+                .map_err(WorkspaceError::Io)?
+                .is_some()
+            {
                 return Err(WorkspaceError::DestinationNotEmpty(destination));
             }
         } else if let Some(parent) = destination.parent() {
@@ -224,10 +230,8 @@ impl WorkspaceSnapshot {
 
         let materialized = WorkspaceIdentity::inspect(destination)?;
         if materialized.head_commit != self.identity.head_commit
-            || materialized.dirty_tracked_diff_sha256
-                != self.identity.dirty_tracked_diff_sha256
-            || materialized.untracked_inventory_sha256
-                != self.identity.untracked_inventory_sha256
+            || materialized.dirty_tracked_diff_sha256 != self.identity.dirty_tracked_diff_sha256
+            || materialized.untracked_inventory_sha256 != self.identity.untracked_inventory_sha256
         {
             return Err(WorkspaceError::MaterializedSnapshotMismatch);
         }
@@ -263,7 +267,10 @@ struct CollectedState {
 fn collect_state(path: &Path, patch_limit: usize) -> Result<CollectedState, WorkspaceError> {
     let root_result = run_git(
         path,
-        [OsString::from("rev-parse"), OsString::from("--show-toplevel")],
+        [
+            OsString::from("rev-parse"),
+            OsString::from("--show-toplevel"),
+        ],
         SideEffectClass::PureRead,
         None,
         INSPECTION_OUTPUT_LIMIT,
@@ -442,7 +449,10 @@ fn compute_repo_id(repo_root: &Path, remotes: &[RemoteIdentity]) -> String {
 
 fn sanitize_remote_url(raw: &str) -> String {
     let without_fragment = raw.split('#').next().unwrap_or(raw);
-    let without_query = without_fragment.split('?').next().unwrap_or(without_fragment);
+    let without_query = without_fragment
+        .split('?')
+        .next()
+        .unwrap_or(without_fragment);
     for scheme in ["https://", "http://", "ssh://"] {
         if let Some(rest) = without_query.strip_prefix(scheme) {
             if let Some(at) = rest.rfind('@') {
@@ -572,7 +582,10 @@ pub enum WorkspaceError {
     TrackedPatchTooLarge(u64),
     UntrackedInventoryTooLarge(u64),
     SubmoduleInventoryTooLarge(u64),
-    UntrackedFileTooLarge { path: PathBuf, bytes: u64 },
+    UntrackedFileTooLarge {
+        path: PathBuf,
+        bytes: u64,
+    },
     UntrackedTotalTooLarge(u64),
     SnapshotSizeOverflow,
     UnsupportedUntrackedEntry(PathBuf),
@@ -595,15 +608,26 @@ pub enum WorkspaceError {
 impl fmt::Display for WorkspaceError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::InvalidSnapshotPolicy => formatter.write_str("snapshot policy limits must be nonzero"),
+            Self::InvalidSnapshotPolicy => {
+                formatter.write_str("snapshot policy limits must be nonzero")
+            }
             Self::TrackedPatchTooLarge(bytes) => {
-                write!(formatter, "tracked dirty patch exceeds configured bound: {bytes} bytes")
+                write!(
+                    formatter,
+                    "tracked dirty patch exceeds configured bound: {bytes} bytes"
+                )
             }
             Self::UntrackedInventoryTooLarge(bytes) => {
-                write!(formatter, "untracked inventory exceeds configured bound: {bytes} bytes")
+                write!(
+                    formatter,
+                    "untracked inventory exceeds configured bound: {bytes} bytes"
+                )
             }
             Self::SubmoduleInventoryTooLarge(bytes) => {
-                write!(formatter, "submodule inventory exceeds configured bound: {bytes} bytes")
+                write!(
+                    formatter,
+                    "submodule inventory exceeds configured bound: {bytes} bytes"
+                )
             }
             Self::UntrackedFileTooLarge { path, bytes } => write!(
                 formatter,
@@ -612,7 +636,10 @@ impl fmt::Display for WorkspaceError {
                 path.display()
             ),
             Self::UntrackedTotalTooLarge(bytes) => {
-                write!(formatter, "untracked snapshot exceeds total bound: {bytes} bytes")
+                write!(
+                    formatter,
+                    "untracked snapshot exceeds total bound: {bytes} bytes"
+                )
             }
             Self::SnapshotSizeOverflow => formatter.write_str("snapshot byte accounting overflow"),
             Self::UnsupportedUntrackedEntry(path) => write!(
@@ -627,16 +654,26 @@ impl fmt::Display for WorkspaceError {
                 "snapshot excludes user-owned untracked state and cannot be materialized as exact",
             ),
             Self::DestinationNotEmpty(path) => {
-                write!(formatter, "owned worktree destination is not empty: {}", path.display())
+                write!(
+                    formatter,
+                    "owned worktree destination is not empty: {}",
+                    path.display()
+                )
             }
             Self::MaterializedSnapshotMismatch => formatter.write_str(
                 "materialized worktree does not reproduce the captured tracked/untracked identity",
             ),
             Self::UnsafeRelativePath(path) => {
-                write!(formatter, "unsafe repository-relative path: {}", path.display())
+                write!(
+                    formatter,
+                    "unsafe repository-relative path: {}",
+                    path.display()
+                )
             }
             Self::NonUtf8GitPath => formatter.write_str("Git emitted a non-UTF-8 path on Windows"),
-            Self::UnexpectedEmptyGitOutput => formatter.write_str("Git returned unexpected empty output"),
+            Self::UnexpectedEmptyGitOutput => {
+                formatter.write_str("Git returned unexpected empty output")
+            }
             Self::GitFailed {
                 operation,
                 exit_code,

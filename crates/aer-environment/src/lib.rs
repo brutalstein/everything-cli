@@ -3,8 +3,7 @@
 use std::{
     env,
     error::Error,
-    fmt,
-    fs,
+    fmt, fs,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -51,11 +50,8 @@ impl EnvironmentFingerprint {
             .as_ref()
             .canonicalize()
             .map_err(EnvironmentError::Io)?;
-        let policy = ExecutionPolicy::trusted_workspace(
-            &repo_root,
-            Duration::from_secs(5),
-            16 * 1024,
-        )?;
+        let policy =
+            ExecutionPolicy::trusted_workspace(&repo_root, Duration::from_secs(5), 16 * 1024)?;
 
         let mut tools = ["git", "rustc", "cargo"]
             .into_iter()
@@ -208,13 +204,7 @@ fn known_lockfiles(root: &Path) -> Result<Vec<LockfileIdentity>, EnvironmentErro
 }
 
 fn selected_environment_signals() -> Vec<EnvironmentSignal> {
-    const NAMES: &[&str] = &[
-        "PATH",
-        "RUSTFLAGS",
-        "CARGO_BUILD_TARGET",
-        "CI",
-        "NO_COLOR",
-    ];
+    const NAMES: &[&str] = &["PATH", "RUSTFLAGS", "CARGO_BUILD_TARGET", "CI", "NO_COLOR"];
     NAMES
         .iter()
         .filter_map(|name| {
@@ -312,10 +302,15 @@ mod tests {
     fn only_explicit_nonsecret_environment_names_are_fingerprinted() {
         let root = temp_dir("signals");
         let fingerprint = EnvironmentFingerprint::discover(&root).expect("fingerprint");
-        assert!(fingerprint.environment_signals.iter().all(|signal| matches!(
-            signal.name.as_str(),
-            "PATH" | "RUSTFLAGS" | "CARGO_BUILD_TARGET" | "CI" | "NO_COLOR"
-        )));
+        assert!(
+            fingerprint
+                .environment_signals
+                .iter()
+                .all(|signal| matches!(
+                    signal.name.as_str(),
+                    "PATH" | "RUSTFLAGS" | "CARGO_BUILD_TARGET" | "CI" | "NO_COLOR"
+                ))
+        );
         fs::remove_dir_all(root).expect("cleanup");
     }
 }
