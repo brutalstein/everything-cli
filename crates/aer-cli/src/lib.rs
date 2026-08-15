@@ -369,7 +369,11 @@ pub fn normalize_key(key: KeyEvent, overlay: Overlay) -> Option<UiAction> {
 }
 
 #[derive(Parser, Debug)]
-#[command(name = "everything", version, about = "One CLI for work that spans everything.")]
+#[command(
+    name = "everything",
+    version,
+    about = "One CLI for work that spans everything."
+)]
 pub struct Cli {
     #[command(subcommand)]
     command: Option<Command>,
@@ -404,7 +408,9 @@ pub fn run_cli() -> Result<(), Box<dyn Error>> {
         Some(Command::Doctor { json }) => print_doctor(&cwd, json),
         Some(Command::Workspace { json }) => print_workspace(&cwd, json),
         Some(Command::Providers) => {
-            println!("No provider is configured yet. Provider onboarding is intentionally fail-closed until the provider gateway runtime is available.");
+            println!(
+                "No provider is configured yet. Provider onboarding is intentionally fail-closed until the provider gateway runtime is available."
+            );
             Ok(())
         }
         None if io::stdin().is_terminal() && io::stdout().is_terminal() => run_tui(&cwd),
@@ -429,9 +435,22 @@ fn print_status(path: &Path, json: bool) -> Result<(), Box<dyn Error>> {
             }))?
         );
     } else {
-        println!("{PRODUCT} · {}", display_workspace_name(&workspace.repo_root));
-        println!("workspace  {}", if workspace.is_clean() { "clean" } else { "dirty" });
-        println!("branch     {}", workspace.branch.as_deref().unwrap_or("detached"));
+        println!(
+            "{PRODUCT} · {}",
+            display_workspace_name(&workspace.repo_root)
+        );
+        println!(
+            "workspace  {}",
+            if workspace.is_clean() {
+                "clean"
+            } else {
+                "dirty"
+            }
+        );
+        println!(
+            "branch     {}",
+            workspace.branch.as_deref().unwrap_or("detached")
+        );
         println!("provider   not configured");
     }
     Ok(())
@@ -458,8 +477,18 @@ fn print_workspace(path: &Path, json: bool) -> Result<(), Box<dyn Error>> {
         println!("repo       {}", workspace.repo_root.display());
         println!("repo id    {}", workspace.repo_id);
         println!("head       {}", short_id(&workspace.head_commit));
-        println!("branch     {}", workspace.branch.as_deref().unwrap_or("detached"));
-        println!("state      {}", if workspace.is_clean() { "clean" } else { "dirty" });
+        println!(
+            "branch     {}",
+            workspace.branch.as_deref().unwrap_or("detached")
+        );
+        println!(
+            "state      {}",
+            if workspace.is_clean() {
+                "clean"
+            } else {
+                "dirty"
+            }
+        );
     }
     Ok(())
 }
@@ -482,7 +511,10 @@ fn print_doctor(path: &Path, json: bool) -> Result<(), Box<dyn Error>> {
     } else {
         println!("everything doctor");
         println!("  workspace     ok · {}", workspace.repo_root.display());
-        println!("  environment   ok · {} / {}", environment.os, environment.architecture);
+        println!(
+            "  environment   ok · {} / {}",
+            environment.os, environment.architecture
+        );
         println!("  fingerprint   {}", short_id(&environment.digest));
     }
     Ok(())
@@ -520,7 +552,8 @@ pub fn render(frame: &mut Frame<'_>, app: &AppState) {
     .split(area);
     render_header(frame, chunks[0]);
     if area.width >= 76 {
-        let body = Layout::horizontal([Constraint::Length(22), Constraint::Min(32)]).split(chunks[1]);
+        let body =
+            Layout::horizontal([Constraint::Length(22), Constraint::Min(32)]).split(chunks[1]);
         render_navigation(frame, body[0], app);
         render_content(frame, body[1], app);
     } else {
@@ -538,8 +571,16 @@ pub fn render(frame: &mut Frame<'_>, app: &AppState) {
 
 fn render_header(frame: &mut Frame<'_>, area: Rect) {
     let title = Line::from(vec![
-        Span::styled(PRODUCT, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-        Span::styled("  ·  terminal-native engineering", Style::default().fg(Color::DarkGray)),
+        Span::styled(
+            PRODUCT,
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(
+            "  ·  terminal-native engineering",
+            Style::default().fg(Color::DarkGray),
+        ),
     ]);
     let text = if area.height >= 5 {
         vec![title, Line::from(TAGLINE), Line::from("")]
@@ -573,7 +614,11 @@ fn render_navigation(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
         List::new(items)
             .block(block)
             .highlight_symbol("› ")
-            .highlight_style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+            .highlight_style(
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
         area,
         &mut state,
     );
@@ -585,14 +630,19 @@ fn render_compact_navigation(frame: &mut Frame<'_>, area: Rect, app: &AppState) 
         .enumerate()
         .flat_map(|(index, screen)| {
             let style = if index == app.nav_index {
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD)
             } else {
                 Style::default().fg(Color::DarkGray)
             };
             [Span::styled(screen.label(), style), Span::raw("  ")]
         })
         .collect::<Vec<_>>();
-    frame.render_widget(Paragraph::new(Line::from(line)).wrap(Wrap { trim: true }), area);
+    frame.render_widget(
+        Paragraph::new(Line::from(line)).wrap(Wrap { trim: true }),
+        area,
+    );
 }
 
 fn render_content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
@@ -619,18 +669,50 @@ fn render_content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
 
 fn render_home(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     let workspace_name = display_workspace_name(&app.workspace.repo_root);
-    let state = if app.workspace.is_clean() { "clean" } else { "dirty" };
+    let state = if app.workspace.is_clean() {
+        "clean"
+    } else {
+        "dirty"
+    };
     let branch = app.workspace.branch.as_deref().unwrap_or("detached");
     let env = format!("{} · {}", app.environment.os, app.environment.architecture);
     let lines = vec![
-        Line::from(vec![Span::styled("Workspace  ", Style::default().fg(Color::DarkGray)), Span::styled(workspace_name, Style::default().fg(Color::Cyan))]),
-        Line::from(vec![Span::styled("Branch     ", Style::default().fg(Color::DarkGray)), Span::raw(branch.to_owned())]),
-        Line::from(vec![Span::styled("State      ", Style::default().fg(Color::DarkGray)), Span::styled(state, if app.workspace.is_clean() { Style::default().fg(Color::Green) } else { Style::default().fg(Color::Yellow) })]),
-        Line::from(vec![Span::styled("Runtime    ", Style::default().fg(Color::DarkGray)), Span::raw("foundation ready")]),
-        Line::from(vec![Span::styled("Environment", Style::default().fg(Color::DarkGray)), Span::raw(format!("  {env}"))]),
-        Line::from(vec![Span::styled("Providers  ", Style::default().fg(Color::DarkGray)), Span::styled("not configured", Style::default().fg(Color::Magenta))]),
+        Line::from(vec![
+            Span::styled("Workspace  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(workspace_name, Style::default().fg(Color::Cyan)),
+        ]),
+        Line::from(vec![
+            Span::styled("Branch     ", Style::default().fg(Color::DarkGray)),
+            Span::raw(branch.to_owned()),
+        ]),
+        Line::from(vec![
+            Span::styled("State      ", Style::default().fg(Color::DarkGray)),
+            Span::styled(
+                state,
+                if app.workspace.is_clean() {
+                    Style::default().fg(Color::Green)
+                } else {
+                    Style::default().fg(Color::Yellow)
+                },
+            ),
+        ]),
+        Line::from(vec![
+            Span::styled("Runtime    ", Style::default().fg(Color::DarkGray)),
+            Span::raw("foundation ready"),
+        ]),
+        Line::from(vec![
+            Span::styled("Environment", Style::default().fg(Color::DarkGray)),
+            Span::raw(format!("  {env}")),
+        ]),
+        Line::from(vec![
+            Span::styled("Providers  ", Style::default().fg(Color::DarkGray)),
+            Span::styled("not configured", Style::default().fg(Color::Magenta)),
+        ]),
         Line::from(""),
-        Line::from(Span::styled("Use ↑↓ + Enter, or Ctrl+K for the command palette.", Style::default().fg(Color::DarkGray))),
+        Line::from(Span::styled(
+            "Use ↑↓ + Enter, or Ctrl+K for the command palette.",
+            Style::default().fg(Color::DarkGray),
+        )),
     ];
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }), area);
 }
@@ -640,25 +722,54 @@ fn render_workspace(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
         key_value("root", app.workspace.repo_root.display().to_string()),
         key_value("repo id", short_id(&app.workspace.repo_id)),
         key_value("head", short_id(&app.workspace.head_commit)),
-        key_value("branch", app.workspace.branch.clone().unwrap_or_else(|| "detached".to_owned())),
-        key_value("tracked", if app.workspace.tracked_dirty { "dirty" } else { "clean" }),
+        key_value(
+            "branch",
+            app.workspace
+                .branch
+                .clone()
+                .unwrap_or_else(|| "detached".to_owned()),
+        ),
+        key_value(
+            "tracked",
+            if app.workspace.tracked_dirty {
+                "dirty"
+            } else {
+                "clean"
+            },
+        ),
         key_value("untracked", app.workspace.untracked_paths.len().to_string()),
         Line::from(""),
-        Line::from(Span::styled("User working tree is evidence, never a worker sandbox.", Style::default().fg(Color::DarkGray))),
+        Line::from(Span::styled(
+            "User working tree is evidence, never a worker sandbox.",
+            Style::default().fg(Color::DarkGray),
+        )),
     ];
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }), area);
 }
 
 fn render_environment(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     let mut lines = vec![
-        key_value("host", format!("{} / {}", app.environment.os, app.environment.architecture)),
+        key_value(
+            "host",
+            format!("{} / {}", app.environment.os, app.environment.architecture),
+        ),
         key_value("fingerprint", short_id(&app.environment.digest)),
         key_value("lockfiles", app.environment.lockfiles.len().to_string()),
         Line::from(""),
-        Line::from(Span::styled("Tools", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))),
+        Line::from(Span::styled(
+            "Tools",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )),
     ];
     for tool in &app.environment.tools {
-        lines.push(key_value(&tool.name, tool.version.clone().unwrap_or_else(|| "unavailable".to_owned())));
+        lines.push(key_value(
+            &tool.name,
+            tool.version
+                .clone()
+                .unwrap_or_else(|| "unavailable".to_owned()),
+        ));
     }
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }), area);
 }
@@ -710,7 +821,9 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     let hint = match app.overlay {
         Overlay::CommandPalette => "↑↓ select   Enter open   type filter   Esc close",
         Overlay::Help => "Esc close",
-        Overlay::None => "↑↓ navigate   Enter open   Esc back   Tab focus   Ctrl+K commands   ? help   q quit",
+        Overlay::None => {
+            "↑↓ navigate   Enter open   Esc back   Tab focus   Ctrl+K commands   ? help   q quit"
+        }
     };
     let line = if let Some(notice) = &app.notice {
         Line::from(vec![
@@ -724,7 +837,11 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
 }
 
 fn render_palette(frame: &mut Frame<'_>, app: &AppState) {
-    let area = centered_rect(72.min(frame.area().width.saturating_sub(4)), 16.min(frame.area().height.saturating_sub(2)), frame.area());
+    let area = centered_rect(
+        72.min(frame.area().width.saturating_sub(4)),
+        16.min(frame.area().height.saturating_sub(2)),
+        frame.area(),
+    );
     frame.render_widget(Clear, area);
     let block = Block::default()
         .title(" command palette · Ctrl+K ")
@@ -742,12 +859,19 @@ fn render_palette(frame: &mut Frame<'_>, app: &AppState) {
     let entries = app.filtered_palette();
     let items = entries
         .iter()
-        .map(|entry| ListItem::new(Line::from(vec![
-            Span::styled(entry.label, Style::default().add_modifier(Modifier::BOLD)),
-            Span::styled(format!("  {}", entry.hint), Style::default().fg(Color::DarkGray)),
-        ])))
+        .map(|entry| {
+            ListItem::new(Line::from(vec![
+                Span::styled(entry.label, Style::default().add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    format!("  {}", entry.hint),
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ]))
+        })
         .collect::<Vec<_>>();
-    let mut state = ListState::default().with_selected((!items.is_empty()).then_some(app.palette_index.min(items.len().saturating_sub(1))));
+    let mut state = ListState::default().with_selected(
+        (!items.is_empty()).then_some(app.palette_index.min(items.len().saturating_sub(1))),
+    );
     frame.render_stateful_widget(
         List::new(items)
             .highlight_symbol("› ")
@@ -758,11 +882,20 @@ fn render_palette(frame: &mut Frame<'_>, app: &AppState) {
 }
 
 fn render_help(frame: &mut Frame<'_>) {
-    let area = centered_rect(62.min(frame.area().width.saturating_sub(4)), 18.min(frame.area().height.saturating_sub(2)), frame.area());
+    let area = centered_rect(
+        62.min(frame.area().width.saturating_sub(4)),
+        18.min(frame.area().height.saturating_sub(2)),
+        frame.area(),
+    );
     frame.render_widget(Clear, area);
     frame.render_widget(
         Paragraph::new(vec![
-            Line::from(Span::styled("Keyboard shortcuts", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))),
+            Line::from(Span::styled(
+                "Keyboard shortcuts",
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            )),
             Line::from(""),
             key_value("↑ ↓ ← →", "navigate"),
             key_value("Enter", "open / confirm"),
@@ -776,7 +909,12 @@ fn render_help(frame: &mut Frame<'_>) {
             key_value("?", "help"),
             key_value("q", "quit outside text input"),
         ])
-        .block(Block::default().title(" everything help ").borders(Borders::ALL).border_style(Style::default().fg(Color::Cyan)))
+        .block(
+            Block::default()
+                .title(" everything help ")
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan)),
+        )
         .wrap(Wrap { trim: true }),
         area,
     );
@@ -890,7 +1028,10 @@ mod tests {
     #[test]
     fn q_inside_palette_is_text_not_quit() {
         let q = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
-        assert_eq!(normalize_key(q, Overlay::CommandPalette), Some(UiAction::Character('q')));
+        assert_eq!(
+            normalize_key(q, Overlay::CommandPalette),
+            Some(UiAction::Character('q'))
+        );
         assert_eq!(normalize_key(q, Overlay::None), Some(UiAction::Quit));
     }
 
