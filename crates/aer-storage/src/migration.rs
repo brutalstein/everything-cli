@@ -152,8 +152,8 @@ pub(crate) fn inspect(path: &Path) -> Result<Preflight> {
             |row| row.get(0),
         )
         .optional()?;
-    let version_text = version_text
-        .ok_or_else(|| StorageError::UnrecognizedDatabase(path.to_path_buf()))?;
+    let version_text =
+        version_text.ok_or_else(|| StorageError::UnrecognizedDatabase(path.to_path_buf()))?;
     let version = version_text
         .parse::<u32>()
         .map_err(|_| StorageError::InvalidDatabaseVersion(version_text.clone()))?;
@@ -206,7 +206,11 @@ fn migrate_fresh_to_v1(connection: &mut Connection, fault: MigrationFault) -> Re
     transaction.execute(
         "INSERT INTO migration_history(schema_version, migration_id, checksum, applied_at)
          VALUES (?1, ?2, ?3, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
-        params![i64::from(DATABASE_SCHEMA_VERSION), MIGRATION_V1_ID, checksum],
+        params![
+            i64::from(DATABASE_SCHEMA_VERSION),
+            MIGRATION_V1_ID,
+            checksum
+        ],
     )?;
 
     if fault == MigrationFault::BeforeCommit {
