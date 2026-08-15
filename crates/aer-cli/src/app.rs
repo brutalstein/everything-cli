@@ -1,18 +1,30 @@
 use std::{
     error::Error,
+    fs,
     path::{Path, PathBuf},
 };
 
-use aer_core::{RunSummary, default_state_home, list_runs};
+use aer_core::{
+    RunSummary, default_state_home, list_runs,
+    spec::{SpecService, SpecSnapshot, UserSemanticKind},
+};
 use aer_environment::EnvironmentFingerprint;
 use aer_workspace::WorkspaceIdentity;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
-use crate::theme::{Glyphs, Theme};
+use crate::{
+    slash::{self, SlashCommand, SlashEntry, SlashTarget},
+    theme::{Glyphs, Theme},
+};
+
+const MAX_HISTORY: usize = 100;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Screen {
     Home,
+    Intent,
+    Research,
+    EngineeringIr,
     Workspace,
     Environment,
     Providers,
@@ -21,8 +33,11 @@ pub enum Screen {
 }
 
 impl Screen {
-    pub(crate) const ALL: [Self; 6] = [
+    pub(crate) const ALL: [Self; 9] = [
         Self::Home,
+        Self::Intent,
+        Self::Research,
+        Self::EngineeringIr,
         Self::Workspace,
         Self::Environment,
         Self::Providers,
@@ -33,6 +48,9 @@ impl Screen {
     pub(crate) const fn label(self) -> &'static str {
         match self {
             Self::Home => "Home",
+            Self::Intent => "Intent",
+            Self::Research => "Research",
+            Self::EngineeringIr => "Engineering IR",
             Self::Workspace => "Workspace",
             Self::Environment => "Environment",
             Self::Providers => "Providers",
@@ -41,9 +59,26 @@ impl Screen {
         }
     }
 
+    pub(crate) const fn slash(self) -> &'static str {
+        match self {
+            Self::Home => "/home",
+            Self::Intent => "/intent",
+            Self::Research => "/research",
+            Self::EngineeringIr => "/ir",
+            Self::Workspace => "/workspace",
+            Self::Environment => "/environment",
+            Self::Providers => "/providers",
+            Self::Activity => "/activity",
+            Self::Settings => "/settings",
+        }
+    }
+
     pub(crate) const fn icon(self, glyphs: &Glyphs) -> &'static str {
         match self {
             Self::Home => glyphs.home,
+            Self::Intent => glyphs.intent,
+            Self::Research => glyphs.research,
+            Self::EngineeringIr => glyphs.engineering_ir,
             Self::Workspace => glyphs.workspace,
             Self::Environment => glyphs.environment,
             Self::Providers => glyphs.providers,
@@ -53,8 +88,25 @@ impl Screen {
     }
 }
 
+impl From<SlashTarget> for Screen {
+    fn from(target: SlashTarget) -> Self {
+        match target {
+            SlashTarget::Home => Self::Home,
+            SlashTarget::Intent => Self::Intent,
+            SlashTarget::Research => Self::Research,
+            SlashTarget::EngineeringIr => Self::EngineeringIr,
+            SlashTarget::Workspace => Self::Workspace,
+            SlashTarget::Environment => Self::Environment,
+            SlashTarget::Providers => Self::Providers,
+            SlashTarget::Activity => Self::Activity,
+            SlashTarget::Settings => Self::Settings,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum FocusTarget {
+    Composer,
     Navigation,
     Content,
 }
@@ -62,7 +114,6 @@ pub enum FocusTarget {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Overlay {
     None,
-    CommandPalette,
     Help,
 }
 
@@ -76,83 +127,13 @@ pub enum UiAction {
     PreviousFocus,
     Confirm,
     Back,
-    OpenCommandPalette,
-    OpenProviders,
-    OpenSettings,
-    OpenActivity,
-    NewRun,
-    ResumeRun,
-    Help,
-    Quit,
     Character(char),
     Backspace,
+    Delete,
+    MoveHome,
+    MoveEnd,
+    Help,
 }
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum PaletteIntent {
-    Open(Screen),
-    Unavailable(&'static str),
-    Quit,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) struct PaletteEntry {
-    pub label: &'static str,
-    pub hint: &'static str,
-    pub intent: PaletteIntent,
-}
-
-pub(crate) const PALETTE: &[PaletteEntry] = &[
-    PaletteEntry {
-        label: "Home",
-        hint: "Open the everything home surface",
-        intent: PaletteIntent::Open(Screen::Home),
-    },
-    PaletteEntry {
-        label: "Workspace",
-        hint: "Inspect repository identity and dirty state",
-        intent: PaletteIntent::Open(Screen::Workspace),
-    },
-    PaletteEntry {
-        label: "Environment",
-        hint: "Inspect toolchain and dependency fingerprint",
-        intent: PaletteIntent::Open(Screen::Environment),
-    },
-    PaletteEntry {
-        label: "Providers",
-        hint: "Provider gateway and authentication",
-        intent: PaletteIntent::Open(Screen::Providers),
-    },
-    PaletteEntry {
-        label: "Activity",
-        hint: "Durable single-agent runtime activity and resumable runs",
-        intent: PaletteIntent::Open(Screen::Activity),
-    },
-    PaletteEntry {
-        label: "Settings",
-        hint: "Terminal interaction preferences",
-        intent: PaletteIntent::Open(Screen::Settings),
-    },
-    PaletteEntry {
-        label: "New run",
-        hint: "Requires an authenticated production provider profile",
-        intent: PaletteIntent::Unavailable(
-            "The single-agent runtime is ready; configure a production provider profile before starting a run.",
-        ),
-    },
-    PaletteEntry {
-        label: "Resume run",
-        hint: "Runtime resume exists; interactive run selection is not exposed yet",
-        intent: PaletteIntent::Unavailable(
-            "Durable resume is implemented in the runtime; interactive run selection will only be enabled with a safe product flow.",
-        ),
-    },
-    PaletteEntry {
-        label: "Quit",
-        hint: "Leave everything",
-        intent: PaletteIntent::Quit,
-    },
-];
 
 #[derive(Clone, Debug)]
 pub struct AppState {
@@ -161,13 +142,18 @@ pub struct AppState {
     pub state_home: Option<PathBuf>,
     pub runs: Vec<RunSummary>,
     pub runtime_error: Option<String>,
+    pub spec: Option<SpecSnapshot>,
+    pub spec_error: Option<String>,
     pub theme: Theme,
     pub screen: Screen,
     pub focus: FocusTarget,
     pub overlay: Overlay,
     pub nav_index: usize,
-    pub palette_query: String,
-    pub palette_index: usize,
+    pub composer: String,
+    pub composer_cursor: usize,
+    pub history: Vec<String>,
+    pub history_index: Option<usize>,
+    pub slash_index: usize,
     pub should_quit: bool,
     pub notice: Option<String>,
 }
@@ -177,32 +163,32 @@ impl AppState {
         let workspace = WorkspaceIdentity::inspect(path.as_ref())?;
         let environment = EnvironmentFingerprint::discover(&workspace.repo_root)?;
         let state_home = default_state_home();
-        let (runs, runtime_error) =
-            load_runtime_catalog(&workspace.repo_root, state_home.as_deref());
+        let (runs, runtime_error) = load_runtime_catalog(&workspace.repo_root, state_home.as_deref());
+        let (spec, spec_error) = load_spec(&workspace.repo_root, state_home.as_deref());
         Ok(Self {
             workspace,
             environment,
             state_home,
             runs,
             runtime_error,
+            spec,
+            spec_error,
             theme: Theme::discover(),
             screen: Screen::Home,
-            focus: FocusTarget::Navigation,
+            focus: FocusTarget::Composer,
             overlay: Overlay::None,
             nav_index: 0,
-            palette_query: String::new(),
-            palette_index: 0,
+            composer: String::new(),
+            composer_cursor: 0,
+            history: Vec::new(),
+            history_index: None,
+            slash_index: 0,
             should_quit: false,
             notice: None,
         })
     }
 
     pub fn handle(&mut self, action: UiAction) {
-        self.notice = None;
-        if self.overlay == Overlay::CommandPalette {
-            self.handle_palette(action);
-            return;
-        }
         if self.overlay == Overlay::Help {
             if matches!(action, UiAction::Back | UiAction::Help | UiAction::Confirm) {
                 self.overlay = Overlay::None;
@@ -211,61 +197,50 @@ impl AppState {
         }
 
         match action {
-            UiAction::MoveUp | UiAction::MoveLeft if self.focus == FocusTarget::Navigation => {
-                self.nav_index = self.nav_index.saturating_sub(1);
+            UiAction::Character(character) => {
+                self.focus = FocusTarget::Composer;
+                self.insert_char(character);
             }
-            UiAction::MoveDown | UiAction::MoveRight if self.focus == FocusTarget::Navigation => {
-                self.nav_index = (self.nav_index + 1).min(Screen::ALL.len() - 1);
-            }
-            UiAction::Confirm if self.focus == FocusTarget::Navigation => {
-                self.open_screen(Screen::ALL[self.nav_index]);
-            }
-            UiAction::Back => {
-                if self.screen == Screen::Home {
-                    self.focus = FocusTarget::Navigation;
-                } else {
-                    self.screen = Screen::Home;
-                    self.nav_index = 0;
-                    self.focus = FocusTarget::Navigation;
+            UiAction::Backspace => self.backspace(),
+            UiAction::Delete => self.delete(),
+            UiAction::MoveHome => self.composer_cursor = 0,
+            UiAction::MoveEnd => self.composer_cursor = self.composer.chars().count(),
+            UiAction::MoveUp => self.move_up(),
+            UiAction::MoveDown => self.move_down(),
+            UiAction::MoveLeft => self.move_left(),
+            UiAction::MoveRight => self.move_right(),
+            UiAction::NextFocus => self.focus = next_focus(self.focus),
+            UiAction::PreviousFocus => self.focus = previous_focus(self.focus),
+            UiAction::Confirm => self.confirm(),
+            UiAction::Back => self.back(),
+            UiAction::Help => self.overlay = Overlay::Help,
+        }
+    }
+
+    pub fn insert_text(&mut self, text: &str) {
+        for character in text.chars().filter(|character| !character.is_control()) {
+            self.insert_char(character);
+        }
+    }
+
+    pub(crate) fn slash_suggestions(&self) -> Vec<SlashEntry> {
+        slash::suggestions(&self.composer)
+    }
+
+    pub(crate) fn refresh_all(&mut self) {
+        let root = self.workspace.repo_root.clone();
+        match WorkspaceIdentity::inspect(&root) {
+            Ok(workspace) => {
+                self.workspace = workspace;
+                match EnvironmentFingerprint::discover(&self.workspace.repo_root) {
+                    Ok(environment) => self.environment = environment,
+                    Err(error) => self.notice = Some(format!("environment refresh failed: {error}")),
                 }
             }
-            UiAction::NextFocus | UiAction::PreviousFocus => {
-                self.focus = match self.focus {
-                    FocusTarget::Navigation => FocusTarget::Content,
-                    FocusTarget::Content => FocusTarget::Navigation,
-                };
-            }
-            UiAction::OpenCommandPalette => self.open_palette(),
-            UiAction::OpenProviders => self.open_screen(Screen::Providers),
-            UiAction::OpenSettings => self.open_screen(Screen::Settings),
-            UiAction::OpenActivity => self.open_screen(Screen::Activity),
-            UiAction::Help => self.overlay = Overlay::Help,
-            UiAction::NewRun => {
-                self.notice = Some(
-                    "Single-agent runtime ready; authenticated provider setup is required first."
-                        .to_owned(),
-                );
-            }
-            UiAction::ResumeRun => {
-                self.refresh_runtime();
-                self.notice = if self.runs.iter().any(|run| !run.state.is_terminal()) {
-                    Some(
-                        "A resumable durable run exists; safe interactive run selection is not exposed yet."
-                            .to_owned(),
-                    )
-                } else {
-                    Some("There is no non-terminal durable run to resume.".to_owned())
-                };
-            }
-            UiAction::Quit => self.should_quit = true,
-            UiAction::MoveUp
-            | UiAction::MoveDown
-            | UiAction::MoveLeft
-            | UiAction::MoveRight
-            | UiAction::Confirm
-            | UiAction::Character(_)
-            | UiAction::Backspace => {}
+            Err(error) => self.notice = Some(format!("workspace refresh failed: {error}")),
         }
+        self.refresh_runtime();
+        self.refresh_spec();
     }
 
     pub(crate) fn refresh_runtime(&mut self) {
@@ -275,89 +250,352 @@ impl AppState {
         self.runtime_error = runtime_error;
     }
 
+    pub(crate) fn refresh_spec(&mut self) {
+        let (spec, spec_error) = load_spec(&self.workspace.repo_root, self.state_home.as_deref());
+        self.spec = spec;
+        self.spec_error = spec_error;
+    }
+
+    fn insert_char(&mut self, character: char) {
+        if character.is_control() {
+            return;
+        }
+        let byte = char_to_byte_index(&self.composer, self.composer_cursor);
+        self.composer.insert(byte, character);
+        self.composer_cursor += 1;
+        self.history_index = None;
+        self.slash_index = 0;
+        self.notice = None;
+    }
+
+    fn backspace(&mut self) {
+        if self.composer_cursor == 0 {
+            return;
+        }
+        let start = char_to_byte_index(&self.composer, self.composer_cursor - 1);
+        let end = char_to_byte_index(&self.composer, self.composer_cursor);
+        self.composer.replace_range(start..end, "");
+        self.composer_cursor -= 1;
+        self.history_index = None;
+        self.slash_index = 0;
+    }
+
+    fn delete(&mut self) {
+        if self.composer_cursor >= self.composer.chars().count() {
+            return;
+        }
+        let start = char_to_byte_index(&self.composer, self.composer_cursor);
+        let end = char_to_byte_index(&self.composer, self.composer_cursor + 1);
+        self.composer.replace_range(start..end, "");
+        self.history_index = None;
+        self.slash_index = 0;
+    }
+
+    fn move_up(&mut self) {
+        if self.focus == FocusTarget::Composer {
+            let suggestions = self.slash_suggestions();
+            if !suggestions.is_empty() {
+                self.slash_index = self.slash_index.saturating_sub(1);
+                return;
+            }
+            if !self.history.is_empty() && !self.composer.is_empty() {
+                let next = self
+                    .history_index
+                    .map_or(self.history.len() - 1, |index| index.saturating_sub(1));
+                self.set_history(next);
+                return;
+            }
+            if self.composer.is_empty() {
+                self.nav_index = self.nav_index.saturating_sub(1);
+            }
+            return;
+        }
+        if self.focus == FocusTarget::Navigation {
+            self.nav_index = self.nav_index.saturating_sub(1);
+        }
+    }
+
+    fn move_down(&mut self) {
+        if self.focus == FocusTarget::Composer {
+            let suggestions = self.slash_suggestions();
+            if !suggestions.is_empty() {
+                self.slash_index = (self.slash_index + 1).min(suggestions.len() - 1);
+                return;
+            }
+            if let Some(index) = self.history_index {
+                if index + 1 < self.history.len() {
+                    self.set_history(index + 1);
+                } else {
+                    self.history_index = None;
+                    self.set_composer(String::new());
+                }
+                return;
+            }
+            if self.composer.is_empty() {
+                self.nav_index = (self.nav_index + 1).min(Screen::ALL.len() - 1);
+            }
+            return;
+        }
+        if self.focus == FocusTarget::Navigation {
+            self.nav_index = (self.nav_index + 1).min(Screen::ALL.len() - 1);
+        }
+    }
+
+    fn move_left(&mut self) {
+        if self.focus == FocusTarget::Composer && !self.composer.is_empty() {
+            self.composer_cursor = self.composer_cursor.saturating_sub(1);
+        } else if self.focus == FocusTarget::Navigation {
+            self.nav_index = self.nav_index.saturating_sub(1);
+        }
+    }
+
+    fn move_right(&mut self) {
+        if self.focus == FocusTarget::Composer && !self.composer.is_empty() {
+            self.composer_cursor =
+                (self.composer_cursor + 1).min(self.composer.chars().count());
+        } else if self.focus == FocusTarget::Navigation {
+            self.nav_index = (self.nav_index + 1).min(Screen::ALL.len() - 1);
+        }
+    }
+
+    fn confirm(&mut self) {
+        if self.focus == FocusTarget::Navigation && self.composer.trim().is_empty() {
+            self.open_screen(Screen::ALL[self.nav_index]);
+            return;
+        }
+        if self.composer.trim().is_empty() {
+            self.open_screen(Screen::ALL[self.nav_index]);
+            return;
+        }
+
+        if self.composer.trim_start().starts_with('/')
+            && slash::parse(&self.composer).is_err()
+        {
+            let suggestions = self.slash_suggestions();
+            if let Some(entry) = suggestions.get(self.slash_index.min(suggestions.len().saturating_sub(1))) {
+                let completion = if entry.usage.contains('<') {
+                    format!("{} ", entry.command)
+                } else {
+                    entry.command.to_owned()
+                };
+                self.set_composer(completion);
+                return;
+            }
+        }
+
+        let input = self.composer.trim().to_owned();
+        self.push_history(input.clone());
+        self.set_composer(String::new());
+        self.history_index = None;
+        self.slash_index = 0;
+        if input.starts_with('/') {
+            self.execute_slash(&input);
+        } else {
+            self.submit_message(&input);
+        }
+    }
+
+    fn execute_slash(&mut self, input: &str) {
+        let command = match slash::parse(input) {
+            Ok(command) => command,
+            Err(error) => {
+                self.notice = Some(error.to_string());
+                return;
+            }
+        };
+        match command {
+            SlashCommand::Navigate(target) => self.open_screen(target.into()),
+            SlashCommand::Goal(statement) => {
+                self.record_semantic(UserSemanticKind::Goal, &statement, Screen::Intent)
+            }
+            SlashCommand::NonGoal(statement) => {
+                self.record_semantic(UserSemanticKind::NonGoal, &statement, Screen::Intent)
+            }
+            SlashCommand::Constraint(statement) => {
+                self.record_semantic(UserSemanticKind::Constraint, &statement, Screen::Intent)
+            }
+            SlashCommand::Acceptance(statement) => self.record_semantic(
+                UserSemanticKind::AcceptanceCriterion,
+                &statement,
+                Screen::EngineeringIr,
+            ),
+            SlashCommand::Assumption(statement) => self.record_semantic(
+                UserSemanticKind::Assumption,
+                &statement,
+                Screen::Intent,
+            ),
+            SlashCommand::QualityAttribute(statement) => self.record_semantic(
+                UserSemanticKind::QualityAttribute,
+                &statement,
+                Screen::Intent,
+            ),
+            SlashCommand::Decision(choice) => self.record_decision(&choice),
+            SlashCommand::ResearchImport(path) => self.import_research(path),
+            SlashCommand::Refresh => {
+                self.refresh_all();
+                self.notice = Some("Authoritative workspace, runtime and spec projections refreshed.".to_owned());
+            }
+            SlashCommand::Clear => self.notice = None,
+            SlashCommand::Help => self.overlay = Overlay::Help,
+            SlashCommand::Quit => self.should_quit = true,
+        }
+    }
+
+    fn submit_message(&mut self, input: &str) {
+        let Some(state_home) = self.state_home.clone() else {
+            self.notice = Some("No platform state directory could be resolved.".to_owned());
+            return;
+        };
+        match SpecService::submit_message(&self.workspace.repo_root, state_home, input) {
+            Ok(snapshot) => {
+                self.spec = Some(snapshot);
+                self.spec_error = None;
+                self.open_screen(Screen::Intent);
+                self.notice = Some(
+                    "Intent recorded. No unavailable model extraction was fabricated; inspect /intent and answer explicit unknowns.".to_owned(),
+                );
+            }
+            Err(error) => self.spec_error = Some(error.to_string()),
+        }
+    }
+
+    fn record_semantic(&mut self, kind: UserSemanticKind, statement: &str, screen: Screen) {
+        let Some(state_home) = self.state_home.clone() else {
+            self.notice = Some("No platform state directory could be resolved.".to_owned());
+            return;
+        };
+        match SpecService::record_semantic(
+            &self.workspace.repo_root,
+            state_home,
+            kind,
+            statement,
+        ) {
+            Ok(snapshot) => {
+                self.spec = Some(snapshot);
+                self.spec_error = None;
+                self.open_screen(screen);
+                self.notice = Some("Authoritative semantic state and Engineering IR updated.".to_owned());
+            }
+            Err(error) => self.spec_error = Some(error.to_string()),
+        }
+    }
+
+    fn record_decision(&mut self, choice: &str) {
+        let Some(state_home) = self.state_home.clone() else {
+            self.notice = Some("No platform state directory could be resolved.".to_owned());
+            return;
+        };
+        match SpecService::record_user_decision(&self.workspace.repo_root, state_home, choice) {
+            Ok(snapshot) => {
+                self.spec = Some(snapshot);
+                self.spec_error = None;
+                self.open_screen(Screen::Intent);
+                self.notice = Some("User-authoritative decision recorded and IR recompiled.".to_owned());
+            }
+            Err(error) => self.spec_error = Some(error.to_string()),
+        }
+    }
+
+    fn import_research(&mut self, path: PathBuf) {
+        let Some(state_home) = self.state_home.clone() else {
+            self.notice = Some("No platform state directory could be resolved.".to_owned());
+            return;
+        };
+        let result = fs::read(&path)
+            .map_err(|error| format!("research import read failed: {error}"))
+            .and_then(|bytes| {
+                serde_json::from_slice(&bytes)
+                    .map_err(|error| format!("research import JSON failed: {error}"))
+            })
+            .and_then(|artifact| {
+                SpecService::ingest_research(&self.workspace.repo_root, state_home, artifact)
+                    .map_err(|error| error.to_string())
+            });
+        match result {
+            Ok(snapshot) => {
+                self.spec = Some(snapshot);
+                self.spec_error = None;
+                self.open_screen(Screen::Research);
+                self.notice = Some(
+                    "ResearchArtifact validated and recorded as external evidence; no claim was self-promoted to authority."
+                        .to_owned(),
+                );
+            }
+            Err(error) => self.notice = Some(error),
+        }
+    }
+
     fn open_screen(&mut self, screen: Screen) {
-        if matches!(screen, Screen::Home | Screen::Activity) {
+        if screen == Screen::Activity {
             self.refresh_runtime();
+        }
+        if matches!(screen, Screen::Intent | Screen::Research | Screen::EngineeringIr) {
+            self.refresh_spec();
         }
         self.screen = screen;
         self.nav_index = Screen::ALL
             .iter()
             .position(|candidate| *candidate == screen)
             .expect("screen is part of navigation");
-        self.focus = FocusTarget::Content;
+        self.focus = FocusTarget::Composer;
     }
 
-    fn open_palette(&mut self) {
-        self.overlay = Overlay::CommandPalette;
-        self.palette_query.clear();
-        self.palette_index = 0;
-    }
-
-    fn handle_palette(&mut self, action: UiAction) {
-        match action {
-            UiAction::Back | UiAction::OpenCommandPalette => self.overlay = Overlay::None,
-            UiAction::MoveUp => self.palette_index = self.palette_index.saturating_sub(1),
-            UiAction::MoveDown => {
-                let count = self.filtered_palette().len();
-                if count > 0 {
-                    self.palette_index = (self.palette_index + 1).min(count - 1);
-                }
-            }
-            UiAction::Character(character) => {
-                self.palette_query.push(character);
-                self.palette_index = 0;
-            }
-            UiAction::Backspace => {
-                self.palette_query.pop();
-                self.palette_index = 0;
-            }
-            UiAction::Confirm => {
-                let intent = self
-                    .filtered_palette()
-                    .get(self.palette_index)
-                    .map(|entry| entry.intent);
-                match intent {
-                    Some(PaletteIntent::Open(screen)) => {
-                        self.overlay = Overlay::None;
-                        self.open_screen(screen);
-                    }
-                    Some(PaletteIntent::Unavailable(reason)) => {
-                        self.overlay = Overlay::None;
-                        self.notice = Some(reason.to_owned());
-                    }
-                    Some(PaletteIntent::Quit) => {
-                        self.overlay = Overlay::None;
-                        self.should_quit = true;
-                    }
-                    None => {}
-                }
-            }
-            UiAction::Help => self.overlay = Overlay::Help,
-            UiAction::MoveLeft
-            | UiAction::MoveRight
-            | UiAction::NextFocus
-            | UiAction::PreviousFocus
-            | UiAction::OpenProviders
-            | UiAction::OpenSettings
-            | UiAction::OpenActivity
-            | UiAction::NewRun
-            | UiAction::ResumeRun
-            | UiAction::Quit => {}
+    fn back(&mut self) {
+        if !self.composer.is_empty() {
+            self.set_composer(String::new());
+            return;
+        }
+        if self.screen != Screen::Home {
+            self.open_screen(Screen::Home);
+        } else {
+            self.focus = FocusTarget::Composer;
         }
     }
 
-    pub(crate) fn filtered_palette(&self) -> Vec<PaletteEntry> {
-        let query = self.palette_query.trim().to_ascii_lowercase();
-        PALETTE
-            .iter()
-            .copied()
-            .filter(|entry| {
-                query.is_empty()
-                    || entry.label.to_ascii_lowercase().contains(&query)
-                    || entry.hint.to_ascii_lowercase().contains(&query)
-            })
-            .collect()
+    fn set_history(&mut self, index: usize) {
+        if let Some(value) = self.history.get(index).cloned() {
+            self.history_index = Some(index);
+            self.set_composer(value);
+        }
     }
+
+    fn push_history(&mut self, input: String) {
+        if self.history.last() != Some(&input) {
+            self.history.push(input);
+            if self.history.len() > MAX_HISTORY {
+                self.history.remove(0);
+            }
+        }
+    }
+
+    fn set_composer(&mut self, value: String) {
+        self.composer = value;
+        self.composer_cursor = self.composer.chars().count();
+        self.slash_index = 0;
+    }
+}
+
+fn next_focus(focus: FocusTarget) -> FocusTarget {
+    match focus {
+        FocusTarget::Composer => FocusTarget::Navigation,
+        FocusTarget::Navigation => FocusTarget::Content,
+        FocusTarget::Content => FocusTarget::Composer,
+    }
+}
+
+fn previous_focus(focus: FocusTarget) -> FocusTarget {
+    match focus {
+        FocusTarget::Composer => FocusTarget::Content,
+        FocusTarget::Navigation => FocusTarget::Composer,
+        FocusTarget::Content => FocusTarget::Navigation,
+    }
+}
+
+fn char_to_byte_index(value: &str, char_index: usize) -> usize {
+    value
+        .char_indices()
+        .nth(char_index)
+        .map_or(value.len(), |(index, _)| index)
 }
 
 fn load_runtime_catalog(
@@ -379,25 +617,39 @@ fn load_runtime_catalog(
     }
 }
 
+fn load_spec(
+    workspace_root: &Path,
+    state_home: Option<&Path>,
+) -> (Option<SpecSnapshot>, Option<String>) {
+    let Some(state_home) = state_home else {
+        return (
+            None,
+            Some("No platform state directory could be resolved for specification state.".to_owned()),
+        );
+    };
+    match SpecService::inspect(workspace_root, state_home) {
+        Ok(snapshot) => (Some(snapshot), None),
+        Err(error) => (None, Some(error.to_string())),
+    }
+}
+
 #[must_use]
 pub fn normalize_key(key: KeyEvent, overlay: Overlay) -> Option<UiAction> {
     if !matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
         return None;
     }
-    let control = key.modifiers.contains(KeyModifiers::CONTROL);
-    if control {
+    if key.modifiers.contains(KeyModifiers::CONTROL) {
         return match key.code {
-            KeyCode::Char('k') => Some(UiAction::OpenCommandPalette),
-            KeyCode::Char('p') => Some(UiAction::OpenProviders),
-            KeyCode::Char('n') => Some(UiAction::NewRun),
-            KeyCode::Char('r') => Some(UiAction::ResumeRun),
-            KeyCode::Char('l') => Some(UiAction::OpenActivity),
-            KeyCode::Char(',') => Some(UiAction::OpenSettings),
             KeyCode::Char('c') => Some(UiAction::Back),
             _ => None,
         };
     }
-
+    if overlay == Overlay::Help {
+        return match key.code {
+            KeyCode::Esc | KeyCode::Enter | KeyCode::F(1) => Some(UiAction::Back),
+            _ => None,
+        };
+    }
     match key.code {
         KeyCode::Up => Some(UiAction::MoveUp),
         KeyCode::Down => Some(UiAction::MoveDown),
@@ -407,12 +659,12 @@ pub fn normalize_key(key: KeyEvent, overlay: Overlay) -> Option<UiAction> {
         KeyCode::Esc => Some(UiAction::Back),
         KeyCode::Tab => Some(UiAction::NextFocus),
         KeyCode::BackTab => Some(UiAction::PreviousFocus),
-        KeyCode::Backspace if overlay == Overlay::CommandPalette => Some(UiAction::Backspace),
-        KeyCode::Char('?') if overlay != Overlay::CommandPalette => Some(UiAction::Help),
-        KeyCode::Char('q') if overlay == Overlay::None => Some(UiAction::Quit),
-        KeyCode::Char(character) if overlay == Overlay::CommandPalette => {
-            Some(UiAction::Character(character))
-        }
+        KeyCode::Backspace => Some(UiAction::Backspace),
+        KeyCode::Delete => Some(UiAction::Delete),
+        KeyCode::Home => Some(UiAction::MoveHome),
+        KeyCode::End => Some(UiAction::MoveEnd),
+        KeyCode::F(1) => Some(UiAction::Help),
+        KeyCode::Char(character) => Some(UiAction::Character(character)),
         _ => None,
     }
 }
@@ -458,56 +710,61 @@ pub(crate) mod tests {
             state_home: None,
             runs: Vec::new(),
             runtime_error: None,
+            spec: None,
+            spec_error: None,
             theme: Theme::test(),
             screen: Screen::Home,
-            focus: FocusTarget::Navigation,
+            focus: FocusTarget::Composer,
             overlay: Overlay::None,
             nav_index: 0,
-            palette_query: String::new(),
-            palette_index: 0,
+            composer: String::new(),
+            composer_cursor: 0,
+            history: Vec::new(),
+            history_index: None,
+            slash_index: 0,
             should_quit: false,
             notice: None,
         }
     }
 
     #[test]
-    fn arrows_and_enter_open_selected_surface() {
+    fn ordinary_q_is_composer_text_not_a_quit_shortcut() {
         let mut app = app();
-        app.handle(UiAction::MoveDown);
-        app.handle(UiAction::MoveDown);
+        app.handle(UiAction::Character('q'));
+        assert_eq!(app.composer, "q");
+        assert!(!app.should_quit);
+    }
+
+    #[test]
+    fn slash_navigation_is_primary_activation_path() {
+        let mut app = app();
+        app.insert_text("/providers");
         app.handle(UiAction::Confirm);
-        assert_eq!(app.screen, Screen::Environment);
-        assert_eq!(app.focus, FocusTarget::Content);
-    }
-
-    #[test]
-    fn escape_returns_to_home_and_navigation() {
-        let mut app = app();
-        app.handle(UiAction::OpenProviders);
-        app.handle(UiAction::Back);
-        assert_eq!(app.screen, Screen::Home);
-        assert_eq!(app.focus, FocusTarget::Navigation);
-    }
-
-    #[test]
-    fn q_inside_palette_is_text_not_quit() {
-        let q = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
-        assert_eq!(
-            normalize_key(q, Overlay::CommandPalette),
-            Some(UiAction::Character('q'))
-        );
-        assert_eq!(normalize_key(q, Overlay::None), Some(UiAction::Quit));
-    }
-
-    #[test]
-    fn command_palette_filters_and_opens_provider_surface() {
-        let mut app = app();
-        app.handle(UiAction::OpenCommandPalette);
-        for character in "provider".chars() {
-            app.handle(UiAction::Character(character));
-        }
-        app.handle(UiAction::Confirm);
-        assert_eq!(app.overlay, Overlay::None);
         assert_eq!(app.screen, Screen::Providers);
+        assert!(app.composer.is_empty());
+    }
+
+    #[test]
+    fn slash_prefix_enter_completes_before_execution() {
+        let mut app = app();
+        app.insert_text("/pro");
+        app.handle(UiAction::Confirm);
+        assert_eq!(app.composer, "/providers");
+        app.handle(UiAction::Confirm);
+        assert_eq!(app.screen, Screen::Providers);
+    }
+
+    #[test]
+    fn empty_composer_keeps_arrow_navigation_available() {
+        let mut app = app();
+        app.handle(UiAction::MoveDown);
+        app.handle(UiAction::Confirm);
+        assert_eq!(app.screen, Screen::Intent);
+    }
+
+    #[test]
+    fn legacy_ctrl_p_shortcut_is_not_an_activation_authority() {
+        let key = KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL);
+        assert_eq!(normalize_key(key, Overlay::None), None);
     }
 }

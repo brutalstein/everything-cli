@@ -1,10 +1,13 @@
 //! `everything` — terminal-native product surface.
 //!
-//! Presentation stays outside domain/runtime authority. Keyboard input becomes
-//! typed UI actions and rendering projects authoritative lower-layer state.
+//! Presentation stays outside domain/runtime authority. Natural text and slash
+//! commands become typed application actions, and rendering projects authoritative
+//! lower-layer state. The bottom composer is persistent on every TUI surface.
 
 mod app;
 mod commands;
+mod material_icons;
+mod slash;
 mod theme;
 mod ui;
 

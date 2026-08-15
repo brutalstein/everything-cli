@@ -1,72 +1,79 @@
-use std::env;
-
 use ratatui::style::Color;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+use crate::material_icons;
+
+#[derive(Clone, Copy, Debug)]
 pub struct Glyphs {
     pub home: &'static str,
+    pub intent: &'static str,
+    pub research: &'static str,
+    pub engineering_ir: &'static str,
     pub workspace: &'static str,
     pub environment: &'static str,
     pub providers: &'static str,
     pub activity: &'static str,
     pub settings: &'static str,
-    pub ok: &'static str,
+    pub branch: &'static str,
+    pub shield: &'static str,
     pub ready: &'static str,
     pub attention: &'static str,
-    pub arrow: &'static str,
     pub command: &'static str,
-    pub branch: &'static str,
-    pub terminal: &'static str,
-    pub shield: &'static str,
+    pub arrow: &'static str,
+    pub ok: &'static str,
 }
 
 impl Glyphs {
-    fn unicode() -> Self {
+    fn material() -> Self {
         Self {
-            home: "⌂",
-            workspace: "▣",
-            environment: "◇",
-            providers: "◆",
-            activity: "◉",
-            settings: "⚙",
-            ok: "✓",
-            ready: "●",
-            attention: "!",
-            arrow: "→",
-            command: "⌘",
-            branch: "⑂",
-            terminal: "›_",
-            shield: "◈",
+            home: material_icons::HOME.compact,
+            intent: material_icons::INTENT.compact,
+            research: material_icons::RESEARCH.compact,
+            engineering_ir: material_icons::ENGINEERING_IR.compact,
+            workspace: material_icons::WORKSPACE.compact,
+            environment: material_icons::ENVIRONMENT.compact,
+            providers: material_icons::PROVIDERS.compact,
+            activity: material_icons::ACTIVITY.compact,
+            settings: material_icons::SETTINGS.compact,
+            branch: material_icons::BRANCH.compact,
+            shield: material_icons::SHIELD.compact,
+            ready: material_icons::READY.compact,
+            attention: material_icons::ATTENTION.compact,
+            command: material_icons::ENVIRONMENT.compact,
+            arrow: material_icons::ARROW.compact,
+            ok: material_icons::READY.compact,
         }
     }
 
     fn ascii() -> Self {
         Self {
-            home: "H",
-            workspace: "W",
-            environment: "E",
-            providers: "P",
-            activity: "A",
-            settings: "S",
-            ok: "+",
-            ready: "*",
-            attention: "!",
-            arrow: "->",
-            command: ">",
-            branch: "git",
-            terminal: ">_",
-            shield: "#",
+            home: material_icons::HOME.ascii,
+            intent: material_icons::INTENT.ascii,
+            research: material_icons::RESEARCH.ascii,
+            engineering_ir: material_icons::ENGINEERING_IR.ascii,
+            workspace: material_icons::WORKSPACE.ascii,
+            environment: material_icons::ENVIRONMENT.ascii,
+            providers: material_icons::PROVIDERS.ascii,
+            activity: material_icons::ACTIVITY.ascii,
+            settings: material_icons::SETTINGS.ascii,
+            branch: material_icons::BRANCH.ascii,
+            shield: material_icons::SHIELD.ascii,
+            ready: material_icons::READY.ascii,
+            attention: material_icons::ATTENTION.ascii,
+            command: material_icons::ENVIRONMENT.ascii,
+            arrow: material_icons::ARROW.ascii,
+            ok: material_icons::READY.ascii,
         }
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct Theme {
     pub background: Color,
     pub panel: Color,
-    pub border: Color,
+    pub panel_alt: Color,
     pub text: Color,
     pub muted: Color,
+    pub border: Color,
     pub accent: Color,
     pub accent_alt: Color,
     pub success: Color,
@@ -78,22 +85,23 @@ pub struct Theme {
 impl Theme {
     #[must_use]
     pub fn discover() -> Self {
-        let no_color = env::var_os("NO_COLOR").is_some();
-        let ascii = env::var("EVERYTHING_ASCII")
-            .ok()
-            .is_some_and(|value| matches!(value.as_str(), "1" | "true" | "yes"));
-        let truecolor = !no_color
-            && env::var("COLORTERM")
-                .ok()
-                .is_some_and(|value| value.to_ascii_lowercase().contains("truecolor"));
+        let ascii = std::env::var_os("EVERYTHING_ASCII").is_some();
+        let no_color = std::env::var_os("NO_COLOR").is_some();
+        let truecolor = std::env::var("COLORTERM")
+            .map(|value| {
+                let lower = value.to_ascii_lowercase();
+                lower.contains("truecolor") || lower.contains("24bit")
+            })
+            .unwrap_or(false);
 
         if no_color {
             return Self {
                 background: Color::Reset,
                 panel: Color::Reset,
-                border: Color::DarkGray,
+                panel_alt: Color::Reset,
                 text: Color::Reset,
                 muted: Color::DarkGray,
+                border: Color::DarkGray,
                 accent: Color::Reset,
                 accent_alt: Color::Reset,
                 success: Color::Reset,
@@ -102,47 +110,59 @@ impl Theme {
                 glyphs: if ascii {
                     Glyphs::ascii()
                 } else {
-                    Glyphs::unicode()
+                    Glyphs::material()
                 },
             };
         }
 
-        if truecolor {
-            Self {
-                background: Color::Rgb(3, 9, 16),
-                panel: Color::Rgb(7, 16, 27),
-                border: Color::Rgb(43, 62, 80),
-                text: Color::Rgb(222, 231, 239),
-                muted: Color::Rgb(111, 127, 145),
-                accent: Color::Rgb(34, 211, 238),
-                accent_alt: Color::Rgb(168, 85, 247),
-                success: Color::Rgb(74, 222, 128),
-                warning: Color::Rgb(250, 204, 21),
-                danger: Color::Rgb(248, 113, 113),
-                glyphs: if ascii {
-                    Glyphs::ascii()
-                } else {
-                    Glyphs::unicode()
-                },
-            }
-        } else {
-            Self {
-                background: Color::Black,
-                panel: Color::Black,
-                border: Color::DarkGray,
-                text: Color::White,
-                muted: Color::DarkGray,
-                accent: Color::Cyan,
-                accent_alt: Color::Magenta,
-                success: Color::Green,
-                warning: Color::Yellow,
-                danger: Color::Red,
-                glyphs: if ascii {
-                    Glyphs::ascii()
-                } else {
-                    Glyphs::unicode()
-                },
-            }
+        let (background, panel, panel_alt, text, muted, border, accent, accent_alt, success, warning, danger) =
+            if truecolor {
+                (
+                    Color::Rgb(7, 9, 14),
+                    Color::Rgb(12, 15, 23),
+                    Color::Rgb(17, 20, 31),
+                    Color::Rgb(236, 242, 250),
+                    Color::Rgb(124, 137, 158),
+                    Color::Rgb(44, 52, 69),
+                    Color::Rgb(74, 222, 255),
+                    Color::Rgb(153, 111, 255),
+                    Color::Rgb(80, 226, 168),
+                    Color::Rgb(247, 190, 80),
+                    Color::Rgb(255, 103, 132),
+                )
+            } else {
+                (
+                    Color::Black,
+                    Color::Black,
+                    Color::Black,
+                    Color::White,
+                    Color::DarkGray,
+                    Color::DarkGray,
+                    Color::Cyan,
+                    Color::Magenta,
+                    Color::Green,
+                    Color::Yellow,
+                    Color::Red,
+                )
+            };
+
+        Self {
+            background,
+            panel,
+            panel_alt,
+            text,
+            muted,
+            border,
+            accent,
+            accent_alt,
+            success,
+            warning,
+            danger,
+            glyphs: if ascii {
+                Glyphs::ascii()
+            } else {
+                Glyphs::material()
+            },
         }
     }
 
@@ -151,15 +171,16 @@ impl Theme {
         Self {
             background: Color::Black,
             panel: Color::Black,
-            border: Color::DarkGray,
+            panel_alt: Color::Black,
             text: Color::White,
             muted: Color::DarkGray,
+            border: Color::DarkGray,
             accent: Color::Cyan,
             accent_alt: Color::Magenta,
             success: Color::Green,
             warning: Color::Yellow,
             danger: Color::Red,
-            glyphs: Glyphs::unicode(),
+            glyphs: Glyphs::material(),
         }
     }
 }
