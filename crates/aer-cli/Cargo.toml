@@ -1,0 +1,16 @@
+[package]
+name = "everything"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+aer-environment = { path = "../aer-environment" }
+aer-workspace = { path = "../aer-workspace" }
+clap.workspace = true
+crossterm.workspace = true
+ratatui.workspace = true
+serde_json.workspace = true
+
+[lints]
+workspace = true
