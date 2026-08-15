@@ -4,6 +4,7 @@ members = [
     "crates/aer-domain",
     "crates/aer-contracts",
     "tools/aer-doc-check",
+    "tools/aer-phase0-check",
 ]
 
 [workspace.package]

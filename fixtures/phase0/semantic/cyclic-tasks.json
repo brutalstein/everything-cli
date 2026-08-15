@@ -1,0 +1,38 @@
+{
+  "expect": "semantic.task_cycle",
+  "bundle": {
+    "engineering_ir": {
+      "schema_version": 1,
+      "project": {"id": "phase0", "title": "Phase 0", "summary": "Task cycle fixture."},
+      "goals": [],
+      "functional_requirements": [],
+      "constraints": [],
+      "invariants": [],
+      "acceptance_criteria": []
+    },
+    "tasks": [
+      {
+        "schema_version": 1,
+        "task_id": "TASK-A",
+        "kind": "implementation",
+        "objective": "Task A.",
+        "dependencies": ["TASK-B"],
+        "risk": "low",
+        "state": "ready",
+        "spec_version": 1
+      },
+      {
+        "schema_version": 1,
+        "task_id": "TASK-B",
+        "kind": "verification",
+        "objective": "Task B.",
+        "dependencies": ["TASK-A"],
+        "risk": "low",
+        "state": "ready",
+        "spec_version": 1
+      }
+    ],
+    "evidence": [],
+    "proof_manifests": []
+  }
+}

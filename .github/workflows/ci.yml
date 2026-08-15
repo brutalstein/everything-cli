@@ -35,3 +35,6 @@ jobs:
 
       - name: Documentation integrity
         run: cargo +1.85.0 run -p aer-doc-check -- --check
+
+      - name: Phase 0 executable contract gate
+        run: cargo +1.85.0 run -p aer-phase0-check -- --check

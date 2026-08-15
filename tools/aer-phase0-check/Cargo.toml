@@ -1,0 +1,14 @@
+[package]
+name = "aer-phase0-check"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+aer-contracts = { path = "../../crates/aer-contracts" }
+aer-domain = { path = "../../crates/aer-domain" }
+serde_json.workspace = true
+serde_yaml_ng.workspace = true
+
+[lints]
+workspace = true

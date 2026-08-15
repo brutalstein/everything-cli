@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "task_id": "TASK-BAD-BUDGET",
+  "kind": "implementation",
+  "objective": "Prove the task schema resolves the relative budget schema reference.",
+  "risk": "low",
+  "budget": {
+    "input_tokens": -1
+  },
+  "state": "ready",
+  "spec_version": 1
+}

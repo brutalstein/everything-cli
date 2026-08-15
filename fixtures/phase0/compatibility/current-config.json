@@ -1,0 +1,9 @@
+{
+  "contract": "Configuration",
+  "declared_version": 1,
+  "expect": "pass",
+  "instance": {
+    "quality_mode": "balanced",
+    "security_profile": "sandboxed"
+  }
+}

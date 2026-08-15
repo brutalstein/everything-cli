@@ -1,0 +1,21 @@
+{
+  "expect": "semantic.dangling_acceptance_requirement",
+  "bundle": {
+    "engineering_ir": {
+      "schema_version": 1,
+      "project": {"id": "phase0", "title": "Phase 0", "summary": "Dangling reference fixture."},
+      "goals": [],
+      "functional_requirements": [
+        {"id": "REQ-1", "statement": "Known requirement.", "dependencies": []}
+      ],
+      "constraints": [],
+      "invariants": [],
+      "acceptance_criteria": [
+        {"id": "AC-1", "statement": "References a missing requirement.", "requirement_refs": ["REQ-MISSING"]}
+      ]
+    },
+    "tasks": [],
+    "evidence": [],
+    "proof_manifests": []
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "expect": "pass",
+  "bundle": {
+    "engineering_ir": {
+      "schema_version": 1,
+      "project": {"id": "phase0", "title": "Phase 0", "summary": "Executable contract fixture."},
+      "goals": [],
+      "functional_requirements": [
+        {
+          "id": "REQ-1",
+          "statement": "A requirement with executable proof.",
+          "priority": "must",
+          "dependencies": []
+        }
+      ],
+      "constraints": [],
+      "invariants": [{"id": "INV-1", "statement": "Proof must bind to the same snapshot."}],
+      "acceptance_criteria": [
+        {"id": "AC-1", "statement": "The verifier passes.", "requirement_refs": ["REQ-1"]}
+      ]
+    },
+    "tasks": [
+      {
+        "schema_version": 1,
+        "task_id": "TASK-1",
+        "kind": "implementation",
+        "objective": "Implement REQ-1.",
+        "requirement_refs": ["REQ-1"],
+        "acceptance_refs": ["AC-1"],
+        "invariant_refs": ["INV-1"],
+        "dependencies": [],
+        "risk": "low",
+        "state": "accepted",
+        "spec_version": 1,
+        "repo_snapshot": "repo:phase0"
+      }
+    ],
+    "evidence": [
+      {
+        "schema_version": 1,
+        "evidence_id": "EVID-1",
+        "type": "test",
+        "requirement_refs": ["REQ-1"],
+        "repo_snapshot": "repo:phase0",
+        "result": "pass",
+        "timestamp": "2026-08-15T00:00:00Z"
+      }
+    ],
+    "proof_manifests": [
+      {
+        "schema_version": 1,
+        "task_id": "TASK-1",
+        "repo_snapshot": "repo:phase0",
+        "spec_version": 1,
+        "requirements": [
+          {
+            "id": "REQ-1",
+            "implementation": [{"path": "src/lib.rs"}],
+            "evidence": ["EVID-1"],
+            "verdict": "pass"
+          }
+        ],
+        "integrity": {
+          "verifier_snapshot": "verifier:phase0",
+          "generator_could_modify_verifier": false
+        },
+        "overall_verdict": "pass"
+      }
+    ]
+  }
+}

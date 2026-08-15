@@ -1,0 +1,14 @@
+{
+  "contract": "TaskEnvelope",
+  "declared_version": 1,
+  "expect": "inline_version_mismatch",
+  "instance": {
+    "schema_version": 2,
+    "task_id": "TASK-VERSION-MISMATCH",
+    "kind": "implementation",
+    "objective": "Fail when container compatibility version and payload version disagree.",
+    "risk": "low",
+    "state": "ready",
+    "spec_version": 1
+  }
+}
