@@ -3,145 +3,98 @@
 **Last updated:** 2026-08-15  
 **Architecture baseline:** `docs/` on original `main` commit `6c81fa1d0d18e9f279fe1bc59f56d21f2cbffd55`  
 **Current phase:** Phase 1 — Durable, Safe Single-Agent Runtime  
-**Current step:** 03 / 18 — Durable State Kernel  
-**Repository-side state:** CI VERIFIED — canonical isolated Windows verifier green; awaiting target Windows reproduction  
-**Step 01 verified implementation:** `6495c77dbc05d7db635062a35bb3bc0eb0857922`  
-**Step 01 verified CI:** `foundation-ci` run `31899011790`  
-**Step 02 verified implementation:** `6f9c4258299a5f9880cdec78c976aaa56bfb884d`  
-**Step 02 dependency-lock commit:** `85812c58b8eb0db9e19d73313e6e59d2e46cf057`  
-**Step 02 verified CI:** `foundation-ci` run `31903313314`  
-**Step 02 target Windows verification:** PASS — user-reported local run on `C:\Users\cenke\OneDrive\Desktop\everything`; visible workspace tests, documentation integrity, and Phase-0 gate all green with no reported format/Clippy failure  
-**Phase 0:** COMPLETE  
-**Step 03 verified implementation:** `c8f1f6153cc076a6e4c1b93e8c8d6da903a80fa5`  
-**Step 03 dependency-lock commit:** `e140f40e791d6fd55a8f82a580008c46ce8dcb53`  
-**Step 03 original verified CI:** `foundation-ci` run `31904709865`  
-**Step 03 Windows verifier hardening:** final remediation commit `0a16edfda161bdf8d4d9e2b51068a393462671fa`  
-**Step 03 hardened verifier CI:** `foundation-ci` run `31905250522` — Ubuntu PASS, canonical isolated Windows verifier PASS  
-**Next gate:** target Windows checkout must reproduce `.\scripts\verify-windows.ps1`  
-**Next step:** 04 — Runtime State + Resource Safety — BLOCKED until target Windows verification passes
+**Current step:** 04 / 18 — Runtime State + Resource Safety  
+**Repository-side state:** CI VERIFIED — awaiting target Windows reproduction  
+**Next step:** 05 — Workspace + Execution Boundary — BLOCKED until Step-04 target Windows verification passes
 
-## Step 02 — Executable Contract System
+## Completed milestones
 
-**State:** COMPLETE
+- **Step 01 — Foundation Bootstrap:** COMPLETE  
+  Implementation `6495c77dbc05d7db635062a35bb3bc0eb0857922`; CI `31899011790`.
+- **Step 02 — Executable Contract System:** COMPLETE  
+  Implementation `6f9c4258299a5f9880cdec78c976aaa56bfb884d`; lock `85812c58b8eb0db9e19d73313e6e59d2e46cf057`; CI `31903313314`; target Windows PASS.
+- **Phase 0:** COMPLETE.
+- **Step 03 — Durable State Kernel:** COMPLETE  
+  Implementation `c8f1f6153cc076a6e4c1b93e8c8d6da903a80fa5`; lock `e140f40e791d6fd55a8f82a580008c46ce8dcb53`; original CI `31904709865`; Windows verifier hardening `0a16edfda161bdf8d4d9e2b51068a393462671fa`; hardened CI `31905250522`; target Windows canonical verifier PASS on 2026-08-15.
 
-Repository CI passed on Linux and Windows and the target Windows checkout reproduced the Step-02
-verification sequence. The supplied local output showed all `aer-contracts`, `aer-domain`,
-`aer-doc-check`, and `aer-phase0-check` tests passing, followed by green documentation-integrity
-and Phase-0 executable-contract reports. Phase 0 is closed.
+The Step-03 target-machine proof used the canonical `scripts/verify-windows.ps1` entrypoint with exact `1.97.1-x86_64-pc-windows-msvc`. The supplied output showed both storage test passes at 15/15, documentation integrity green, Phase-0 executable contracts green, and final `AER Windows verification: PASS`.
 
-## Step 03 scope
+## Step 04 — Runtime State + Resource Safety
 
-Implemented and repository-verified before target-machine reproduction:
+**State:** REPOSITORY CI VERIFIED — TARGET WINDOWS PENDING
 
-- dedicated `aer-storage` crate with no provider/model dependency;
-- SQLite database schema v1 activated as an independent compatibility surface;
-- read-only fail-closed durable-state preflight before mutation of existing state;
-- refusal to claim unrelated SQLite databases or foreign non-empty `.aer` directories;
-- SQLite WAL mode, `synchronous=FULL`, foreign-key enforcement, explicit busy timeout, and trusted-schema hardening;
-- transactional baseline migration with immutable migration-history identity/checksum;
-- cleanup/retry semantics for failed initial migration and fail-closed future-version handling;
-- project-scoped SHA-256 content-addressed object storage with file-before-metadata ordering;
-- atomic temporary-file write + fsync + rename object persistence;
-- ordinary object-store rejection of `secret` data;
-- project-scope enforcement on artifact reads and event references;
-- append-only event journal with SQL triggers rejecting update/delete;
-- monotonic in-process ULID event generation plus authoritative SQLite sequence ordering;
-- internal causation resolution, explicit external causation, and cross-project causation rejection;
-- event + materialized journal projection updated in one SQLite transaction;
-- deterministic replay digest, projection verification, and rebuild from immutable events;
-- artifact-integrity verification against referenced content hashes;
-- crash-boundary tests for initial migration, object-file-before-metadata, and event-before-projection failure points;
-- reopen/replay equivalence and corruption-detection tests;
-- checked-in Step-03 dependency lock and read-only locked CI on Linux + Windows.
+### Verified implementation
+
+- initial implementation: `7e3d426c7ecbea20b9a6b2222743efe236da127e`;
+- adversarial hardening: `9aa0284ef4324eaf30b246d452ab47a509024e42`;
+- canonical-format verified HEAD: `9664f5882dc8773434f3c7d834712194f7d28270`;
+- final repository CI: `foundation-ci` run `31906368065` — Ubuntu PASS and canonical isolated Windows verifier PASS.
+
+### Scope implemented
+
+- deterministic project admission, run, and task state machines;
+- run/task states aligned with checked-in JSON schemas;
+- task acceptance guarded by proof-aware verification finalization;
+- generic task transitions cannot bypass verification or cancellation finalization protocols;
+- one active lease per task with heartbeat, suspect, expiry, and explicit reconciliation;
+- expired lease cannot be silently reacquired;
+- monotonic heartbeat-time enforcement and clock-regression rejection;
+- effect classes for pure, workspace-local, and external-mutating attempts;
+- deterministic Resource Governor with hard resource vectors;
+- resource demand represented as known, conservative upper bound, or fail-closed unknown;
+- organization/project/run/task resource restriction lattice where lower layers cannot widen upper hard caps;
+- verifier worker-capacity reservation protected from generator/recovery saturation;
+- transactional in-memory reservation release: accounting/indexes are validated before mutation;
+- bounded authoritative queue with explicit backpressure and no silent drops;
+- finite presentation queue with explicit latest-value coalescing only where permitted;
+- cancellation protocol: request -> stop child admission -> drain -> force-required deadline -> completed;
+- cancellation completion releases active lease/resource ownership before publishing terminal state;
+- verification rejection and acceptance both release attempt ownership before publishing final verification state;
+- runtime safety kernel integrating lifecycle, lease, resource, cancellation, and reconciliation semantics;
+- deterministic and small exhaustive property-style tests for policy-lattice monotonicity and verifier-reserve/hard-cap behavior.
+
+### Step 04 acceptance gates
+
+| Gate | State | Evidence |
+|---|---|---|
+| Accepted state cannot bypass proof/finalization | PASS | State-machine + runtime finalization tests. |
+| One active lease per task | PASS | Lease tests reject duplicate ownership. |
+| Expired lease requires reconciliation before retry | PASS | Lease + integrated external-effect retry test. |
+| Heartbeat time cannot regress | PASS | Clock-regression test leaves lease unchanged. |
+| Unknown resource demand fails closed | PASS | Resource Governor test. |
+| Lower policy layer cannot widen upper hard cap | PASS | Direct + exhaustive small-domain tests. |
+| Generator cannot consume verifier-reserved worker capacity | PASS | Direct + exhaustive capacity/reserve tests. |
+| Resource release does not mutate before accounting preflight | PASS | Transactional release implementation + release/re-admit test. |
+| Authoritative queue never silently drops on overflow | PASS | Bounded queue backpressure test. |
+| Presentation coalescing remains finite and explicit | PASS | Bounded presentation queue test. |
+| Cancellation stops new child actions | PASS | Integrated cancellation test. |
+| Cancellation finalization releases lease/resources | PASS | Integrated terminal cancellation test. |
+| Verification reject/accept releases lease/resources | PASS | Integrated two-attempt reject/retry/accept test. |
+| Generic transition cannot bypass finalization protocols | PASS | Runtime protocol-bypass test. |
+| Linux format + Clippy + workspace tests | PASS | `31906368065`. |
+| Durable-state regression suite | PASS | `31906368065`. |
+| Documentation integrity + Phase-0 contracts | PASS | `31906368065`. |
+| Canonical isolated Windows CI verifier | PASS | `31906368065`. |
+| Target Windows canonical verification | PENDING | Pull `main`, then run `.\scripts\verify-windows.ps1`. |
+
+The first hardening CI attempt intentionally failed at `rustfmt --check`; Windows stopped at the same format gate. The canonical formatting diff was applied without weakening any invariant. The final run `31906368065` then passed all Linux gates and the shared Windows verifier.
+
+## Architectural ordering decision
+
+Step 04 deliberately implements the **single-coordinator safety kernel**, not the Phase-7 parallel scheduler. Parallel work scheduling, fairness, worktree overlap handling, preemption, and orphan cleanup remain Step 13. Likewise, provider/application orchestration is not pulled into this layer. These lifecycle/resource rules remain deterministic and provider-independent so later `aer-core` and scheduler layers consume one semantic authority instead of reimplementing safety behavior.
 
 ## Provider authentication/onboarding requirement recorded for Step 06
 
-`docs/37_PROVIDER_GATEWAY_AND_RESILIENCE.md` specifies provider authentication as a first-run
-and settings workflow rather than hidden adapter configuration.
+Use official OAuth 2.0 + PKCE/device authorization only where a provider officially supports third-party CLI OAuth; otherwise use the provider-supported API-key/token mechanism. Never emulate OAuth with cookies or undocumented consumer endpoints. Raw credentials stay out of SQLite, events, objects, logs, telemetry, and prompts; persistent secrets belong in an OS secure credential-store adapter while AER durable state stores only opaque references and non-secret profile metadata.
 
-Key requirement: use official OAuth 2.0 + PKCE/device authorization where the provider officially
-supports third-party CLI OAuth; otherwise use the provider's supported API-key/token mechanism.
-AER must not fake OAuth through cookies or undocumented consumer endpoints. Raw credentials stay
-out of SQLite, events, objects, logs, telemetry and prompts; persistent credentials use an OS
-secure credential-store adapter and AER durable state stores only opaque references/non-secret
-profile metadata. The future CLI must also support multiple profiles, re-auth/revocation,
-headless non-interactive behavior, and mocked auth lifecycle tests without live paid credentials.
+## Step 04 exit condition
 
-## Step 03 target-Windows remediation
+Do **not** start Step 05 until the target Windows checkout reproduces the canonical verifier successfully:
 
-The first target-machine Step-03 reproduction exposed an environment-isolation defect in the
-verification procedure, not a storage-domain failure:
+```powershell
+cd C:\Users\cenke\OneDrive\Desktop\everything
+git pull origin main
+.\scripts\verify-windows.ps1
+```
 
-- one invocation resolved `rustc 1.96.1` even though the repository requires Rust 1.97;
-- storage tests then compiled for `x86_64-pc-windows-gnullvm` and linked through
-  `x86_64-w64-mingw32-clang` instead of the supported Windows MSVC host;
-- that linker failed on missing `libOLDNAMES.a`;
-- documentation integrity and the Phase-0 executable-contract gate still passed in the same local
-  session.
-
-Repository search found no `gnullvm` target or custom linker configuration, so the drift came from
-process/user environment or an alternate local Rust/native-toolchain installation.
-
-Remediation is repository-owned rather than a user-specific workaround:
-
-- `scripts/verify-windows.ps1` is now the canonical Windows gate;
-- it installs/uses exactly `1.97.1-x86_64-pc-windows-msvc`;
-- it resolves and pins the exact `cargo.exe`, `rustc.exe`, and `rustdoc.exe` from that toolchain;
-- it asserts the compiler release and host before compiling;
-- every compile/run gate explicitly targets `x86_64-pc-windows-msvc`;
-- verification uses a dedicated `target/verify-windows-msvc` directory so incompatible local
-  artifacts cannot leak into the result;
-- process-level Rust/Cargo/linker/native-build overrides are truly removed from the child-process
-  environment during verification and restored afterward;
-- Windows GitHub Actions executes this same script, so CI and local verification share one
-  entrypoint.
-
-The verifier itself was tested fail-closed during remediation. CI first caught a PowerShell
-argument-forwarding bug that lost Clippy's `--` separator, then exposed that empty-valued environment
-variables are not equivalent to absent linker/wrapper variables on Windows. Both were corrected
-rather than bypassed. Final run `31905250522` executed the canonical script successfully on Windows.
-
-## Step 03 verification ledger
-
-| Gate | State | Evidence / action |
-|---|---|---|
-| Phase-0 target Windows gate | PASS | User-provided local output on 2026-08-15; all visible tests and integrity gates green. |
-| Architecture authority re-read | PASS | `03`, `24`, `25`, `34`, `40`, `42`, ADR-0005 and ADR-0008 re-checked before implementation. |
-| Database compatibility preflight | PASS | Future/foreign durable state fixtures fail before migration mutation. |
-| SQLite WAL + FULL durability | PASS | File-backed conformance tests pass under repository CI on Linux and Windows. |
-| Baseline migration atomicity | PASS | Injected pre-commit failure leaves no partially claimable v1 database; clean retry succeeds. |
-| Migration identity/checksum | PASS | Existing v1 state is checked against migration identity/checksum before normal write mode. |
-| Object hashing/idempotence | PASS | Same bytes map to one SHA-256 identity; content is re-hashed on read. |
-| Secret exclusion | PASS | `secret` metadata is rejected by the ordinary object-store API. |
-| Project object scope | PASS | Cross-project reads/references fail even when physical content is deduplicated. |
-| Event immutability | PASS | SQL triggers reject UPDATE and DELETE against journal history. |
-| Event causation integrity | PASS | Unknown and cross-project internal causes fail; explicit external causes remain distinct. |
-| Transactional event/projection ordering | PASS | Injected fault after event insert rolls back event and projection together. |
-| Replay equivalence | PASS | Materialized head equals deterministic replay; induced drift is detected and rebuildable. |
-| Artifact corruption detection | PASS | Referenced bytes whose content hash changes fail project-integrity verification. |
-| Reopen/recovery | PASS | Close/reopen preserves schema identity, object integrity, and replay equivalence. |
-| Dependency lock | PASS | CI resolved and committed `Cargo.lock` at `e140f40e...`; bootstrap write permission was then removed. |
-| Original GitHub Linux CI | PASS | `foundation-ci` run `31904709865`. |
-| Original GitHub Windows CI | PASS | `foundation-ci` run `31904709865`. |
-| First target Windows Step-03 reproduction | FAIL — ENVIRONMENT DRIFT | Wrong compiler/target/linker selected locally; no storage invariant failure was reached. |
-| Canonical isolated Windows verifier CI | PASS | `foundation-ci` run `31905250522`; the shared Windows verifier completed successfully. |
-| Hardened Linux regression CI | PASS | `foundation-ci` run `31905250522`; all normal Linux gates remained green. |
-| Target Windows canonical verification | PENDING | Pull `main` and run only `.\scripts\verify-windows.ps1`. |
-
-## Step 03 architectural ordering decision
-
-Artifact bytes are durably written and synchronized before their database metadata can commit.
-This deliberately permits a crash to leave an unreferenced orphan file, because that state is
-recoverable by later GC/re-registration. The inverse state — committed authoritative metadata or
-event references pointing to bytes that never became durable — is not permitted.
-
-Events and their current journal projection are committed in the same SQLite transaction. The
-event stream remains authoritative and immutable; the projection is disposable derived state that
-can be verified or rebuilt deterministically.
-
-## Step 03 exit condition
-
-Repository-side Step-03 and verifier-remediation gates are satisfied. Do **not** start Step 04 until
-the target Windows checkout runs the same canonical verifier successfully. Any remaining local
-compiler/target/linker drift is a Step-03 tooling defect; any crash/replay/compatibility failure is
-a Step-03 storage defect. Fix and record either class rather than weakening the gate.
+A final `AER Windows verification: PASS` closes Step 04. Any local compiler/target/linker drift is a Step-04 tooling defect; any lifecycle/lease/resource/cancellation failure is a Step-04 runtime-safety defect. Fix either class rather than weakening the gate.
