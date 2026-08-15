@@ -12,7 +12,6 @@ use crate::{
     theme::Theme,
 };
 
-const PRODUCT: &str = "everything";
 const TAGLINE: &str = "One CLI for work that spans everything.";
 
 pub fn render(frame: &mut Frame<'_>, app: &AppState) {

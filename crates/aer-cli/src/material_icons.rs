@@ -142,27 +142,33 @@ pub const ALL: [(&str, MaterialIcon); 14] = [
     ("arrow", ARROW),
 ];
 
-#[cfg(test)]
-mod tests {
+#[must_use]
+pub fn sources_integrity_ok() -> bool {
     use sha2::{Digest, Sha256};
 
-    use super::ALL;
+    ALL.iter().all(|(_, icon)| {
+        if !icon.asset.starts_with(b"<svg") {
+            return false;
+        }
+        let digest = Sha256::digest(icon.asset);
+        let actual = digest
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        actual == icon.sha256
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ALL, sources_integrity_ok};
 
     #[test]
     fn vendored_material_assets_match_recorded_sha256_and_are_svg() {
+        assert!(sources_integrity_ok());
         for (name, icon) in ALL {
-            assert!(
-                icon.asset.starts_with(b"<svg"),
-                "{name} vendored asset is not SVG"
-            );
-            let digest = Sha256::digest(icon.asset);
-            let actual = digest
-                .iter()
-                .map(|byte| format!("{byte:02x}"))
-                .collect::<String>();
-            assert_eq!(actual, icon.sha256, "{name} source asset changed");
-            assert!(!icon.compact.trim().is_empty());
-            assert!(!icon.ascii.trim().is_empty());
+            assert!(!icon.compact.trim().is_empty(), "{name} compact projection");
+            assert!(!icon.ascii.trim().is_empty(), "{name} ASCII fallback");
         }
     }
 }

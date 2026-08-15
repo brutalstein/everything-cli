@@ -85,7 +85,8 @@ pub struct Theme {
 impl Theme {
     #[must_use]
     pub fn discover() -> Self {
-        let ascii = std::env::var_os("EVERYTHING_ASCII").is_some();
+        let ascii = std::env::var_os("EVERYTHING_ASCII").is_some()
+            || !material_icons::sources_integrity_ok();
         let no_color = std::env::var_os("NO_COLOR").is_some();
         let truecolor = std::env::var("COLORTERM")
             .map(|value| {
