@@ -4,11 +4,11 @@ use aer_phase0_check::check_repository;
 
 fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
-    if let Some(argument) = args.next() {
-        if argument != "--check" || args.next().is_some() {
-            eprintln!("usage: aer-phase0-check [--check]");
-            return ExitCode::from(2);
-        }
+    if let Some(argument) = args.next()
+        && (argument != "--check" || args.next().is_some())
+    {
+        eprintln!("usage: aer-phase0-check [--check]");
+        return ExitCode::from(2);
     }
 
     match check_repository(&repository_root()) {
