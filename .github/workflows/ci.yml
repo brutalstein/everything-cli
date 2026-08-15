@@ -6,7 +6,7 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   rust-foundation:
@@ -24,21 +24,6 @@ jobs:
       - name: Install pinned Rust toolchain
         if: runner.os != 'Windows'
         run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
-
-      - name: Canonicalize Step 06 TUI state
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo +1.97.1 fmt --all
-          cargo +1.97.1 generate-lockfile
-          git config user.name "everything-ci"
-          git config user.email "everything-ci@users.noreply.github.com"
-          git add Cargo.lock crates/aer-cli
-          if ! git diff --cached --quiet; then
-            git commit -m "Canonicalize Step 06 TUI state [skip ci]"
-            git push origin HEAD:main
-          fi
 
       - name: Format
         if: runner.os != 'Windows'
