@@ -16,6 +16,8 @@ use aer_exec::{
 };
 use sha2::{Digest, Sha256};
 
+pub mod workspace_lock;
+
 const INSPECTION_OUTPUT_LIMIT: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
