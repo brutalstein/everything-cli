@@ -1,5 +1,6 @@
-use std::{error::Error, path::Path};
+use std::{error::Error, path::{Path, PathBuf}};
 
+use aer_core::{RunSummary, default_state_home, list_runs};
 use aer_environment::EnvironmentFingerprint;
 use aer_workspace::WorkspaceIdentity;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -121,7 +122,7 @@ pub(crate) const PALETTE: &[PaletteEntry] = &[
     },
     PaletteEntry {
         label: "Activity",
-        hint: "Runtime activity and resumable runs",
+        hint: "Durable single-agent runtime activity and resumable runs",
         intent: PaletteIntent::Open(Screen::Activity),
     },
     PaletteEntry {
@@ -131,16 +132,16 @@ pub(crate) const PALETTE: &[PaletteEntry] = &[
     },
     PaletteEntry {
         label: "New run",
-        hint: "Available when the single-agent runtime is connected",
+        hint: "Requires an authenticated production provider profile",
         intent: PaletteIntent::Unavailable(
-            "New runs are being connected to the single-agent runtime.",
+            "The single-agent runtime is ready; configure a production provider profile before starting a run.",
         ),
     },
     PaletteEntry {
         label: "Resume run",
-        hint: "Available when resumable runtime state is connected",
+        hint: "Runtime resume exists; interactive run selection is not exposed yet",
         intent: PaletteIntent::Unavailable(
-            "Resume is being connected to the single-agent runtime.",
+            "Durable resume is implemented in the runtime; interactive run selection will only be enabled with a safe product flow.",
         ),
     },
     PaletteEntry {
@@ -154,6 +155,9 @@ pub(crate) const PALETTE: &[PaletteEntry] = &[
 pub struct AppState {
     pub workspace: WorkspaceIdentity,
     pub environment: EnvironmentFingerprint,
+    pub state_home: Option<PathBuf>,
+    pub runs: Vec<RunSummary>,
+    pub runtime_error: Option<String>,
     pub theme: Theme,
     pub screen: Screen,
     pub focus: FocusTarget,
@@ -169,9 +173,14 @@ impl AppState {
     pub fn discover(path: impl AsRef<Path>) -> Result<Self, Box<dyn Error>> {
         let workspace = WorkspaceIdentity::inspect(path.as_ref())?;
         let environment = EnvironmentFingerprint::discover(&workspace.repo_root)?;
+        let state_home = default_state_home();
+        let (runs, runtime_error) = load_runtime_catalog(&workspace.repo_root, state_home.as_deref());
         Ok(Self {
             workspace,
             environment,
+            state_home,
+            runs,
+            runtime_error,
             theme: Theme::discover(),
             screen: Screen::Home,
             focus: FocusTarget::Navigation,
@@ -205,8 +214,7 @@ impl AppState {
                 self.nav_index = (self.nav_index + 1).min(Screen::ALL.len() - 1);
             }
             UiAction::Confirm if self.focus == FocusTarget::Navigation => {
-                self.screen = Screen::ALL[self.nav_index];
-                self.focus = FocusTarget::Content;
+                self.open_screen(Screen::ALL[self.nav_index]);
             }
             UiAction::Back => {
                 if self.screen == Screen::Home {
@@ -229,11 +237,21 @@ impl AppState {
             UiAction::OpenActivity => self.open_screen(Screen::Activity),
             UiAction::Help => self.overlay = Overlay::Help,
             UiAction::NewRun => {
-                self.notice = Some("New runs are being connected to the runtime.".to_owned());
+                self.notice = Some(
+                    "Single-agent runtime ready; authenticated provider setup is required first."
+                        .to_owned(),
+                );
             }
             UiAction::ResumeRun => {
-                self.notice =
-                    Some("Resume is being connected to durable runtime state.".to_owned());
+                self.refresh_runtime();
+                self.notice = if self.runs.iter().any(|run| !run.state.is_terminal()) {
+                    Some(
+                        "A resumable durable run exists; safe interactive run selection is not exposed yet."
+                            .to_owned(),
+                    )
+                } else {
+                    Some("There is no non-terminal durable run to resume.".to_owned())
+                };
             }
             UiAction::Quit => self.should_quit = true,
             UiAction::MoveUp
@@ -246,7 +264,17 @@ impl AppState {
         }
     }
 
+    pub(crate) fn refresh_runtime(&mut self) {
+        let (runs, runtime_error) =
+            load_runtime_catalog(&self.workspace.repo_root, self.state_home.as_deref());
+        self.runs = runs;
+        self.runtime_error = runtime_error;
+    }
+
     fn open_screen(&mut self, screen: Screen) {
+        if matches!(screen, Screen::Home | Screen::Activity) {
+            self.refresh_runtime();
+        }
         self.screen = screen;
         self.nav_index = Screen::ALL
             .iter()
@@ -328,6 +356,25 @@ impl AppState {
     }
 }
 
+fn load_runtime_catalog(
+    workspace_root: &Path,
+    state_home: Option<&Path>,
+) -> (Vec<RunSummary>, Option<String>) {
+    let Some(state_home) = state_home else {
+        return (
+            Vec::new(),
+            Some("No platform state directory could be resolved for everything.".to_owned()),
+        );
+    };
+    match list_runs(workspace_root, state_home) {
+        Ok(mut runs) => {
+            runs.sort_by(|left, right| right.run_id.cmp(&left.run_id));
+            (runs, None)
+        }
+        Err(error) => (Vec::new(), Some(error.to_string())),
+    }
+}
+
 #[must_use]
 pub fn normalize_key(key: KeyEvent, overlay: Overlay) -> Option<UiAction> {
     if !matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
@@ -404,6 +451,9 @@ mod tests {
                 environment_signals: Vec::new(),
                 digest: "abcdef0123456789".to_owned(),
             },
+            state_home: None,
+            runs: Vec::new(),
+            runtime_error: None,
             theme: Theme::test(),
             screen: Screen::Home,
             focus: FocusTarget::Navigation,

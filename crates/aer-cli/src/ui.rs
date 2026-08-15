@@ -1,9 +1,10 @@
 use std::path::Path;
 
+use aer_core::RunSummary;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Layout, Rect},
-    style::{Modifier, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap},
 };
@@ -16,19 +17,23 @@ const TAGLINE: &str = "One CLI for work that spans everything.";
 pub fn render(frame: &mut Frame<'_>, app: &AppState) {
     let area = frame.area();
     frame.render_widget(
-        Block::default().style(Style::default().bg(app.theme.background).fg(app.theme.text)),
+        Block::default().style(
+            Style::default()
+                .bg(app.theme.background)
+                .fg(app.theme.text),
+        ),
         area,
     );
 
     if area.width >= 106 && area.height >= 29 && app.screen == Screen::Home {
         render_premium_home(frame, area, app);
     } else {
-        render_application_shell(frame, area, app);
+        render_shell(frame, area, app);
     }
 
     match app.overlay {
         Overlay::CommandPalette => render_palette(frame, app),
-        Overlay::Help => render_help(frame, &app.theme),
+        Overlay::Help => render_help(frame, app.theme),
         Overlay::None => {}
     }
 }
@@ -40,7 +45,7 @@ fn render_premium_home(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
         Constraint::Length(2),
     ])
     .split(area);
-    render_top_bar(frame, root[0], app);
+    top_bar(frame, root[0], app);
 
     let columns = Layout::horizontal([Constraint::Percentage(64), Constraint::Percentage(36)])
         .spacing(2)
@@ -56,316 +61,152 @@ fn render_premium_home(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
         .spacing(1)
         .split(columns[1]);
 
-    render_hero(frame, left[0], app);
-    render_workspace_card(frame, left[1], app);
-    render_command_card(frame, left[2], app);
-    render_surfaces_card(frame, right[0], app);
-    render_next_action(frame, right[1], app);
-    render_footer(frame, root[2], app);
+    hero(frame, left[0], app.theme);
+    workspace_card(frame, left[1], app);
+    command_card(frame, left[2], app);
+    surfaces_card(frame, right[0], app);
+    next_action_card(frame, right[1], app);
+    footer(frame, root[2], app);
 }
 
-fn render_application_shell(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
+fn render_shell(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     let root = Layout::vertical([
         Constraint::Length(3),
         Constraint::Min(8),
         Constraint::Length(2),
     ])
     .split(area);
-    render_top_bar(frame, root[0], app);
+    top_bar(frame, root[0], app);
 
     if area.width >= 78 {
         let body = Layout::horizontal([Constraint::Length(24), Constraint::Min(36)])
             .spacing(1)
             .split(root[1]);
-        render_navigation(frame, body[0], app);
-        render_content(frame, body[1], app);
+        navigation(frame, body[0], app);
+        content(frame, body[1], app);
     } else {
-        let body = Layout::vertical([Constraint::Length(3), Constraint::Min(5)]).split(root[1]);
-        render_compact_navigation(frame, body[0], app);
-        render_content(frame, body[1], app);
+        let body = Layout::vertical([Constraint::Length(3), Constraint::Min(5)])
+            .split(root[1]);
+        compact_navigation(frame, body[0], app);
+        content(frame, body[1], app);
     }
-    render_footer(frame, root[2], app);
+    footer(frame, root[2], app);
 }
 
-fn render_top_bar(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
-    let theme = app.theme;
+fn top_bar(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let t = app.theme;
     let workspace = workspace_name(&app.workspace.repo_root);
-    let line = Line::from(vec![
-        Span::styled(
-            format!(" {} {} ", theme.glyphs.terminal, PRODUCT),
-            Style::default()
-                .fg(theme.accent)
-                .add_modifier(Modifier::BOLD),
-        ),
-        Span::styled("  /  ", Style::default().fg(theme.border)),
-        Span::styled(workspace, Style::default().fg(theme.muted)),
-        Span::styled("  ·  ", Style::default().fg(theme.border)),
-        Span::styled(
-            app.screen.label().to_ascii_lowercase(),
-            Style::default().fg(theme.accent_alt),
-        ),
-    ]);
     frame.render_widget(
-        Paragraph::new(line)
-            .block(
-                Block::default()
-                    .borders(Borders::BOTTOM)
-                    .border_style(Style::default().fg(theme.border)),
-            )
-            .alignment(Alignment::Left),
+        Paragraph::new(Line::from(vec![
+            Span::styled(
+                format!(" {} {} ", t.glyphs.terminal, PRODUCT),
+                Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled("  /  ", Style::default().fg(t.border)),
+            Span::styled(workspace, Style::default().fg(t.muted)),
+            Span::styled("  ·  ", Style::default().fg(t.border)),
+            Span::styled(
+                app.screen.label().to_ascii_lowercase(),
+                Style::default().fg(t.accent_alt),
+            ),
+        ]))
+        .block(
+            Block::default()
+                .borders(Borders::BOTTOM)
+                .border_style(Style::default().fg(t.border)),
+        ),
         area,
     );
 }
 
-fn render_hero(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
-    let theme = app.theme;
-    let hero = vec![
-        Line::from(Span::styled(
-            "  ___ _   _____ _ __ _   _| |_| |__ (_)_ __   __ _",
-            Style::default()
-                .fg(theme.accent)
-                .add_modifier(Modifier::BOLD),
-        )),
-        Line::from(Span::styled(
-            " / _ \\ | / / _ \\ '__| | | | __| '_ \\| | '_ \\ / _` |",
-            Style::default().fg(theme.accent),
-        )),
-        Line::from(Span::styled(
-            "|  __/\\ V /  __/ |  | |_| | |_| | | | | | | | (_| |",
-            Style::default().fg(theme.accent_alt),
-        )),
-        Line::from(Span::styled(
-            " \\___| \\_/ \\___|_|   \\__, |\\__|_| |_|_|_| |_|\\__, |",
-            Style::default().fg(theme.accent_alt),
-        )),
-        Line::from(Span::styled(
-            "                   |___/                     |___/",
-            Style::default().fg(theme.muted),
-        )),
-        Line::from(vec![
-            Span::styled(
-                "  One CLI for work that spans ",
-                Style::default().fg(theme.text),
-            ),
-            Span::styled(
-                "everything.",
-                Style::default()
-                    .fg(theme.accent)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ]),
-    ];
-    frame.render_widget(Paragraph::new(hero).wrap(Wrap { trim: false }), area);
+fn hero(frame: &mut Frame<'_>, area: Rect, t: Theme) {
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(Span::styled(
+                "  ___ _   _____ _ __ _   _| |_| |__ (_)_ __   __ _",
+                Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+            )),
+            Line::from(Span::styled(
+                " / _ \\ | / / _ \\ '__| | | | __| '_ \\| | '_ \\ / _` |",
+                Style::default().fg(t.accent),
+            )),
+            Line::from(Span::styled(
+                "|  __/\\ V /  __/ |  | |_| | |_| | | | | | | | (_| |",
+                Style::default().fg(t.accent_alt),
+            )),
+            Line::from(Span::styled(
+                " \\___| \\_/ \\___|_|   \\__, |\\__|_| |_|_|_| |_|\\__, |",
+                Style::default().fg(t.accent_alt),
+            )),
+            Line::from(Span::styled(
+                "                   |___/                     |___/",
+                Style::default().fg(t.muted),
+            )),
+            Line::from(vec![
+                Span::styled("  One CLI for work that spans ", Style::default().fg(t.text)),
+                Span::styled(
+                    "everything.",
+                    Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+                ),
+            ]),
+        ])
+        .wrap(Wrap { trim: false }),
+        area,
+    );
 }
 
-fn render_workspace_card(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
-    let theme = app.theme;
-    let workspace = workspace_name(&app.workspace.repo_root);
-    let state = if app.workspace.is_clean() {
-        "clean"
-    } else {
-        "dirty"
-    };
-    let state_style = if app.workspace.is_clean() {
-        Style::default().fg(theme.success)
-    } else {
-        Style::default().fg(theme.warning)
-    };
+fn workspace_card(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let t = app.theme;
+    let clean = app.workspace.is_clean();
+    let runtime = runtime_label(app);
     let rows = vec![
-        status_row(
-            theme.glyphs.workspace,
-            "Workspace",
-            workspace,
-            theme.accent,
-            theme,
-        ),
-        status_row(
-            theme.glyphs.branch,
+        kv(t.glyphs.workspace, "Workspace", workspace_name(&app.workspace.repo_root), t.accent, t),
+        kv(
+            t.glyphs.branch,
             "Branch",
             app.workspace.branch.as_deref().unwrap_or("detached"),
-            theme.text,
-            theme,
+            t.text,
+            t,
         ),
-        Line::from(vec![
-            Span::styled(format!("  {}  ", theme.glyphs.ready), state_style),
-            Span::styled(format!("{:<13}", "State"), Style::default().fg(theme.muted)),
-            Span::styled(state, state_style.add_modifier(Modifier::BOLD)),
-        ]),
-        status_row(
-            theme.glyphs.environment,
-            "Environment",
-            format!("{} / {}", app.environment.os, app.environment.architecture),
-            theme.text,
-            theme,
+        kv(
+            t.glyphs.ready,
+            "State",
+            if clean { "clean" } else { "dirty" },
+            if clean { t.success } else { t.warning },
+            t,
         ),
-        Line::from(vec![
-            Span::styled(
-                format!("  {}  ", theme.glyphs.providers),
-                Style::default().fg(theme.accent_alt),
-            ),
-            Span::styled(
-                format!("{:<13}", "Providers"),
-                Style::default().fg(theme.muted),
-            ),
-            Span::styled("setup required", Style::default().fg(theme.accent_alt)),
-        ]),
-    ];
-    frame.render_widget(
-        Paragraph::new(rows)
-            .block(card(
-                " WORKSPACE ",
-                theme,
-                app.focus == FocusTarget::Content,
-            ))
-            .wrap(Wrap { trim: true }),
-        area,
-    );
-}
-
-fn render_command_card(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
-    let theme = app.theme;
-    let items = Screen::ALL
-        .iter()
-        .enumerate()
-        .map(|(index, screen)| {
-            let selected = index == app.nav_index;
-            let style = if selected {
-                Style::default()
-                    .fg(theme.accent)
-                    .add_modifier(Modifier::BOLD)
-            } else {
-                Style::default().fg(theme.text)
-            };
-            ListItem::new(Line::from(vec![
-                Span::styled(
-                    format!(" {} ", screen.icon(&theme.glyphs)),
-                    if selected {
-                        Style::default().fg(theme.accent_alt)
-                    } else {
-                        Style::default().fg(theme.muted)
-                    },
-                ),
-                Span::styled(screen.label(), style),
-            ]))
-        })
-        .collect::<Vec<_>>();
-    let mut state = ListState::default().with_selected(Some(app.nav_index));
-    frame.render_stateful_widget(
-        List::new(items)
-            .block(card(
-                " COMMAND MENU ",
-                theme,
-                app.focus == FocusTarget::Navigation,
-            ))
-            .highlight_symbol("  › ")
-            .highlight_style(Style::default().fg(theme.accent)),
-        area,
-        &mut state,
-    );
-}
-
-fn render_surfaces_card(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
-    let theme = app.theme;
-    let branch = app.workspace.branch.as_deref().unwrap_or("detached");
-    let rows = vec![
-        surface_row(
-            theme.glyphs.branch,
-            "Git workspace",
-            format!("{} · {}", branch, short_id(&app.workspace.head_commit)),
-            "ready",
-            theme.success,
-            theme,
+        kv(
+            t.glyphs.activity,
+            "Runtime",
+            runtime,
+            if app.runtime_error.is_some() { t.danger } else { t.success },
+            t,
         ),
-        Line::from(""),
-        surface_row(
-            theme.glyphs.workspace,
-            "Local workspace",
-            workspace_name(&app.workspace.repo_root),
-            if app.workspace.is_clean() {
-                "clean"
-            } else {
-                "dirty"
-            },
-            if app.workspace.is_clean() {
-                theme.success
-            } else {
-                theme.warning
-            },
-            theme,
-        ),
-        Line::from(""),
-        surface_row(
-            theme.glyphs.providers,
-            "Provider gateway",
-            "No profile configured",
-            "setup",
-            theme.accent_alt,
-            theme,
-        ),
-        Line::from(""),
-        surface_row(
-            theme.glyphs.shield,
-            "Environment",
-            short_id(&app.environment.digest),
-            "fingerprinted",
-            theme.success,
-            theme,
+        kv(
+            t.glyphs.providers,
+            "Providers",
+            "profile required",
+            t.accent_alt,
+            t,
         ),
     ];
     frame.render_widget(
         Paragraph::new(rows)
-            .block(card(" CONNECTED SURFACES ", theme, false))
+            .block(card(" WORKSPACE ", t, app.focus == FocusTarget::Content))
             .wrap(Wrap { trim: true }),
         area,
     );
 }
 
-fn render_next_action(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
-    let theme = app.theme;
-    let lines = vec![
-        Line::from(""),
-        Line::from(vec![
-            Span::styled(
-                format!("  {}  ", theme.glyphs.arrow),
-                Style::default()
-                    .fg(theme.accent_alt)
-                    .add_modifier(Modifier::BOLD),
-            ),
-            Span::styled(
-                "Connect a provider",
-                Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
-            ),
-        ]),
-        Line::from(""),
-        Line::from(Span::styled(
-            "  Configure model access, then start your first durable run.",
-            Style::default().fg(theme.muted),
-        )),
-        Line::from(""),
-        Line::from(vec![
-            Span::styled("  Ctrl+P", Style::default().fg(theme.accent)),
-            Span::styled("  Providers    ", Style::default().fg(theme.muted)),
-            Span::styled("Ctrl+K", Style::default().fg(theme.accent_alt)),
-            Span::styled("  Commands", Style::default().fg(theme.muted)),
-        ]),
-    ];
-    frame.render_widget(
-        Paragraph::new(lines)
-            .block(card(" NEXT RECOMMENDED ACTION ", theme, false))
-            .wrap(Wrap { trim: true }),
-        area,
-    );
-}
-
-fn render_navigation(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
-    let theme = app.theme;
+fn command_card(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let t = app.theme;
     let items = Screen::ALL
         .iter()
         .map(|screen| {
             ListItem::new(Line::from(vec![
                 Span::styled(
-                    format!(" {}  ", screen.icon(&theme.glyphs)),
-                    Style::default().fg(theme.muted),
+                    format!(" {}  ", screen.icon(&t.glyphs)),
+                    Style::default().fg(t.muted),
                 ),
                 Span::raw(screen.label()),
             ]))
@@ -375,308 +216,440 @@ fn render_navigation(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     frame.render_stateful_widget(
         List::new(items)
             .block(card(
-                " EVERYTHING ",
-                theme,
+                " COMMAND MENU ",
+                t,
                 app.focus == FocusTarget::Navigation,
             ))
-            .highlight_symbol(" › ")
-            .highlight_style(
-                Style::default()
-                    .fg(theme.accent)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            .highlight_symbol("  › ")
+            .highlight_style(Style::default().fg(t.accent).add_modifier(Modifier::BOLD)),
         area,
         &mut state,
     );
 }
 
-fn render_compact_navigation(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
-    let theme = app.theme;
-    let line = Screen::ALL
+fn surfaces_card(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let t = app.theme;
+    let runtime_status = if let Some(error) = &app.runtime_error {
+        (short_text(error, 22), "error", t.danger)
+    } else {
+        (
+            format!("{} durable run(s)", app.runs.len()),
+            "ready",
+            t.success,
+        )
+    };
+    let rows = vec![
+        surface(
+            t.glyphs.branch,
+            "Git workspace",
+            format!(
+                "{} · {}",
+                app.workspace.branch.as_deref().unwrap_or("detached"),
+                short_id(&app.workspace.head_commit)
+            ),
+            "ready",
+            t.success,
+            t,
+        ),
+        Line::from(""),
+        surface(
+            t.glyphs.workspace,
+            "Local workspace",
+            workspace_name(&app.workspace.repo_root),
+            if app.workspace.is_clean() { "clean" } else { "dirty" },
+            if app.workspace.is_clean() { t.success } else { t.warning },
+            t,
+        ),
+        Line::from(""),
+        surface(
+            t.glyphs.activity,
+            "Runtime",
+            runtime_status.0,
+            runtime_status.1,
+            runtime_status.2,
+            t,
+        ),
+        Line::from(""),
+        surface(
+            t.glyphs.providers,
+            "Provider gateway",
+            "gateway online",
+            "auth required",
+            t.accent_alt,
+            t,
+        ),
+    ];
+    frame.render_widget(
+        Paragraph::new(rows)
+            .block(card(" CONNECTED SURFACES ", t, false))
+            .wrap(Wrap { trim: true }),
+        area,
+    );
+}
+
+fn next_action_card(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let t = app.theme;
+    let (title, detail) = if let Some(run) = app.runs.iter().find(|run| !run.state.is_terminal()) {
+        (
+            "Inspect resumable run",
+            format!("{} · {}", short_id(&run.run_id), run_state(run)),
+        )
+    } else {
+        (
+            "Connect a provider",
+            "Configure authenticated model access for production runs.".to_owned(),
+        )
+    };
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(""),
+            Line::from(vec![
+                Span::styled(
+                    format!("  {}  ", t.glyphs.arrow),
+                    Style::default().fg(t.accent_alt).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(title, Style::default().fg(t.text).add_modifier(Modifier::BOLD)),
+            ]),
+            Line::from(""),
+            Line::from(Span::styled(format!("  {detail}"), Style::default().fg(t.muted))),
+            Line::from(""),
+            Line::from(vec![
+                Span::styled("  Ctrl+P", Style::default().fg(t.accent)),
+                Span::styled(" Providers    ", Style::default().fg(t.muted)),
+                Span::styled("Ctrl+L", Style::default().fg(t.accent_alt)),
+                Span::styled(" Activity", Style::default().fg(t.muted)),
+            ]),
+        ])
+        .block(card(" NEXT RECOMMENDED ACTION ", t, false))
+        .wrap(Wrap { trim: true }),
+        area,
+    );
+}
+
+fn navigation(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let t = app.theme;
+    let items = Screen::ALL
+        .iter()
+        .map(|screen| {
+            ListItem::new(Line::from(vec![
+                Span::styled(
+                    format!(" {}  ", screen.icon(&t.glyphs)),
+                    Style::default().fg(t.muted),
+                ),
+                Span::raw(screen.label()),
+            ]))
+        })
+        .collect::<Vec<_>>();
+    let mut state = ListState::default().with_selected(Some(app.nav_index));
+    frame.render_stateful_widget(
+        List::new(items)
+            .block(card(" EVERYTHING ", t, app.focus == FocusTarget::Navigation))
+            .highlight_symbol(" › ")
+            .highlight_style(Style::default().fg(t.accent).add_modifier(Modifier::BOLD)),
+        area,
+        &mut state,
+    );
+}
+
+fn compact_navigation(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let t = app.theme;
+    let spans = Screen::ALL
         .iter()
         .enumerate()
         .flat_map(|(index, screen)| {
             let style = if index == app.nav_index {
-                Style::default()
-                    .fg(theme.accent)
-                    .add_modifier(Modifier::BOLD)
+                Style::default().fg(t.accent).add_modifier(Modifier::BOLD)
             } else {
-                Style::default().fg(theme.muted)
+                Style::default().fg(t.muted)
             };
             [
                 Span::styled(
-                    format!("{} {}", screen.icon(&theme.glyphs), screen.label()),
+                    format!("{} {}", screen.icon(&t.glyphs), screen.label()),
                     style,
                 ),
                 Span::raw("   "),
             ]
         })
         .collect::<Vec<_>>();
+    frame.render_widget(Paragraph::new(Line::from(spans)).wrap(Wrap { trim: true }), area);
+}
+
+fn content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let t = app.theme;
+    let title = format!(
+        " {} {} ",
+        app.screen.icon(&t.glyphs),
+        app.screen.label().to_uppercase()
+    );
+    let block = card(&title, t, app.focus == FocusTarget::Content);
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
+    match app.screen {
+        Screen::Home => home_content(frame, inner, app),
+        Screen::Workspace => workspace_content(frame, inner, app),
+        Screen::Environment => environment_content(frame, inner, app),
+        Screen::Providers => providers_content(frame, inner, app),
+        Screen::Activity => activity_content(frame, inner, app),
+        Screen::Settings => settings_content(frame, inner, app),
+    }
+}
+
+fn home_content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let t = app.theme;
     frame.render_widget(
-        Paragraph::new(Line::from(line)).wrap(Wrap { trim: true }),
+        Paragraph::new(vec![
+            Line::from(vec![
+                Span::styled(
+                    PRODUCT,
+                    Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled("  /  ", Style::default().fg(t.border)),
+                Span::styled(TAGLINE, Style::default().fg(t.muted)),
+            ]),
+            Line::from(""),
+            kv(
+                t.glyphs.workspace,
+                "workspace",
+                workspace_name(&app.workspace.repo_root),
+                t.text,
+                t,
+            ),
+            kv(
+                t.glyphs.activity,
+                "runtime",
+                runtime_label(app),
+                if app.runtime_error.is_some() { t.danger } else { t.success },
+                t,
+            ),
+            kv(
+                t.glyphs.providers,
+                "providers",
+                "gateway ready · profile required",
+                t.accent_alt,
+                t,
+            ),
+            Line::from(""),
+            Line::from(Span::styled(
+                "Use arrows + Enter, or Ctrl+K for commands.",
+                Style::default().fg(t.muted),
+            )),
+        ])
+        .wrap(Wrap { trim: true }),
         area,
     );
 }
 
-fn render_content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
-    let theme = app.theme;
-    let title = format!(
-        " {} {} ",
-        app.screen.icon(&theme.glyphs),
-        app.screen.label().to_uppercase()
-    );
-    let block = Block::default()
-        .title(Span::styled(
-            title,
-            Style::default()
-                .fg(if app.focus == FocusTarget::Content {
-                    theme.accent
-                } else {
-                    theme.accent_alt
-                })
-                .add_modifier(Modifier::BOLD),
-        ))
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(if app.focus == FocusTarget::Content {
-            theme.accent
-        } else {
-            theme.border
-        }))
-        .style(Style::default().bg(theme.panel).fg(theme.text));
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-    match app.screen {
-        Screen::Home => render_home_content(frame, inner, app),
-        Screen::Workspace => render_workspace_content(frame, inner, app),
-        Screen::Environment => render_environment_content(frame, inner, app),
-        Screen::Providers => render_providers_content(frame, inner, app),
-        Screen::Activity => render_activity_content(frame, inner, app),
-        Screen::Settings => render_settings_content(frame, inner, app),
-    }
-}
-
-fn render_home_content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
-    let theme = app.theme;
-    let lines = vec![
-        Line::from(vec![
-            Span::styled(
-                "everything",
-                Style::default()
-                    .fg(theme.accent)
-                    .add_modifier(Modifier::BOLD),
+fn workspace_content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let t = app.theme;
+    frame.render_widget(
+        Paragraph::new(vec![
+            kv(
+                t.glyphs.workspace,
+                "root",
+                app.workspace.repo_root.display().to_string(),
+                t.text,
+                t,
             ),
-            Span::styled("  /  ", Style::default().fg(theme.border)),
-            Span::styled(TAGLINE, Style::default().fg(theme.muted)),
-        ]),
-        Line::from(""),
-        key_value(
-            theme.glyphs.workspace,
-            "workspace",
-            workspace_name(&app.workspace.repo_root),
-            theme,
-        ),
-        key_value(
-            theme.glyphs.branch,
-            "branch",
-            app.workspace.branch.as_deref().unwrap_or("detached"),
-            theme,
-        ),
-        key_value(
-            theme.glyphs.environment,
-            "environment",
-            format!("{} / {}", app.environment.os, app.environment.architecture),
-            theme,
-        ),
-        key_value(theme.glyphs.providers, "providers", "setup required", theme),
-        Line::from(""),
-        Line::from(Span::styled(
-            "Use arrows + Enter, or Ctrl+K for commands.",
-            Style::default().fg(theme.muted),
-        )),
-    ];
-    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }), area);
+            kv(
+                t.glyphs.shield,
+                "repo id",
+                short_id(&app.workspace.repo_id),
+                t.text,
+                t,
+            ),
+            kv(
+                t.glyphs.branch,
+                "head",
+                short_id(&app.workspace.head_commit),
+                t.text,
+                t,
+            ),
+            kv(
+                t.glyphs.branch,
+                "branch",
+                app.workspace.branch.as_deref().unwrap_or("detached"),
+                t.text,
+                t,
+            ),
+            kv(
+                t.glyphs.ready,
+                "tracked",
+                if app.workspace.tracked_dirty { "dirty" } else { "clean" },
+                if app.workspace.tracked_dirty { t.warning } else { t.success },
+                t,
+            ),
+            kv(
+                t.glyphs.ready,
+                "untracked",
+                app.workspace.untracked_paths.len().to_string(),
+                t.text,
+                t,
+            ),
+            Line::from(""),
+            Line::from(Span::styled(
+                "User working tree is evidence, never a worker sandbox.",
+                Style::default().fg(t.muted),
+            )),
+        ])
+        .wrap(Wrap { trim: true }),
+        area,
+    );
 }
 
-fn render_workspace_content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
-    let theme = app.theme;
-    let lines = vec![
-        key_value(
-            theme.glyphs.workspace,
-            "root",
-            app.workspace.repo_root.display().to_string(),
-            theme,
-        ),
-        key_value(
-            theme.glyphs.shield,
-            "repo id",
-            short_id(&app.workspace.repo_id),
-            theme,
-        ),
-        key_value(
-            theme.glyphs.branch,
-            "head",
-            short_id(&app.workspace.head_commit),
-            theme,
-        ),
-        key_value(
-            theme.glyphs.branch,
-            "branch",
-            app.workspace
-                .branch
-                .clone()
-                .unwrap_or_else(|| "detached".to_owned()),
-            theme,
-        ),
-        key_value(
-            theme.glyphs.ready,
-            "tracked",
-            if app.workspace.tracked_dirty {
-                "dirty"
-            } else {
-                "clean"
-            },
-            theme,
-        ),
-        key_value(
-            theme.glyphs.ready,
-            "untracked",
-            app.workspace.untracked_paths.len().to_string(),
-            theme,
-        ),
-        Line::from(""),
-        Line::from(Span::styled(
-            "User working tree is evidence, never a worker sandbox.",
-            Style::default().fg(theme.muted),
-        )),
-    ];
-    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }), area);
-}
-
-fn render_environment_content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
-    let theme = app.theme;
+fn environment_content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let t = app.theme;
     let mut lines = vec![
-        key_value(
-            theme.glyphs.environment,
+        kv(
+            t.glyphs.environment,
             "host",
             format!("{} / {}", app.environment.os, app.environment.architecture),
-            theme,
+            t.text,
+            t,
         ),
-        key_value(
-            theme.glyphs.shield,
+        kv(
+            t.glyphs.shield,
             "fingerprint",
             short_id(&app.environment.digest),
-            theme,
+            t.accent,
+            t,
         ),
-        key_value(
-            theme.glyphs.workspace,
+        kv(
+            t.glyphs.workspace,
             "lockfiles",
             app.environment.lockfiles.len().to_string(),
-            theme,
+            t.text,
+            t,
         ),
         Line::from(""),
         Line::from(Span::styled(
             "TOOLS",
-            Style::default()
-                .fg(theme.accent)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
         )),
     ];
     for tool in &app.environment.tools {
-        lines.push(key_value(
-            theme.glyphs.terminal,
+        lines.push(kv(
+            t.glyphs.terminal,
             &tool.name,
-            tool.version
-                .clone()
-                .unwrap_or_else(|| "unavailable".to_owned()),
-            theme,
+            tool.version.as_deref().unwrap_or("unavailable"),
+            t.text,
+            t,
         ));
     }
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }), area);
 }
 
-fn render_providers_content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
-    let theme = app.theme;
-    let lines = vec![
+fn providers_content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let t = app.theme;
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(Span::styled(
+                format!("{}  Provider gateway", t.glyphs.providers),
+                Style::default().fg(t.accent_alt).add_modifier(Modifier::BOLD),
+            )),
+            Line::from(""),
+            kv(t.glyphs.ok, "gateway", "ready", t.success, t),
+            kv(t.glyphs.ready, "profile", "not configured", t.accent_alt, t),
+            kv(t.glyphs.shield, "credentials", "no runtime secret stored", t.success, t),
+            Line::from(""),
+            Line::from("Provider abstraction, normalized failures, bounded retry, and cancellation are active. Production model access remains disabled until an authenticated provider profile exists."),
+            Line::from(""),
+            Line::from(Span::styled(
+                "The deterministic reference provider exists only for CI/E2E and is never represented as a connected account.",
+                Style::default().fg(t.muted),
+            )),
+        ])
+        .wrap(Wrap { trim: true }),
+        area,
+    );
+}
+
+fn activity_content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let t = app.theme;
+    if let Some(error) = &app.runtime_error {
+        frame.render_widget(
+            Paragraph::new(vec![
+                Line::from(Span::styled(
+                    format!("{}  Runtime state unavailable", t.glyphs.attention),
+                    Style::default().fg(t.danger).add_modifier(Modifier::BOLD),
+                )),
+                Line::from(""),
+                Line::from(error.clone()),
+            ])
+            .wrap(Wrap { trim: true }),
+            area,
+        );
+        return;
+    }
+    if app.runs.is_empty() {
+        frame.render_widget(
+            Paragraph::new(vec![
+                Line::from(Span::styled(
+                    format!("{}  No durable runs yet", t.glyphs.activity),
+                    Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+                )),
+                Line::from(""),
+                Line::from("The single-agent runtime is installed and its durable catalog is healthy."),
+                Line::from("Configure a production provider profile before starting real model work."),
+            ])
+            .wrap(Wrap { trim: true }),
+            area,
+        );
+        return;
+    }
+
+    let mut lines = vec![
         Line::from(Span::styled(
-            format!("{}  Provider gateway", theme.glyphs.providers),
-            Style::default()
-                .fg(theme.accent_alt)
-                .add_modifier(Modifier::BOLD),
+            format!("{}  Durable runs", t.glyphs.activity),
+            Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
         )),
         Line::from(""),
-        key_value(theme.glyphs.ready, "status", "not configured", theme),
-        key_value(
-            theme.glyphs.shield,
-            "credentials",
-            "no secrets stored",
-            theme,
-        ),
-        Line::from(""),
-        Line::from(
-            "Provider setup will use official OAuth flows where a provider supports third-party CLI OAuth; otherwise its supported API-key/token mechanism.",
-        ),
-        Line::from(""),
-        Line::from(Span::styled(
-            "No provider connectivity is fabricated before the runtime gateway exists.",
-            Style::default().fg(theme.muted),
-        )),
     ];
+    for run in app.runs.iter().take(8) {
+        let color = run_color(run, t);
+        lines.push(Line::from(vec![
+            Span::styled(
+                format!(" {} ", t.glyphs.ready),
+                Style::default().fg(color),
+            ),
+            Span::styled(
+                format!("{}  ", short_id(&run.run_id)),
+                Style::default().fg(t.text).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("{:<11}  ", run_state(run)),
+                Style::default().fg(color),
+            ),
+            Span::styled(short_text(&run.goal, 46), Style::default().fg(t.muted)),
+        ]));
+    }
     frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: true }), area);
 }
 
-fn render_activity_content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
-    let theme = app.theme;
+fn settings_content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let t = app.theme;
     frame.render_widget(
         Paragraph::new(vec![
-            Line::from(Span::styled(
-                format!("{}  No active run", theme.glyphs.activity),
-                Style::default()
-                    .fg(theme.accent)
-                    .add_modifier(Modifier::BOLD),
-            )),
-            Line::from(""),
-            Line::from(
-                "Activity will project durable runtime events and resumable execution state.",
-            ),
-            Line::from(""),
-            Line::from(Span::styled(
-                "Ctrl+N · new run    Ctrl+R · resume",
-                Style::default().fg(theme.muted),
-            )),
-        ])
-        .wrap(Wrap { trim: true }),
-        area,
-    );
-}
-
-fn render_settings_content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
-    let theme = app.theme;
-    frame.render_widget(
-        Paragraph::new(vec![
-            key_value(
-                theme.glyphs.settings,
-                "interaction",
-                "keyboard first",
-                theme,
-            ),
-            key_value(
-                theme.glyphs.arrow,
+            kv(t.glyphs.settings, "interaction", "keyboard first", t.text, t),
+            kv(
+                t.glyphs.arrow,
                 "navigation",
                 "arrows / Enter / Esc / Tab",
-                theme,
+                t.text,
+                t,
             ),
-            key_value(theme.glyphs.command, "palette", "Ctrl+K", theme),
-            key_value(theme.glyphs.command, "help", "?", theme),
-            key_value(
-                theme.glyphs.environment,
+            kv(t.glyphs.command, "palette", "Ctrl+K", t.accent, t),
+            kv(t.glyphs.command, "help", "?", t.accent_alt, t),
+            kv(
+                t.glyphs.environment,
                 "icon fallback",
                 "EVERYTHING_ASCII=1",
-                theme,
+                t.text,
+                t,
             ),
             Line::from(""),
             Line::from(Span::styled(
-                "Colors honor NO_COLOR; enhanced RGB is used only when truecolor is advertised.",
-                Style::default().fg(theme.muted),
+                "Colors honor NO_COLOR; RGB is used only when truecolor is advertised.",
+                Style::default().fg(t.muted),
             )),
         ])
         .wrap(Wrap { trim: true }),
@@ -684,8 +657,8 @@ fn render_settings_content(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     );
 }
 
-fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
-    let theme = app.theme;
+fn footer(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
+    let t = app.theme;
     let hint = match app.overlay {
         Overlay::CommandPalette => "↑↓ select  Enter open  type filter  Esc close",
         Overlay::Help => "Esc close",
@@ -696,8 +669,8 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     let line = if let Some(notice) = &app.notice {
         Line::from(vec![
             Span::styled(
-                format!(" {} ", theme.glyphs.attention),
-                Style::default().fg(theme.warning),
+                format!(" {} ", t.glyphs.attention),
+                Style::default().fg(t.warning),
             ),
             Span::raw(notice.clone()),
         ])
@@ -705,13 +678,11 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
         Line::from(vec![
             Span::styled(
                 " everything ",
-                Style::default()
-                    .fg(theme.accent)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
             ),
-            Span::styled(env!("CARGO_PKG_VERSION"), Style::default().fg(theme.muted)),
-            Span::styled("   ·   ", Style::default().fg(theme.border)),
-            Span::styled(hint, Style::default().fg(theme.muted)),
+            Span::styled(env!("CARGO_PKG_VERSION"), Style::default().fg(t.muted)),
+            Span::styled("   ·   ", Style::default().fg(t.border)),
+            Span::styled(hint, Style::default().fg(t.muted)),
         ])
     };
     frame.render_widget(
@@ -719,7 +690,7 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
             .block(
                 Block::default()
                     .borders(Borders::TOP)
-                    .border_style(Style::default().fg(theme.border)),
+                    .border_style(Style::default().fg(t.border)),
             )
             .alignment(Alignment::Left),
         area,
@@ -727,34 +698,34 @@ fn render_footer(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
 }
 
 fn render_palette(frame: &mut Frame<'_>, app: &AppState) {
-    let theme = app.theme;
-    let area = centered_rect(
+    let t = app.theme;
+    let area = centered(
         76.min(frame.area().width.saturating_sub(4)),
         18.min(frame.area().height.saturating_sub(2)),
         frame.area(),
     );
     frame.render_widget(Clear, area);
     frame.render_widget(
-        Block::default().style(Style::default().bg(theme.background)),
+        Block::default().style(Style::default().bg(t.background)),
         area,
     );
-    let block = card(" COMMAND PALETTE · Ctrl+K ", theme, true);
+    let block = card(" COMMAND PALETTE · Ctrl+K ", t, true);
     let inner = block.inner(area);
     frame.render_widget(block, area);
     let layout = Layout::vertical([Constraint::Length(3), Constraint::Min(3)]).split(inner);
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled(
-                format!(" {}  ", theme.glyphs.command),
-                Style::default().fg(theme.accent_alt),
+                format!(" {}  ", t.glyphs.command),
+                Style::default().fg(t.accent_alt),
             ),
-            Span::styled("> ", Style::default().fg(theme.accent)),
+            Span::styled("> ", Style::default().fg(t.accent)),
             Span::raw(app.palette_query.clone()),
         ]))
         .block(
             Block::default()
                 .borders(Borders::BOTTOM)
-                .border_style(Style::default().fg(theme.border)),
+                .border_style(Style::default().fg(t.border)),
         ),
         layout[0],
     );
@@ -765,129 +736,130 @@ fn render_palette(frame: &mut Frame<'_>, app: &AppState) {
             ListItem::new(Line::from(vec![
                 Span::styled(
                     entry.label,
-                    Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+                    Style::default().fg(t.text).add_modifier(Modifier::BOLD),
                 ),
-                Span::styled(
-                    format!("  {}", entry.hint),
-                    Style::default().fg(theme.muted),
-                ),
+                Span::styled(format!("  {}", entry.hint), Style::default().fg(t.muted)),
             ]))
         })
         .collect::<Vec<_>>();
-    let mut state = ListState::default().with_selected(
-        (!items.is_empty()).then_some(app.palette_index.min(items.len().saturating_sub(1))),
-    );
+    let selected = (!items.is_empty()).then_some(app.palette_index.min(items.len().saturating_sub(1)));
+    let mut state = ListState::default().with_selected(selected);
     frame.render_stateful_widget(
         List::new(items)
             .highlight_symbol("  › ")
-            .highlight_style(Style::default().fg(theme.accent)),
+            .highlight_style(Style::default().fg(t.accent)),
         layout[1],
         &mut state,
     );
 }
 
-fn render_help(frame: &mut Frame<'_>, theme: &Theme) {
-    let area = centered_rect(
+fn render_help(frame: &mut Frame<'_>, t: Theme) {
+    let area = centered(
         66.min(frame.area().width.saturating_sub(4)),
         19.min(frame.area().height.saturating_sub(2)),
         frame.area(),
     );
     frame.render_widget(Clear, area);
     frame.render_widget(
-        Block::default().style(Style::default().bg(theme.background)),
-        area,
-    );
-    frame.render_widget(
         Paragraph::new(vec![
             Line::from(Span::styled(
                 "Keyboard shortcuts",
-                Style::default()
-                    .fg(theme.accent)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
             )),
             Line::from(""),
-            key_value(theme.glyphs.arrow, "arrows", "navigate", *theme),
-            key_value(theme.glyphs.command, "Enter", "open / confirm", *theme),
-            key_value(theme.glyphs.command, "Esc", "back / close", *theme),
-            key_value(theme.glyphs.command, "Tab", "change focus", *theme),
-            key_value(theme.glyphs.command, "Ctrl+K", "command palette", *theme),
-            key_value(theme.glyphs.providers, "Ctrl+P", "providers", *theme),
-            key_value(theme.glyphs.activity, "Ctrl+L", "activity", *theme),
-            key_value(theme.glyphs.settings, "Ctrl+,", "settings", *theme),
-            key_value(theme.glyphs.command, "?", "help", *theme),
-            key_value(theme.glyphs.command, "q", "quit outside text input", *theme),
+            kv(t.glyphs.arrow, "arrows", "navigate", t.text, t),
+            kv(t.glyphs.command, "Enter", "open / confirm", t.text, t),
+            kv(t.glyphs.command, "Esc", "back / close", t.text, t),
+            kv(t.glyphs.command, "Tab", "change focus", t.text, t),
+            kv(t.glyphs.command, "Ctrl+K", "command palette", t.accent, t),
+            kv(t.glyphs.providers, "Ctrl+P", "providers", t.accent_alt, t),
+            kv(t.glyphs.activity, "Ctrl+L", "activity", t.accent_alt, t),
+            kv(t.glyphs.settings, "Ctrl+,", "settings", t.text, t),
+            kv(t.glyphs.command, "?", "help", t.text, t),
+            kv(t.glyphs.command, "q", "quit outside text input", t.text, t),
         ])
-        .block(card(" EVERYTHING HELP ", *theme, true))
+        .block(card(" EVERYTHING HELP ", t, true))
         .wrap(Wrap { trim: true }),
         area,
     );
 }
 
-fn card<'a>(title: &'a str, theme: Theme, focused: bool) -> Block<'a> {
+fn card<'a>(title: &'a str, t: Theme, focused: bool) -> Block<'a> {
     Block::default()
         .title(Span::styled(
             title,
             Style::default()
-                .fg(if focused {
-                    theme.accent
-                } else {
-                    theme.accent_alt
-                })
+                .fg(if focused { t.accent } else { t.accent_alt })
                 .add_modifier(Modifier::BOLD),
         ))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(if focused { theme.accent } else { theme.border }))
-        .style(Style::default().bg(theme.panel).fg(theme.text))
+        .border_style(Style::default().fg(if focused { t.accent } else { t.border }))
+        .style(Style::default().bg(t.panel).fg(t.text))
 }
 
-fn status_row(
+fn kv(
     icon: &str,
-    label: &str,
+    key: &str,
     value: impl Into<String>,
-    value_color: ratatui::style::Color,
-    theme: Theme,
+    value_color: Color,
+    t: Theme,
 ) -> Line<'static> {
     Line::from(vec![
-        Span::styled(format!("  {icon}  "), Style::default().fg(theme.accent)),
-        Span::styled(format!("{label:<13}"), Style::default().fg(theme.muted)),
+        Span::styled(format!("  {icon}  "), Style::default().fg(t.accent)),
+        Span::styled(format!("{key:<13}"), Style::default().fg(t.muted)),
         Span::styled(value.into(), Style::default().fg(value_color)),
     ])
 }
 
-fn surface_row(
+fn surface(
     icon: &str,
     label: &str,
     detail: impl Into<String>,
     status: &str,
-    status_color: ratatui::style::Color,
-    theme: Theme,
+    status_color: Color,
+    t: Theme,
 ) -> Line<'static> {
     Line::from(vec![
-        Span::styled(format!(" {icon}  "), Style::default().fg(theme.accent)),
+        Span::styled(format!(" {icon}  "), Style::default().fg(t.accent)),
         Span::styled(
             format!("{label:<18}"),
-            Style::default().fg(theme.text).add_modifier(Modifier::BOLD),
+            Style::default().fg(t.text).add_modifier(Modifier::BOLD),
         ),
+        Span::styled(format!("{}  ", detail.into()), Style::default().fg(t.muted)),
         Span::styled(
-            format!("{}  ", detail.into()),
-            Style::default().fg(theme.muted),
-        ),
-        Span::styled(
-            format!("{} {status}", theme.glyphs.ready),
+            format!("{} {status}", t.glyphs.ready),
             Style::default().fg(status_color),
         ),
     ])
 }
 
-fn key_value(icon: &str, key: &str, value: impl Into<String>, theme: Theme) -> Line<'static> {
-    Line::from(vec![
-        Span::styled(format!(" {icon}  "), Style::default().fg(theme.accent)),
-        Span::styled(format!("{key:<13}"), Style::default().fg(theme.muted)),
-        Span::styled(value.into(), Style::default().fg(theme.text)),
-    ])
+fn runtime_label(app: &AppState) -> String {
+    if app.runtime_error.is_some() {
+        "state error".to_owned()
+    } else if let Some(run) = app.runs.first() {
+        format!("{} run(s) · {}", app.runs.len(), run_state(run))
+    } else {
+        "ready · no runs".to_owned()
+    }
 }
 
-fn centered_rect(width: u16, height: u16, area: Rect) -> Rect {
+fn run_state(run: &RunSummary) -> String {
+    format!("{:?}", run.state).to_ascii_lowercase()
+}
+
+fn run_color(run: &RunSummary, t: Theme) -> Color {
+    if run.accepted {
+        t.success
+    } else if run.state.is_terminal() {
+        t.danger
+    } else if run.interrupted {
+        t.warning
+    } else {
+        t.accent
+    }
+}
+
+fn centered(width: u16, height: u16, area: Rect) -> Rect {
     let width = width.max(1).min(area.width);
     let height = height.max(1).min(area.height);
     Rect::new(
@@ -908,55 +880,20 @@ fn short_id(value: &str) -> String {
     value.chars().take(14).collect()
 }
 
+fn short_text(value: &str, max_chars: usize) -> String {
+    let mut text = value.chars().take(max_chars).collect::<String>();
+    if value.chars().count() > max_chars {
+        text.push('…');
+    }
+    text
+}
+
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
-
-    use aer_environment::EnvironmentFingerprint;
-    use aer_workspace::WorkspaceIdentity;
     use ratatui::{Terminal, backend::TestBackend};
 
     use super::render;
-    use crate::{AppState, FocusTarget, Overlay, Screen, Theme};
-
-    fn app() -> AppState {
-        AppState {
-            workspace: WorkspaceIdentity {
-                repo_id: "sha256:test".to_owned(),
-                repo_root: PathBuf::from("/work/everything-cli"),
-                head_commit: "0123456789abcdef".to_owned(),
-                branch: Some("main".to_owned()),
-                remotes: Vec::new(),
-                dirty_tracked_diff_sha256: "tracked".to_owned(),
-                untracked_inventory_sha256: "untracked".to_owned(),
-                submodule_state_sha256: "submodule".to_owned(),
-                tracked_dirty: false,
-                untracked_paths: Vec::new(),
-            },
-            environment: EnvironmentFingerprint {
-                os: "windows".to_owned(),
-                architecture: "x86_64".to_owned(),
-                family: "windows".to_owned(),
-                os_version: Some("test".to_owned()),
-                shell: Some("pwsh".to_owned()),
-                locale: None,
-                timezone: None,
-                tools: Vec::new(),
-                lockfiles: Vec::new(),
-                environment_signals: Vec::new(),
-                digest: "abcdef0123456789".to_owned(),
-            },
-            theme: Theme::test(),
-            screen: Screen::Home,
-            focus: FocusTarget::Navigation,
-            overlay: Overlay::None,
-            nav_index: 0,
-            palette_query: String::new(),
-            palette_index: 0,
-            should_quit: false,
-            notice: None,
-        }
-    }
+    use crate::app::tests::app;
 
     #[test]
     fn premium_and_compact_render_paths_do_not_panic() {

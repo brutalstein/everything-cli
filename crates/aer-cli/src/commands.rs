@@ -4,6 +4,7 @@ use std::{
     path::Path,
 };
 
+use aer_core::{RunSummary, default_state_home, list_runs};
 use aer_environment::EnvironmentFingerprint;
 use aer_workspace::WorkspaceIdentity;
 use clap::{Parser, Subcommand};
@@ -41,7 +42,12 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// Show provider configuration state.
+    /// Show durable single-agent runtime runs for this workspace.
+    Runs {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show provider gateway and authentication state.
     Providers,
 }
 
@@ -52,12 +58,13 @@ pub fn run_cli() -> Result<(), Box<dyn Error>> {
         Some(Command::Status { json }) => print_status(&cwd, json),
         Some(Command::Doctor { json }) => print_doctor(&cwd, json),
         Some(Command::Workspace { json }) => print_workspace(&cwd, json),
+        Some(Command::Runs { json }) => print_runs(&cwd, json),
         Some(Command::Providers) => {
             println!("everything providers");
-            println!("  status       not configured");
-            println!(
-                "  next         open the interactive Providers surface or configure runtime access"
-            );
+            println!("  gateway      ready");
+            println!("  profile      not configured");
+            println!("  credentials  none stored by this runtime surface");
+            println!("  next         configure an authenticated production provider profile");
             Ok(())
         }
         None if io::stdin().is_terminal() && io::stdout().is_terminal() => run_tui(&cwd),
@@ -68,7 +75,9 @@ pub fn run_cli() -> Result<(), Box<dyn Error>> {
 fn print_status(path: &Path, json: bool) -> Result<(), Box<dyn Error>> {
     let workspace = WorkspaceIdentity::inspect(path)?;
     let environment = EnvironmentFingerprint::discover(&workspace.repo_root)?;
+    let runtime = runtime_catalog(path);
     if json {
+        let (runs, runtime_error) = runtime_parts(runtime);
         println!(
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({
@@ -78,24 +87,68 @@ fn print_status(path: &Path, json: bool) -> Result<(), Box<dyn Error>> {
                 "branch": workspace.branch,
                 "clean": workspace.is_clean(),
                 "environment_digest": environment.digest,
-                "provider_configured": false
+                "provider_gateway_ready": true,
+                "provider_configured": false,
+                "runtime_runs": runs.len(),
+                "latest_run": runs.first().map(run_json),
+                "runtime_error": runtime_error,
             }))?
         );
     } else {
         println!("{PRODUCT} · {}", workspace_name(&workspace.repo_root));
         println!(
             "workspace  {}",
-            if workspace.is_clean() {
-                "clean"
-            } else {
-                "dirty"
-            }
+            if workspace.is_clean() { "clean" } else { "dirty" }
         );
         println!(
             "branch     {}",
             workspace.branch.as_deref().unwrap_or("detached")
         );
-        println!("provider   not configured");
+        match runtime {
+            Ok(runs) => {
+                println!("runtime    ready · {} durable run(s)", runs.len());
+                if let Some(latest) = runs.first() {
+                    println!(
+                        "latest     {} · {}",
+                        short_id(&latest.run_id),
+                        run_state(latest)
+                    );
+                }
+            }
+            Err(error) => println!("runtime    error · {error}"),
+        }
+        println!("provider   gateway ready · profile not configured");
+    }
+    Ok(())
+}
+
+fn print_runs(path: &Path, json: bool) -> Result<(), Box<dyn Error>> {
+    match runtime_catalog(path) {
+        Ok(runs) if json => {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(
+                    &runs.iter().map(run_json).collect::<Vec<_>>()
+                )?
+            );
+        }
+        Ok(runs) => {
+            println!("everything runs");
+            if runs.is_empty() {
+                println!("  no durable runs for this workspace");
+            }
+            for run in runs {
+                println!(
+                    "  {}  {:<11}  accepted={}  interrupted={}  {}",
+                    short_id(&run.run_id),
+                    run_state(&run),
+                    run.accepted,
+                    run.interrupted,
+                    run.goal
+                );
+            }
+        }
+        Err(error) => return Err(error.into()),
     }
     Ok(())
 }
@@ -127,11 +180,7 @@ fn print_workspace(path: &Path, json: bool) -> Result<(), Box<dyn Error>> {
         );
         println!(
             "state      {}",
-            if workspace.is_clean() {
-                "clean"
-            } else {
-                "dirty"
-            }
+            if workspace.is_clean() { "clean" } else { "dirty" }
         );
     }
     Ok(())
@@ -140,16 +189,20 @@ fn print_workspace(path: &Path, json: bool) -> Result<(), Box<dyn Error>> {
 fn print_doctor(path: &Path, json: bool) -> Result<(), Box<dyn Error>> {
     let workspace = WorkspaceIdentity::inspect(path)?;
     let environment = EnvironmentFingerprint::discover(&workspace.repo_root)?;
+    let runtime = runtime_catalog(path);
     if json {
+        let (runs, runtime_error) = runtime_parts(runtime);
         println!(
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({
-                "ok": true,
+                "ok": runtime_error.is_none(),
                 "workspace": workspace.repo_root,
                 "environment_digest": environment.digest,
                 "os": environment.os,
                 "architecture": environment.architecture,
-                "tools": environment.tools.iter().map(|tool| serde_json::json!({"name": tool.name, "version": tool.version})).collect::<Vec<_>>()
+                "tools": environment.tools.iter().map(|tool| serde_json::json!({"name": tool.name, "version": tool.version})).collect::<Vec<_>>(),
+                "runtime_runs": runs.len(),
+                "runtime_error": runtime_error,
             }))?
         );
     } else {
@@ -160,8 +213,45 @@ fn print_doctor(path: &Path, json: bool) -> Result<(), Box<dyn Error>> {
             environment.os, environment.architecture
         );
         println!("  fingerprint   {}", short_id(&environment.digest));
+        match runtime {
+            Ok(runs) => println!("  runtime       ok · {} durable run(s)", runs.len()),
+            Err(error) => println!("  runtime       error · {error}"),
+        }
     }
     Ok(())
+}
+
+fn runtime_catalog(path: &Path) -> Result<Vec<RunSummary>, String> {
+    let state_home = default_state_home()
+        .ok_or_else(|| "no platform state directory could be resolved".to_owned())?;
+    let mut runs = list_runs(path, state_home).map_err(|error| error.to_string())?;
+    runs.sort_by(|left, right| right.run_id.cmp(&left.run_id));
+    Ok(runs)
+}
+
+fn runtime_parts(runtime: Result<Vec<RunSummary>, String>) -> (Vec<RunSummary>, Option<String>) {
+    match runtime {
+        Ok(runs) => (runs, None),
+        Err(error) => (Vec::new(), Some(error)),
+    }
+}
+
+fn run_json(run: &RunSummary) -> serde_json::Value {
+    serde_json::json!({
+        "run_id": run.run_id,
+        "project_id": run.project_id,
+        "state": run_state(run),
+        "goal": run.goal,
+        "worktree_path": run.worktree_path,
+        "provider_attempts": run.provider_attempts,
+        "verification_success": run.verification_success,
+        "accepted": run.accepted,
+        "interrupted": run.interrupted,
+    })
+}
+
+fn run_state(run: &RunSummary) -> String {
+    format!("{:?}", run.state).to_ascii_lowercase()
 }
 
 fn run_tui(path: &Path) -> Result<(), Box<dyn Error>> {

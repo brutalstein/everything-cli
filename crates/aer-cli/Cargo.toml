@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+aer-core = { path = "../aer-core" }
 aer-environment = { path = "../aer-environment" }
 aer-workspace = { path = "../aer-workspace" }
 clap.workspace = true
