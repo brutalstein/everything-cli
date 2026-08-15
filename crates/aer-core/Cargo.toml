@@ -1,0 +1,17 @@
+[package]
+name = "aer-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+aer-domain = { path = "../aer-domain" }
+aer-environment = { path = "../aer-environment" }
+aer-exec = { path = "../aer-exec" }
+aer-provider = { path = "../aer-provider" }
+aer-storage = { path = "../aer-storage" }
+aer-workspace = { path = "../aer-workspace" }
+serde_json.workspace = true
+sha2.workspace = true
+ulid.workspace = true

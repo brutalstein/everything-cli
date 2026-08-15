@@ -7,6 +7,8 @@ members = [
     "crates/aer-exec",
     "crates/aer-environment",
     "crates/aer-workspace",
+    "crates/aer-provider",
+    "crates/aer-core",
     "crates/aer-cli",
     "tools/aer-doc-check",
     "tools/aer-phase0-check",
