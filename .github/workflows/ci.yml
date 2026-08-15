@@ -35,9 +35,9 @@ jobs:
           cargo +1.97.1 generate-lockfile
           git config user.name "everything-ci"
           git config user.email "everything-ci@users.noreply.github.com"
-          git add Cargo.lock Cargo.toml crates/aer-domain crates/aer-contracts crates/aer-research crates/aer-core scripts/verify-windows.ps1
+          git add Cargo.lock Cargo.toml crates/aer-domain crates/aer-contracts crates/aer-research crates/aer-core crates/aer-cli scripts/verify-windows.ps1
           if ! git diff --cached --quiet; then
-            git commit -m "Canonicalize Step 07 backbone [skip ci]"
+            git commit -m "Canonicalize Step 07 product surface [skip ci]"
             git push origin HEAD:main
           fi
 
