@@ -4,6 +4,11 @@
 //! package version. Reserved surfaces become active only when their subsystem
 //! actually exists.
 
+/// Initial durable SQLite schema version owned by `aer-storage`.
+pub const DATABASE_SCHEMA_VERSION: u32 = 1;
+/// Initial append-only event schema version.
+pub const EVENT_SCHEMA_VERSION: u32 = 1;
+
 /// Lifecycle of a compatibility surface in the current implementation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SurfaceLifecycle {
@@ -41,8 +46,8 @@ impl CompatibilitySurface {
     pub const fn descriptor(self) -> CompatibilityDescriptor {
         match self {
             Self::RuntimeApi => reserved(self, "runtime_api_version"),
-            Self::DatabaseSchema => reserved(self, "database_schema_version"),
-            Self::EventSchema => active(self, "event_schema_version", 1),
+            Self::DatabaseSchema => active(self, "database_schema_version", DATABASE_SCHEMA_VERSION),
+            Self::EventSchema => active(self, "event_schema_version", EVENT_SCHEMA_VERSION),
             Self::EngineeringIrSchema => active(self, "engineering_ir_schema_version", 1),
             Self::ToolAbi => reserved(self, "tool_abi_version"),
             Self::HandoffAbi => active(self, "handoff_abi_version", 1),
@@ -95,7 +100,10 @@ pub const COMPATIBILITY_SURFACES: [CompatibilitySurface; 10] = [
 mod tests {
     use std::collections::BTreeSet;
 
-    use super::{COMPATIBILITY_SURFACES, SurfaceLifecycle};
+    use super::{
+        COMPATIBILITY_SURFACES, CompatibilitySurface, DATABASE_SCHEMA_VERSION,
+        EVENT_SCHEMA_VERSION, SurfaceLifecycle,
+    };
 
     #[test]
     fn compatibility_keys_are_unique_and_active_versions_are_nonzero() {
@@ -108,5 +116,19 @@ mod tests {
                 assert!(version > 0);
             }
         }
+    }
+
+    #[test]
+    fn durable_storage_surfaces_are_active_at_v1() {
+        assert_eq!(DATABASE_SCHEMA_VERSION, 1);
+        assert_eq!(EVENT_SCHEMA_VERSION, 1);
+        assert_eq!(
+            CompatibilitySurface::DatabaseSchema.descriptor().lifecycle,
+            SurfaceLifecycle::Active { version: 1 }
+        );
+        assert_eq!(
+            CompatibilitySurface::EventSchema.descriptor().lifecycle,
+            SurfaceLifecycle::Active { version: 1 }
+        );
     }
 }

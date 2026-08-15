@@ -232,3 +232,48 @@ Provider adapters require:
 - failover policy tests.
 
 Core correctness tests MUST NOT require live paid APIs.
+
+## 15. Provider authentication and first-run setup
+
+Provider authentication is part of the product onboarding and security boundary, not adapter-specific hidden configuration.
+
+On the first interactive launch, if no usable provider authentication profile exists, AER MUST enter a provider-setup flow before the first model-dependent action. The same flow MUST remain reachable later from settings/action-palette UX and from a stable command surface such as:
+
+```text
+aer providers
+aer provider add <provider>
+aer provider auth <provider>
+aer provider remove <provider>
+```
+
+Provider adapters declare the authentication methods they actually support. AER MUST NOT pretend every provider exposes the same identity system.
+
+Authentication preference:
+
+1. use an official OAuth 2.0 authorization flow with PKCE when the provider supports third-party CLI OAuth;
+2. use an official device authorization flow for SSH/headless terminals when available;
+3. otherwise use the provider's supported API key/token mechanism;
+4. never simulate OAuth by scraping browser sessions, copying private cookies, or depending on undocumented consumer endpoints.
+
+A provider that only supports API keys cannot truthfully be made OAuth-capable by AER. The UX SHOULD still present one consistent `Connect provider` experience while accurately showing the underlying authentication method.
+
+Credential handling requirements:
+
+- raw access tokens, refresh tokens and API keys are secret-class data;
+- secrets MUST NOT be stored in `state.db`, the event journal, content-addressed objects, logs, telemetry, prompts, shell history, crash reports or normal config files;
+- the default persistent backend SHOULD be the operating-system secure credential facility through a replaceable secret-store adapter: Windows Credential Manager, macOS Keychain, and Linux Secret Service or the best available policy-approved equivalent;
+- durable AER configuration/state stores only an opaque credential reference plus non-secret provider/profile metadata;
+- environment-variable or session-only credentials MAY be supported as explicit non-persistent modes and MUST be labeled as such;
+- OAuth expiry, refresh, re-authentication and revocation are explicit lifecycle states rather than generic provider failures;
+- removing an authentication profile deletes the local credential reference/material and SHOULD offer provider-side revocation when the provider exposes it;
+- secrets are never echoed back after entry.
+
+AER SHOULD support multiple provider profiles/accounts/endpoints. Profile identity is explicit and scoped to provider/account/tenant/endpoint as applicable; model selection is separate from credential identity. Routing may only use models reachable through an eligible, healthy authentication profile.
+
+First-run setup SHOULD verify the credential with the smallest safe provider operation, discover available models/capabilities, and record only non-secret capability/account metadata. A failed connection remains editable and retryable without corrupting project state.
+
+Non-interactive commands MUST NOT unexpectedly open a browser or interactive prompt. They fail with a typed actionable `authentication_required` state unless an eligible profile or explicitly supplied non-interactive credential source already exists.
+
+Core CI MUST NOT require live paid provider credentials. Provider adapters use mocked/recorded authentication, expiry, refresh, revocation and profile-selection fixtures; live credential smoke tests are opt-in integration tests outside deterministic core correctness gates.
+
+The provider setup UI is a projection over typed runtime/authentication state and follows the interaction, accessibility, redaction and headless-degradation rules in `23_CLI_AND_USER_EXPERIENCE.md`.

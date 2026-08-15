@@ -1,0 +1,15 @@
+[package]
+name = "aer-storage"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+aer-domain = { path = "../aer-domain" }
+rusqlite.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+ulid.workspace = true
+
+[lints]
+workspace = true
