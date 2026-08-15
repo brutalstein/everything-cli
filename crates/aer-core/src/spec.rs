@@ -68,6 +68,13 @@ impl SpecSnapshot {
     pub fn next_question(&self) -> Option<&Unknown> {
         self.intent.next_user_question()
     }
+
+    #[must_use]
+    pub fn semantic_checksum_clean(&self) -> bool {
+        self.checksum
+            .as_ref()
+            .is_some_and(|checksum| checksum.severity == ChecksumSeverity::None)
+    }
 }
 
 pub struct SpecService;

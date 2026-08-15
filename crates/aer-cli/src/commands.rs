@@ -125,7 +125,11 @@ fn print_status(path: &Path, json: bool) -> Result<(), Box<dyn Error>> {
         println!("{PRODUCT} · {}", workspace_name(&workspace.repo_root));
         println!(
             "workspace  {}",
-            if workspace.is_clean() { "clean" } else { "dirty" }
+            if workspace.is_clean() {
+                "clean"
+            } else {
+                "dirty"
+            }
         );
         println!(
             "branch     {}",
@@ -232,7 +236,10 @@ fn print_ir(path: &Path, json: bool) -> Result<(), Box<dyn Error>> {
         println!("everything ir · revision {}", spec.revision);
         match ir {
             Some(ir) => {
-                println!("  checksum       {}", checksum.unwrap_or_else(|| "none".to_owned()));
+                println!(
+                    "  checksum       {}",
+                    checksum.unwrap_or_else(|| "none".to_owned())
+                );
                 println!("  goals          {}", ir.goals.len());
                 println!("  requirements   {}", ir.functional_requirements.len());
                 println!("  constraints    {}", ir.constraints.len());
@@ -345,7 +352,11 @@ fn print_workspace(path: &Path, json: bool) -> Result<(), Box<dyn Error>> {
         );
         println!(
             "state      {}",
-            if workspace.is_clean() { "clean" } else { "dirty" }
+            if workspace.is_clean() {
+                "clean"
+            } else {
+                "dirty"
+            }
         );
     }
     Ok(())

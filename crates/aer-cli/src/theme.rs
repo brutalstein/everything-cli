@@ -115,36 +115,47 @@ impl Theme {
             };
         }
 
-        let (background, panel, panel_alt, text, muted, border, accent, accent_alt, success, warning, danger) =
-            if truecolor {
-                (
-                    Color::Rgb(7, 9, 14),
-                    Color::Rgb(12, 15, 23),
-                    Color::Rgb(17, 20, 31),
-                    Color::Rgb(236, 242, 250),
-                    Color::Rgb(124, 137, 158),
-                    Color::Rgb(44, 52, 69),
-                    Color::Rgb(74, 222, 255),
-                    Color::Rgb(153, 111, 255),
-                    Color::Rgb(80, 226, 168),
-                    Color::Rgb(247, 190, 80),
-                    Color::Rgb(255, 103, 132),
-                )
-            } else {
-                (
-                    Color::Black,
-                    Color::Black,
-                    Color::Black,
-                    Color::White,
-                    Color::DarkGray,
-                    Color::DarkGray,
-                    Color::Cyan,
-                    Color::Magenta,
-                    Color::Green,
-                    Color::Yellow,
-                    Color::Red,
-                )
-            };
+        let (
+            background,
+            panel,
+            panel_alt,
+            text,
+            muted,
+            border,
+            accent,
+            accent_alt,
+            success,
+            warning,
+            danger,
+        ) = if truecolor {
+            (
+                Color::Rgb(7, 9, 14),
+                Color::Rgb(12, 15, 23),
+                Color::Rgb(17, 20, 31),
+                Color::Rgb(236, 242, 250),
+                Color::Rgb(124, 137, 158),
+                Color::Rgb(44, 52, 69),
+                Color::Rgb(74, 222, 255),
+                Color::Rgb(153, 111, 255),
+                Color::Rgb(80, 226, 168),
+                Color::Rgb(247, 190, 80),
+                Color::Rgb(255, 103, 132),
+            )
+        } else {
+            (
+                Color::Black,
+                Color::Black,
+                Color::Black,
+                Color::White,
+                Color::DarkGray,
+                Color::DarkGray,
+                Color::Cyan,
+                Color::Magenta,
+                Color::Green,
+                Color::Yellow,
+                Color::Red,
+            )
+        };
 
         Self {
             background,

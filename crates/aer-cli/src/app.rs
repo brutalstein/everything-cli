@@ -163,7 +163,8 @@ impl AppState {
         let workspace = WorkspaceIdentity::inspect(path.as_ref())?;
         let environment = EnvironmentFingerprint::discover(&workspace.repo_root)?;
         let state_home = default_state_home();
-        let (runs, runtime_error) = load_runtime_catalog(&workspace.repo_root, state_home.as_deref());
+        let (runs, runtime_error) =
+            load_runtime_catalog(&workspace.repo_root, state_home.as_deref());
         let (spec, spec_error) = load_spec(&workspace.repo_root, state_home.as_deref());
         Ok(Self {
             workspace,
@@ -234,7 +235,9 @@ impl AppState {
                 self.workspace = workspace;
                 match EnvironmentFingerprint::discover(&self.workspace.repo_root) {
                     Ok(environment) => self.environment = environment,
-                    Err(error) => self.notice = Some(format!("environment refresh failed: {error}")),
+                    Err(error) => {
+                        self.notice = Some(format!("environment refresh failed: {error}"))
+                    }
                 }
             }
             Err(error) => self.notice = Some(format!("workspace refresh failed: {error}")),
@@ -351,8 +354,7 @@ impl AppState {
 
     fn move_right(&mut self) {
         if self.focus == FocusTarget::Composer && !self.composer.is_empty() {
-            self.composer_cursor =
-                (self.composer_cursor + 1).min(self.composer.chars().count());
+            self.composer_cursor = (self.composer_cursor + 1).min(self.composer.chars().count());
         } else if self.focus == FocusTarget::Navigation {
             self.nav_index = (self.nav_index + 1).min(Screen::ALL.len() - 1);
         }
@@ -368,11 +370,11 @@ impl AppState {
             return;
         }
 
-        if self.composer.trim_start().starts_with('/')
-            && slash::parse(&self.composer).is_err()
-        {
+        if self.composer.trim_start().starts_with('/') && slash::parse(&self.composer).is_err() {
             let suggestions = self.slash_suggestions();
-            if let Some(entry) = suggestions.get(self.slash_index.min(suggestions.len().saturating_sub(1))) {
+            if let Some(entry) =
+                suggestions.get(self.slash_index.min(suggestions.len().saturating_sub(1)))
+            {
                 let completion = if entry.usage.contains('<') {
                     format!("{} ", entry.command)
                 } else {
@@ -419,11 +421,9 @@ impl AppState {
                 &statement,
                 Screen::EngineeringIr,
             ),
-            SlashCommand::Assumption(statement) => self.record_semantic(
-                UserSemanticKind::Assumption,
-                &statement,
-                Screen::Intent,
-            ),
+            SlashCommand::Assumption(statement) => {
+                self.record_semantic(UserSemanticKind::Assumption, &statement, Screen::Intent)
+            }
             SlashCommand::QualityAttribute(statement) => self.record_semantic(
                 UserSemanticKind::QualityAttribute,
                 &statement,
@@ -433,7 +433,9 @@ impl AppState {
             SlashCommand::ResearchImport(path) => self.import_research(path),
             SlashCommand::Refresh => {
                 self.refresh_all();
-                self.notice = Some("Authoritative workspace, runtime and spec projections refreshed.".to_owned());
+                self.notice = Some(
+                    "Authoritative workspace, runtime and spec projections refreshed.".to_owned(),
+                );
             }
             SlashCommand::Clear => self.notice = None,
             SlashCommand::Help => self.overlay = Overlay::Help,
@@ -464,17 +466,13 @@ impl AppState {
             self.notice = Some("No platform state directory could be resolved.".to_owned());
             return;
         };
-        match SpecService::record_semantic(
-            &self.workspace.repo_root,
-            state_home,
-            kind,
-            statement,
-        ) {
+        match SpecService::record_semantic(&self.workspace.repo_root, state_home, kind, statement) {
             Ok(snapshot) => {
                 self.spec = Some(snapshot);
                 self.spec_error = None;
                 self.open_screen(screen);
-                self.notice = Some("Authoritative semantic state and Engineering IR updated.".to_owned());
+                self.notice =
+                    Some("Authoritative semantic state and Engineering IR updated.".to_owned());
             }
             Err(error) => self.spec_error = Some(error.to_string()),
         }
@@ -490,7 +488,8 @@ impl AppState {
                 self.spec = Some(snapshot);
                 self.spec_error = None;
                 self.open_screen(Screen::Intent);
-                self.notice = Some("User-authoritative decision recorded and IR recompiled.".to_owned());
+                self.notice =
+                    Some("User-authoritative decision recorded and IR recompiled.".to_owned());
             }
             Err(error) => self.spec_error = Some(error.to_string()),
         }
@@ -529,7 +528,10 @@ impl AppState {
         if screen == Screen::Activity {
             self.refresh_runtime();
         }
-        if matches!(screen, Screen::Intent | Screen::Research | Screen::EngineeringIr) {
+        if matches!(
+            screen,
+            Screen::Intent | Screen::Research | Screen::EngineeringIr
+        ) {
             self.refresh_spec();
         }
         self.screen = screen;
@@ -624,7 +626,9 @@ fn load_spec(
     let Some(state_home) = state_home else {
         return (
             None,
-            Some("No platform state directory could be resolved for specification state.".to_owned()),
+            Some(
+                "No platform state directory could be resolved for specification state.".to_owned(),
+            ),
         );
     };
     match SpecService::inspect(workspace_root, state_home) {

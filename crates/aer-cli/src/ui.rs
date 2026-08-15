@@ -51,9 +51,15 @@ pub fn render(frame: &mut Frame<'_>, app: &AppState) {
 fn render_header(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     let t = app.theme;
     let left = Line::from(vec![
-        Span::styled("  everything", Style::default().fg(t.accent).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "  everything",
+            Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+        ),
         Span::styled("  /  ", Style::default().fg(t.border)),
-        Span::styled(app.screen.label(), Style::default().fg(t.text).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            app.screen.label(),
+            Style::default().fg(t.text).add_modifier(Modifier::BOLD),
+        ),
         Span::styled(
             format!("  {}", app.screen.slash()),
             Style::default().fg(t.muted),
@@ -61,7 +67,11 @@ fn render_header(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     ]);
     let right = Line::from(vec![
         Span::styled(
-            if app.workspace.is_clean() { "clean" } else { "dirty" },
+            if app.workspace.is_clean() {
+                "clean"
+            } else {
+                "dirty"
+            },
             Style::default().fg(if app.workspace.is_clean() {
                 t.success
             } else {
@@ -75,9 +85,13 @@ fn render_header(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
         ),
         Span::raw("  "),
     ]);
-    let columns = Layout::horizontal([Constraint::Percentage(62), Constraint::Percentage(38)]).split(area);
+    let columns =
+        Layout::horizontal([Constraint::Percentage(62), Constraint::Percentage(38)]).split(area);
     frame.render_widget(Paragraph::new(left), columns[0]);
-    frame.render_widget(Paragraph::new(right).alignment(Alignment::Right), columns[1]);
+    frame.render_widget(
+        Paragraph::new(right).alignment(Alignment::Right),
+        columns[1],
+    );
 }
 
 fn render_body(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
@@ -130,7 +144,11 @@ fn render_compact_navigation(frame: &mut Frame<'_>, area: Rect, app: &AppState) 
                     format!("{} {}", screen.icon(&t.glyphs), screen.label()),
                     Style::default()
                         .fg(if selected { t.accent } else { t.muted })
-                        .add_modifier(if selected { Modifier::BOLD } else { Modifier::empty() }),
+                        .add_modifier(if selected {
+                            Modifier::BOLD
+                        } else {
+                            Modifier::empty()
+                        }),
                 ),
                 Span::styled("   ", Style::default().fg(t.border)),
             ]
@@ -183,7 +201,8 @@ fn render_home(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
                 .block(card(" PRODUCT ", t, app.focus == FocusTarget::Content)),
             rows[0],
         );
-        let columns = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)]).split(rows[1]);
+        let columns = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(rows[1]);
         render_home_state(frame, columns[0], app);
         render_home_next(frame, columns[1], app);
     } else {
@@ -199,30 +218,50 @@ fn render_home_state(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
             t.glyphs.workspace,
             "workspace",
             workspace_name(&app.workspace.repo_root),
-            if app.workspace.is_clean() { t.success } else { t.warning },
+            if app.workspace.is_clean() {
+                t.success
+            } else {
+                t.warning
+            },
             t,
         ),
         kv(
             t.glyphs.intent,
             "intent",
             spec.map_or("none".to_owned(), |spec| {
-                format!("{} message(s) · {} unknown(s)", spec.intent.messages.len(), spec.open_unknown_count())
+                format!(
+                    "{} message(s) · {} unknown(s)",
+                    spec.intent.messages.len(),
+                    spec.open_unknown_count()
+                )
             }),
-            if app.spec_error.is_some() { t.danger } else { t.accent },
+            if app.spec_error.is_some() {
+                t.danger
+            } else {
+                t.accent
+            },
             t,
         ),
         kv(
             t.glyphs.engineering_ir,
             "IR",
             spec.and_then(|spec| spec.ir.as_ref())
-                .map_or("not compiled".to_owned(), |_| format!("revision {}", spec.map_or(0, |spec| spec.revision))),
-            if spec.and_then(|spec| spec.ir.as_ref()).is_some() { t.success } else { t.muted },
+                .map_or("not compiled".to_owned(), |_| {
+                    format!("revision {}", spec.map_or(0, |spec| spec.revision))
+                }),
+            if spec.and_then(|spec| spec.ir.as_ref()).is_some() {
+                t.success
+            } else {
+                t.muted
+            },
             t,
         ),
         kv(
             t.glyphs.research,
             "research",
-            spec.map_or("0 artifact(s)".to_owned(), |spec| format!("{} artifact(s)", spec.research_artifact_count)),
+            spec.map_or("0 artifact(s)".to_owned(), |spec| {
+                format!("{} artifact(s)", spec.research_artifact_count)
+            }),
             t.accent_alt,
             t,
         ),
@@ -234,7 +273,11 @@ fn render_home_state(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
             } else {
                 format!("ready · {} run(s)", app.runs.len())
             },
-            if app.runtime_error.is_some() { t.danger } else { t.success },
+            if app.runtime_error.is_some() {
+                t.danger
+            } else {
+                t.success
+            },
             t,
         ),
         kv(
@@ -247,7 +290,11 @@ fn render_home_state(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     ];
     frame.render_widget(
         Paragraph::new(lines)
-            .block(card(" AUTHORITATIVE STATE ", t, app.focus == FocusTarget::Content))
+            .block(card(
+                " AUTHORITATIVE STATE ",
+                t,
+                app.focus == FocusTarget::Content,
+            ))
             .wrap(Wrap { trim: true }),
         area,
     );
@@ -256,25 +303,52 @@ fn render_home_state(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
 fn render_home_next(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     let t = app.theme;
     let (command, title, detail) = if app.runs.iter().any(|run| !run.state.is_terminal()) {
-        ("/activity", "Resume durable work", "A non-terminal run exists in authoritative runtime state.")
+        (
+            "/activity",
+            "Resume durable work",
+            "A non-terminal run exists in authoritative runtime state.",
+        )
     } else if let Some(question) = app.spec.as_ref().and_then(|spec| spec.next_question()) {
-        ("/intent", "Resolve the highest-value unknown", question.question.as_str())
-    } else if app.spec.as_ref().and_then(|spec| spec.ir.as_ref()).is_none() {
-        ("<type a request>", "Start from intent", "Natural text is preserved as user-origin intent; unavailable model extraction is never fabricated.")
+        (
+            "/intent",
+            "Resolve the highest-value unknown",
+            question.question.as_str(),
+        )
+    } else if app
+        .spec
+        .as_ref()
+        .and_then(|spec| spec.ir.as_ref())
+        .is_none()
+    {
+        (
+            "<type a request>",
+            "Start from intent",
+            "Natural text is preserved as user-origin intent; unavailable model extraction is never fabricated.",
+        )
     } else {
-        ("/providers", "Connect a production provider", "The gateway exists, but no authenticated production profile is configured yet.")
+        (
+            "/providers",
+            "Connect a production provider",
+            "The gateway exists, but no authenticated production profile is configured yet.",
+        )
     };
     frame.render_widget(
         Paragraph::new(vec![
             Line::from(""),
-            Line::from(Span::styled(title, Style::default().fg(t.text).add_modifier(Modifier::BOLD))),
+            Line::from(Span::styled(
+                title,
+                Style::default().fg(t.text).add_modifier(Modifier::BOLD),
+            )),
             Line::from(""),
             Line::from(Span::styled(detail, Style::default().fg(t.muted))),
             Line::from(""),
             Line::from(vec![
                 Span::styled(t.glyphs.arrow, Style::default().fg(t.accent_alt)),
                 Span::raw("  "),
-                Span::styled(command, Style::default().fg(t.accent).add_modifier(Modifier::BOLD)),
+                Span::styled(
+                    command,
+                    Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+                ),
             ]),
         ])
         .block(card(" NEXT ACTION ", t, false))
@@ -290,18 +364,70 @@ fn render_intent(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
         return;
     };
     let mut lines = vec![
-        kv(t.glyphs.intent, "messages", spec.intent.messages.len().to_string(), t.accent, t),
-        kv(t.glyphs.ready, "goals", spec.intent.goals.len().to_string(), t.success, t),
-        kv(t.glyphs.shield, "constraints", spec.intent.constraints.len().to_string(), t.accent_alt, t),
-        kv(t.glyphs.ready, "acceptance", spec.intent.acceptance_criteria.len().to_string(), t.success, t),
-        kv(t.glyphs.attention, "unknowns", spec.open_unknown_count().to_string(), if spec.open_unknown_count() == 0 { t.success } else { t.warning }, t),
-        kv(t.glyphs.branch, "decisions", spec.intent.user_decisions.len().to_string(), t.accent_alt, t),
+        kv(
+            t.glyphs.intent,
+            "messages",
+            spec.intent.messages.len().to_string(),
+            t.accent,
+            t,
+        ),
+        kv(
+            t.glyphs.ready,
+            "goals",
+            spec.intent.goals.len().to_string(),
+            t.success,
+            t,
+        ),
+        kv(
+            t.glyphs.shield,
+            "constraints",
+            spec.intent.constraints.len().to_string(),
+            t.accent_alt,
+            t,
+        ),
+        kv(
+            t.glyphs.ready,
+            "acceptance",
+            spec.intent.acceptance_criteria.len().to_string(),
+            t.success,
+            t,
+        ),
+        kv(
+            t.glyphs.attention,
+            "unknowns",
+            spec.open_unknown_count().to_string(),
+            if spec.open_unknown_count() == 0 {
+                t.success
+            } else {
+                t.warning
+            },
+            t,
+        ),
+        kv(
+            t.glyphs.branch,
+            "decisions",
+            spec.intent.user_decisions.len().to_string(),
+            t.accent_alt,
+            t,
+        ),
         Line::from(""),
     ];
     if let Some(question) = spec.next_question() {
-        lines.push(Line::from(Span::styled("Highest-value question", Style::default().fg(t.warning).add_modifier(Modifier::BOLD))));
-        lines.push(Line::from(Span::styled(question.question.clone(), Style::default().fg(t.text))));
-        lines.push(Line::from(Span::styled(format!("question value: {} · resolution: ask_user", question.question_value()), Style::default().fg(t.muted))));
+        lines.push(Line::from(Span::styled(
+            "Highest-value question",
+            Style::default().fg(t.warning).add_modifier(Modifier::BOLD),
+        )));
+        lines.push(Line::from(Span::styled(
+            question.question.clone(),
+            Style::default().fg(t.text),
+        )));
+        lines.push(Line::from(Span::styled(
+            format!(
+                "question value: {} · resolution: ask_user",
+                question.question_value()
+            ),
+            Style::default().fg(t.muted),
+        )));
         lines.push(Line::from(""));
     }
     for goal in spec.intent.goals.iter().take(4) {
@@ -312,7 +438,11 @@ fn render_intent(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     }
     frame.render_widget(
         Paragraph::new(lines)
-            .block(card(" INTENT / DECISIONS / UNKNOWNS ", t, app.focus == FocusTarget::Content))
+            .block(card(
+                " INTENT / DECISIONS / UNKNOWNS ",
+                t,
+                app.focus == FocusTarget::Content,
+            ))
             .wrap(Wrap { trim: true }),
         area,
     );
@@ -321,7 +451,13 @@ fn render_intent(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
 fn render_research(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     let t = app.theme;
     let Some(spec) = app.spec.as_ref() else {
-        render_empty(frame, area, t, " RESEARCH ", "No research state exists. /research-import <artifact.json> ingests a real ResearchArtifact; acquisition is not mocked.");
+        render_empty(
+            frame,
+            area,
+            t,
+            " RESEARCH ",
+            "No research state exists. /research-import <artifact.json> ingests a real ResearchArtifact; acquisition is not mocked.",
+        );
         return;
     };
     let findings = spec
@@ -330,20 +466,50 @@ fn render_research(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
         .map(|ir| ir.research_findings.as_slice())
         .unwrap_or(&[]);
     let mut lines = vec![
-        kv(t.glyphs.research, "artifacts", spec.research_artifact_count.to_string(), t.accent_alt, t),
-        kv(t.glyphs.ready, "claims", findings.len().to_string(), t.accent, t),
-        Line::from(Span::styled("External evidence never self-promotes into accepted requirements or decisions.", Style::default().fg(t.muted))),
+        kv(
+            t.glyphs.research,
+            "artifacts",
+            spec.research_artifact_count.to_string(),
+            t.accent_alt,
+            t,
+        ),
+        kv(
+            t.glyphs.ready,
+            "claims",
+            findings.len().to_string(),
+            t.accent,
+            t,
+        ),
+        Line::from(Span::styled(
+            "External evidence never self-promotes into accepted requirements or decisions.",
+            Style::default().fg(t.muted),
+        )),
         Line::from(""),
     ];
     if findings.is_empty() {
-        lines.push(Line::from(Span::styled("No source-backed research artifact is recorded.", Style::default().fg(t.text))));
-        lines.push(Line::from(Span::styled("Use /research-import <artifact.json> for schema-validated local ingestion.", Style::default().fg(t.accent))));
-        lines.push(Line::from(Span::styled("A network/search acquisition adapter is not fabricated in this step.", Style::default().fg(t.muted))));
+        lines.push(Line::from(Span::styled(
+            "No source-backed research artifact is recorded.",
+            Style::default().fg(t.text),
+        )));
+        lines.push(Line::from(Span::styled(
+            "Use /research-import <artifact.json> for schema-validated local ingestion.",
+            Style::default().fg(t.accent),
+        )));
+        lines.push(Line::from(Span::styled(
+            "A network/search acquisition adapter is not fabricated in this step.",
+            Style::default().fg(t.muted),
+        )));
     } else {
         for finding in findings.iter().take(8) {
             lines.push(Line::from(vec![
-                Span::styled(format!("{}  ", finding.claim_id), Style::default().fg(t.accent_alt)),
-                Span::styled(format!("{:?}", finding.status).to_ascii_lowercase(), Style::default().fg(t.muted)),
+                Span::styled(
+                    format!("{}  ", finding.claim_id),
+                    Style::default().fg(t.accent_alt),
+                ),
+                Span::styled(
+                    format!("{:?}", finding.status).to_ascii_lowercase(),
+                    Style::default().fg(t.muted),
+                ),
                 Span::styled("  ", Style::default()),
                 Span::styled(finding.statement.clone(), Style::default().fg(t.text)),
             ]));
@@ -351,7 +517,11 @@ fn render_research(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     }
     frame.render_widget(
         Paragraph::new(lines)
-            .block(card(" RESEARCH EVIDENCE ", t, app.focus == FocusTarget::Content))
+            .block(card(
+                " RESEARCH EVIDENCE ",
+                t,
+                app.focus == FocusTarget::Content,
+            ))
             .wrap(Wrap { trim: true }),
         area,
     );
@@ -360,40 +530,115 @@ fn render_research(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
 fn render_ir(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     let t = app.theme;
     let Some(spec) = app.spec.as_ref() else {
-        render_empty(frame, area, t, " ENGINEERING IR ", "No Engineering IR exists. Type a request first.");
+        render_empty(
+            frame,
+            area,
+            t,
+            " ENGINEERING IR ",
+            "No Engineering IR exists. Type a request first.",
+        );
         return;
     };
     let Some(ir) = spec.ir.as_ref() else {
-        render_empty(frame, area, t, " ENGINEERING IR ", "Intent exists but no Engineering IR was compiled.");
+        render_empty(
+            frame,
+            area,
+            t,
+            " ENGINEERING IR ",
+            "Intent exists but no Engineering IR was compiled.",
+        );
         return;
     };
     let checksum = spec
         .checksum
         .as_ref()
-        .map_or("none".to_owned(), |checksum| format!("{:?}", checksum.severity).to_ascii_lowercase());
+        .map_or("none".to_owned(), |checksum| {
+            format!("{:?}", checksum.severity).to_ascii_lowercase()
+        });
     let mut lines = vec![
-        kv(t.glyphs.engineering_ir, "revision", spec.revision.to_string(), t.accent, t),
-        kv(t.glyphs.shield, "semantic checksum", checksum, if spec.checksum.as_ref().is_some_and(|checksum| checksum.severity == aer_domain::spec::ChecksumSeverity::None) { t.success } else { t.warning }, t),
-        kv(t.glyphs.ready, "goals", ir.goals.len().to_string(), t.success, t),
-        kv(t.glyphs.ready, "requirements", ir.functional_requirements.len().to_string(), t.accent, t),
-        kv(t.glyphs.ready, "acceptance criteria", ir.acceptance_criteria.len().to_string(), t.success, t),
-        kv(t.glyphs.attention, "unknowns", ir.unknowns.len().to_string(), if ir.unknowns.is_empty() { t.success } else { t.warning }, t),
-        kv(t.glyphs.research, "research findings", ir.research_findings.len().to_string(), t.accent_alt, t),
+        kv(
+            t.glyphs.engineering_ir,
+            "revision",
+            spec.revision.to_string(),
+            t.accent,
+            t,
+        ),
+        kv(
+            t.glyphs.shield,
+            "semantic checksum",
+            checksum,
+            if spec.semantic_checksum_clean() {
+                t.success
+            } else {
+                t.warning
+            },
+            t,
+        ),
+        kv(
+            t.glyphs.ready,
+            "goals",
+            ir.goals.len().to_string(),
+            t.success,
+            t,
+        ),
+        kv(
+            t.glyphs.ready,
+            "requirements",
+            ir.functional_requirements.len().to_string(),
+            t.accent,
+            t,
+        ),
+        kv(
+            t.glyphs.ready,
+            "acceptance criteria",
+            ir.acceptance_criteria.len().to_string(),
+            t.success,
+            t,
+        ),
+        kv(
+            t.glyphs.attention,
+            "unknowns",
+            ir.unknowns.len().to_string(),
+            if ir.unknowns.is_empty() {
+                t.success
+            } else {
+                t.warning
+            },
+            t,
+        ),
+        kv(
+            t.glyphs.research,
+            "research findings",
+            ir.research_findings.len().to_string(),
+            t.accent_alt,
+            t,
+        ),
         Line::from(""),
     ];
     if let Some(delta) = spec.latest_delta.as_ref() {
         lines.push(Line::from(Span::styled(
             format!("SpecDelta {} → {}", delta.base_revision, delta.new_revision),
-            Style::default().fg(t.accent_alt).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(t.accent_alt)
+                .add_modifier(Modifier::BOLD),
         )));
         lines.push(Line::from(Span::styled(
-            format!("added={} changed={} invalidated={}", delta.added_ids.len(), delta.changed_ids.len(), delta.invalidated_ids.len()),
+            format!(
+                "added={} changed={} invalidated={}",
+                delta.added_ids.len(),
+                delta.changed_ids.len(),
+                delta.invalidated_ids.len()
+            ),
             Style::default().fg(t.muted),
         )));
     }
     frame.render_widget(
         Paragraph::new(lines)
-            .block(card(" VERSIONED ENGINEERING IR ", t, app.focus == FocusTarget::Content))
+            .block(card(
+                " VERSIONED ENGINEERING IR ",
+                t,
+                app.focus == FocusTarget::Content,
+            ))
             .wrap(Wrap { trim: true }),
         area,
     );
@@ -402,43 +647,163 @@ fn render_ir(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
 fn render_workspace(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     let t = app.theme;
     let lines = vec![
-        kv(t.glyphs.workspace, "repo", app.workspace.repo_root.display().to_string(), t.accent, t),
-        kv(t.glyphs.branch, "repo id", short_id(&app.workspace.repo_id), t.accent_alt, t),
-        kv(t.glyphs.branch, "HEAD", short_id(&app.workspace.head_commit), t.text, t),
-        kv(t.glyphs.branch, "branch", app.workspace.branch.clone().unwrap_or_else(|| "detached".to_owned()), t.text, t),
-        kv(t.glyphs.shield, "state", if app.workspace.is_clean() { "clean".to_owned() } else { "dirty".to_owned() }, if app.workspace.is_clean() { t.success } else { t.warning }, t),
-        kv(t.glyphs.attention, "untracked", app.workspace.untracked_paths.len().to_string(), if app.workspace.untracked_paths.is_empty() { t.success } else { t.warning }, t),
+        kv(
+            t.glyphs.workspace,
+            "repo",
+            app.workspace.repo_root.display().to_string(),
+            t.accent,
+            t,
+        ),
+        kv(
+            t.glyphs.branch,
+            "repo id",
+            short_id(&app.workspace.repo_id),
+            t.accent_alt,
+            t,
+        ),
+        kv(
+            t.glyphs.branch,
+            "HEAD",
+            short_id(&app.workspace.head_commit),
+            t.text,
+            t,
+        ),
+        kv(
+            t.glyphs.branch,
+            "branch",
+            app.workspace
+                .branch
+                .clone()
+                .unwrap_or_else(|| "detached".to_owned()),
+            t.text,
+            t,
+        ),
+        kv(
+            t.glyphs.shield,
+            "state",
+            if app.workspace.is_clean() {
+                "clean".to_owned()
+            } else {
+                "dirty".to_owned()
+            },
+            if app.workspace.is_clean() {
+                t.success
+            } else {
+                t.warning
+            },
+            t,
+        ),
+        kv(
+            t.glyphs.attention,
+            "untracked",
+            app.workspace.untracked_paths.len().to_string(),
+            if app.workspace.untracked_paths.is_empty() {
+                t.success
+            } else {
+                t.warning
+            },
+            t,
+        ),
     ];
-    frame.render_widget(Paragraph::new(lines).block(card(" WORKSPACE EVIDENCE ", t, app.focus == FocusTarget::Content)).wrap(Wrap { trim: true }), area);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(card(
+                " WORKSPACE EVIDENCE ",
+                t,
+                app.focus == FocusTarget::Content,
+            ))
+            .wrap(Wrap { trim: true }),
+        area,
+    );
 }
 
 fn render_environment(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     let t = app.theme;
     let mut lines = vec![
-        kv(t.glyphs.environment, "platform", format!("{} / {}", app.environment.os, app.environment.architecture), t.accent, t),
-        kv(t.glyphs.shield, "fingerprint", short_id(&app.environment.digest), t.accent_alt, t),
-        kv(t.glyphs.ready, "tools", app.environment.tools.len().to_string(), t.success, t),
-        kv(t.glyphs.ready, "lockfiles", app.environment.lockfiles.len().to_string(), t.success, t),
+        kv(
+            t.glyphs.environment,
+            "platform",
+            format!("{} / {}", app.environment.os, app.environment.architecture),
+            t.accent,
+            t,
+        ),
+        kv(
+            t.glyphs.shield,
+            "fingerprint",
+            short_id(&app.environment.digest),
+            t.accent_alt,
+            t,
+        ),
+        kv(
+            t.glyphs.ready,
+            "tools",
+            app.environment.tools.len().to_string(),
+            t.success,
+            t,
+        ),
+        kv(
+            t.glyphs.ready,
+            "lockfiles",
+            app.environment.lockfiles.len().to_string(),
+            t.success,
+            t,
+        ),
         Line::from(""),
     ];
     for tool in app.environment.tools.iter().take(8) {
         lines.push(Line::from(vec![
             Span::styled(format!("{}  ", tool.name), Style::default().fg(t.text)),
-            Span::styled(tool.version.clone(), Style::default().fg(t.muted)),
+            Span::styled(
+                tool.version.clone().unwrap_or_else(|| "unknown".to_owned()),
+                Style::default().fg(t.muted),
+            ),
         ]));
     }
-    frame.render_widget(Paragraph::new(lines).block(card(" ENVIRONMENT IDENTITY ", t, app.focus == FocusTarget::Content)).wrap(Wrap { trim: true }), area);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(card(
+                " ENVIRONMENT IDENTITY ",
+                t,
+                app.focus == FocusTarget::Content,
+            ))
+            .wrap(Wrap { trim: true }),
+        area,
+    );
 }
 
 fn render_providers(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     let t = app.theme;
     let lines = vec![
-        kv(t.glyphs.providers, "gateway", "ready".to_owned(), t.success, t),
-        kv(t.glyphs.attention, "production profile", "not configured".to_owned(), t.warning, t),
-        kv(t.glyphs.shield, "raw credentials", "not stored by this surface".to_owned(), t.success, t),
+        kv(
+            t.glyphs.providers,
+            "gateway",
+            "ready".to_owned(),
+            t.success,
+            t,
+        ),
+        kv(
+            t.glyphs.attention,
+            "production profile",
+            "not configured".to_owned(),
+            t.warning,
+            t,
+        ),
+        kv(
+            t.glyphs.shield,
+            "raw credentials",
+            "not stored by this surface".to_owned(),
+            t.success,
+            t,
+        ),
         Line::from(""),
-        Line::from(Span::styled("This page is real provider state, not a mock configuration form.", Style::default().fg(t.text))),
-        Line::from(Span::styled("Authenticated production onboarding is enabled only when a supported provider transport/secure credential adapter exists.", Style::default().fg(t.muted))),
+        Line::from(Span::styled(
+            "This page is real provider state, not a mock configuration form.",
+            Style::default().fg(t.text),
+        )),
+        Line::from(Span::styled(
+            "Authenticated production onboarding is enabled only when a supported provider transport/secure credential adapter exists.",
+            Style::default().fg(t.muted),
+        )),
         Line::from(""),
         Line::from(vec![
             Span::styled("Navigate: ", Style::default().fg(t.muted)),
@@ -447,46 +812,147 @@ fn render_providers(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
             Span::styled("/activity", Style::default().fg(t.accent_alt)),
         ]),
     ];
-    frame.render_widget(Paragraph::new(lines).block(card(" PROVIDER GATEWAY ", t, app.focus == FocusTarget::Content)).wrap(Wrap { trim: true }), area);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(card(
+                " PROVIDER GATEWAY ",
+                t,
+                app.focus == FocusTarget::Content,
+            ))
+            .wrap(Wrap { trim: true }),
+        area,
+    );
 }
 
 fn render_activity(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     let t = app.theme;
     if let Some(error) = app.runtime_error.as_deref() {
-        render_empty(frame, area, t, " ACTIVITY ", &format!("Runtime catalog error: {error}"));
+        render_empty(
+            frame,
+            area,
+            t,
+            " ACTIVITY ",
+            &format!("Runtime catalog error: {error}"),
+        );
         return;
     }
-    let mut lines = vec![kv(t.glyphs.activity, "durable runs", app.runs.len().to_string(), t.accent, t), Line::from("")];
+    let mut lines = vec![
+        kv(
+            t.glyphs.activity,
+            "durable runs",
+            app.runs.len().to_string(),
+            t.accent,
+            t,
+        ),
+        Line::from(""),
+    ];
     if app.runs.is_empty() {
-        lines.push(Line::from(Span::styled("No durable runs are recorded for this workspace.", Style::default().fg(t.text))));
+        lines.push(Line::from(Span::styled(
+            "No durable runs are recorded for this workspace.",
+            Style::default().fg(t.text),
+        )));
     } else {
         for run in app.runs.iter().take(10) {
             let state = format!("{:?}", run.state).to_ascii_lowercase();
             lines.push(Line::from(vec![
-                Span::styled(format!("{}  ", short_id(&run.run_id)), Style::default().fg(t.accent_alt)),
-                Span::styled(format!("{state:<11}"), Style::default().fg(if run.accepted { t.success } else { t.text })),
-                Span::styled(if run.interrupted { " interrupted  " } else { "              " }, Style::default().fg(t.warning)),
+                Span::styled(
+                    format!("{}  ", short_id(&run.run_id)),
+                    Style::default().fg(t.accent_alt),
+                ),
+                Span::styled(
+                    format!("{state:<11}"),
+                    Style::default().fg(if run.accepted { t.success } else { t.text }),
+                ),
+                Span::styled(
+                    if run.interrupted {
+                        " interrupted  "
+                    } else {
+                        "              "
+                    },
+                    Style::default().fg(t.warning),
+                ),
                 Span::styled(run.goal.clone(), Style::default().fg(t.muted)),
             ]));
         }
     }
-    frame.render_widget(Paragraph::new(lines).block(card(" DURABLE RUNTIME ACTIVITY ", t, app.focus == FocusTarget::Content)).wrap(Wrap { trim: true }), area);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(card(
+                " DURABLE RUNTIME ACTIVITY ",
+                t,
+                app.focus == FocusTarget::Content,
+            ))
+            .wrap(Wrap { trim: true }),
+        area,
+    );
 }
 
 fn render_settings(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     let t = app.theme;
     let lines = vec![
-        kv(t.glyphs.settings, "activation model", "slash commands + natural text".to_owned(), t.accent, t),
-        kv(t.glyphs.command, "composer", "persistent bottom input".to_owned(), t.success, t),
-        kv(t.glyphs.command, "arrows", "navigation / history / slash selection".to_owned(), t.success, t),
-        kv(t.glyphs.command, "tab", "composer → navigation → content".to_owned(), t.text, t),
-        kv(t.glyphs.command, "Esc / Ctrl+C", "clear composer or go back".to_owned(), t.text, t),
+        kv(
+            t.glyphs.settings,
+            "activation model",
+            "slash commands + natural text".to_owned(),
+            t.accent,
+            t,
+        ),
+        kv(
+            t.glyphs.command,
+            "composer",
+            "persistent bottom input".to_owned(),
+            t.success,
+            t,
+        ),
+        kv(
+            t.glyphs.command,
+            "arrows",
+            "navigation / history / slash selection".to_owned(),
+            t.success,
+            t,
+        ),
+        kv(
+            t.glyphs.command,
+            "tab",
+            "composer → navigation → content".to_owned(),
+            t.text,
+            t,
+        ),
+        kv(
+            t.glyphs.command,
+            "Esc / Ctrl+C",
+            "clear composer or go back".to_owned(),
+            t.text,
+            t,
+        ),
         kv(t.glyphs.command, "F1 / /help", "help".to_owned(), t.text, t),
-        kv(t.glyphs.settings, "ASCII fallback", if std::env::var_os("EVERYTHING_ASCII").is_some() { "enabled".to_owned() } else { "disabled".to_owned() }, t.muted, t),
+        kv(
+            t.glyphs.settings,
+            "ASCII fallback",
+            if std::env::var_os("EVERYTHING_ASCII").is_some() {
+                "enabled".to_owned()
+            } else {
+                "disabled".to_owned()
+            },
+            t.muted,
+            t,
+        ),
         Line::from(""),
-        Line::from(Span::styled("Single-letter q is ordinary text. Exit is /quit.", Style::default().fg(t.accent_alt))),
+        Line::from(Span::styled(
+            "Single-letter q is ordinary text. Exit is /quit.",
+            Style::default().fg(t.accent_alt),
+        )),
     ];
-    frame.render_widget(Paragraph::new(lines).block(card(" TERMINAL SETTINGS ", t, app.focus == FocusTarget::Content)).wrap(Wrap { trim: true }), area);
+    frame.render_widget(
+        Paragraph::new(lines)
+            .block(card(
+                " TERMINAL SETTINGS ",
+                t,
+                app.focus == FocusTarget::Content,
+            ))
+            .wrap(Wrap { trim: true }),
+        area,
+    );
 }
 
 fn render_slash_suggestions(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
@@ -497,7 +963,10 @@ fn render_slash_suggestions(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
         .take(4)
         .map(|entry| {
             ListItem::new(Line::from(vec![
-                Span::styled(format!("{:<24}", entry.usage), Style::default().fg(t.accent)),
+                Span::styled(
+                    format!("{:<24}", entry.usage),
+                    Style::default().fg(t.accent),
+                ),
                 Span::styled(entry.description, Style::default().fg(t.muted)),
             ]))
         })
@@ -506,9 +975,17 @@ fn render_slash_suggestions(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     let mut state = ListState::default().with_selected((!items.is_empty()).then_some(selected));
     frame.render_stateful_widget(
         List::new(items)
-            .block(card(" SLASH COMMANDS · ↑↓ SELECT · ENTER COMPLETE/RUN ", t, true))
+            .block(card(
+                " SLASH COMMANDS · ↑↓ SELECT · ENTER COMPLETE/RUN ",
+                t,
+                true,
+            ))
             .highlight_symbol("› ")
-            .highlight_style(Style::default().fg(t.accent_alt).add_modifier(Modifier::BOLD)),
+            .highlight_style(
+                Style::default()
+                    .fg(t.accent_alt)
+                    .add_modifier(Modifier::BOLD),
+            ),
         area,
         &mut state,
     );
@@ -518,15 +995,26 @@ fn render_composer(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     let t = app.theme;
     let (left, right) = split_at_char(&app.composer, app.composer_cursor);
     let message = Line::from(vec![
-        Span::styled(" › ", Style::default().fg(t.accent).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            " › ",
+            Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+        ),
         Span::styled(left, Style::default().fg(t.text)),
-        Span::styled("▏", Style::default().fg(t.accent_alt).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            "▏",
+            Style::default()
+                .fg(t.accent_alt)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::styled(right, Style::default().fg(t.text)),
     ]);
     let status = if let Some(notice) = app.notice.as_deref() {
         Line::from(Span::styled(notice, Style::default().fg(t.warning)))
     } else if let Some(error) = app.spec_error.as_deref() {
-        Line::from(Span::styled(format!("spec error · {error}"), Style::default().fg(t.danger)))
+        Line::from(Span::styled(
+            format!("spec error · {error}"),
+            Style::default().fg(t.danger),
+        ))
     } else {
         Line::from(vec![
             Span::styled(" natural request", Style::default().fg(t.muted)),
@@ -555,13 +1043,22 @@ fn render_help(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
     let popup = centered_rect(86, 84, area);
     frame.render_widget(Clear, popup);
     let mut lines = vec![
-        Line::from(Span::styled("everything command model", Style::default().fg(t.accent).add_modifier(Modifier::BOLD))),
-        Line::from(Span::styled("Slash commands are the primary activation surface; arrows and text entry remain first-class.", Style::default().fg(t.muted))),
+        Line::from(Span::styled(
+            "everything command model",
+            Style::default().fg(t.accent).add_modifier(Modifier::BOLD),
+        )),
+        Line::from(Span::styled(
+            "Slash commands are the primary activation surface; arrows and text entry remain first-class.",
+            Style::default().fg(t.muted),
+        )),
         Line::from(""),
     ];
     for entry in slash::ENTRIES {
         lines.push(Line::from(vec![
-            Span::styled(format!("{:<30}", entry.usage), Style::default().fg(t.accent_alt)),
+            Span::styled(
+                format!("{:<30}", entry.usage),
+                Style::default().fg(t.accent_alt),
+            ),
             Span::styled(entry.description, Style::default().fg(t.text)),
         ]));
     }
@@ -580,14 +1077,17 @@ fn render_help(frame: &mut Frame<'_>, area: Rect, app: &AppState) {
 
 fn render_empty(frame: &mut Frame<'_>, area: Rect, t: Theme, title: &str, message: &str) {
     frame.render_widget(
-        Paragraph::new(vec![Line::from(""), Line::from(Span::styled(message, Style::default().fg(t.muted)))])
-            .block(card(title, t, false))
-            .wrap(Wrap { trim: true }),
+        Paragraph::new(vec![
+            Line::from(""),
+            Line::from(Span::styled(message, Style::default().fg(t.muted))),
+        ])
+        .block(card(title, t, false))
+        .wrap(Wrap { trim: true }),
         area,
     );
 }
 
-fn card(title: &'static str, t: Theme, focused: bool) -> Block<'static> {
+fn card<'a>(title: &'a str, t: Theme, focused: bool) -> Block<'a> {
     Block::default()
         .title(title)
         .borders(Borders::ALL)
@@ -595,9 +1095,18 @@ fn card(title: &'static str, t: Theme, focused: bool) -> Block<'static> {
         .style(Style::default().bg(t.panel).fg(t.text))
 }
 
-fn kv(icon: &str, label: &str, value: String, value_color: ratatui::style::Color, t: Theme) -> Line<'static> {
+fn kv(
+    icon: &str,
+    label: &str,
+    value: String,
+    value_color: ratatui::style::Color,
+    t: Theme,
+) -> Line<'static> {
     Line::from(vec![
-        Span::styled(format!(" {icon}  {label:<18}"), Style::default().fg(t.muted)),
+        Span::styled(
+            format!(" {icon}  {label:<18}"),
+            Style::default().fg(t.muted),
+        ),
         Span::styled(value, Style::default().fg(value_color)),
     ])
 }
