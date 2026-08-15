@@ -29,25 +29,41 @@ function Invoke-Checked {
     }
 }
 
-function Invoke-PinnedCargo {
+function Resolve-RustupTool {
     param(
         [Parameter(Mandatory = $true)]
-        [string[]]$CargoArguments
+        [string]$Tool
     )
 
-    $RustupArguments = @("run", $Toolchain, "cargo") + $CargoArguments
-    Invoke-Checked -FilePath "rustup" -Arguments $RustupArguments
+    $Output = & rustup which --toolchain $Toolchain $Tool
+    if ($LASTEXITCODE -ne 0) {
+        throw "Unable to resolve $Tool from pinned toolchain $Toolchain."
+    }
+    $Path = ($Output | Select-Object -First 1).Trim()
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "rustup returned an invalid $Tool path: $Path"
+    }
+    return (Resolve-Path -LiteralPath $Path).Path
 }
 
 $IsCi = $env:CI -eq "true"
 $OverrideNames = @(
     "RUSTC",
+    "RUSTDOC",
     "RUSTC_WRAPPER",
+    "RUSTC_WORKSPACE_WRAPPER",
     "RUSTFLAGS",
+    "RUSTDOCFLAGS",
+    "CARGO",
     "CARGO_ENCODED_RUSTFLAGS",
+    "CARGO_BUILD_RUSTC",
+    "CARGO_BUILD_RUSTC_WRAPPER",
+    "CARGO_BUILD_RUSTC_WORKSPACE_WRAPPER",
     "CARGO_BUILD_TARGET",
     "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER",
+    "CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_RUSTFLAGS",
     "CARGO_TARGET_X86_64_PC_WINDOWS_GNULLVM_LINKER",
+    "CLIPPY_ARGS",
     "CC",
     "CXX",
     "AR",
@@ -65,6 +81,7 @@ foreach ($Name in $OverrideNames) {
     $SavedEnvironment[$Name] = [Environment]::GetEnvironmentVariable($Name, "Process")
     [Environment]::SetEnvironmentVariable($Name, $null, "Process")
 }
+$OriginalPath = $env:PATH
 
 $LocationPushed = $false
 try {
@@ -80,9 +97,20 @@ try {
         )
     }
 
-    $RustcInfoLines = & rustup run $Toolchain rustc -vV
+    $CargoPath = Resolve-RustupTool -Tool "cargo"
+    $RustcPath = Resolve-RustupTool -Tool "rustc"
+    $RustdocPath = Resolve-RustupTool -Tool "rustdoc"
+    $ToolchainBin = Split-Path -Parent $CargoPath
+
+    $env:PATH = "$ToolchainBin;$OriginalPath"
+    $env:CARGO = $CargoPath
+    $env:RUSTC = $RustcPath
+    $env:RUSTDOC = $RustdocPath
+    $env:CARGO_TARGET_DIR = $TargetDir
+
+    $RustcInfoLines = & $RustcPath -vV
     if ($LASTEXITCODE -ne 0) {
-        throw "Unable to execute rustc from pinned toolchain $Toolchain."
+        throw "Unable to execute pinned rustc at $RustcPath."
     }
     $RustcInfo = $RustcInfoLines -join "`n"
     if ($RustcInfo -notmatch "(?m)^release:\s+1\.97\.1$") {
@@ -92,30 +120,30 @@ try {
         throw "Pinned host invariant failed: expected x86_64-pc-windows-msvc.`n$RustcInfo"
     }
 
-    $env:CARGO_TARGET_DIR = $TargetDir
-
     if (-not $IsCi) {
         Write-Host "AER Windows verification"
         Write-Host "  toolchain:  $Toolchain"
+        Write-Host "  cargo:      $CargoPath"
+        Write-Host "  rustc:      $RustcPath"
         Write-Host "  target:     $Target"
         Write-Host "  target dir: $TargetDir"
     }
 
-    Invoke-PinnedCargo -CargoArguments @("fmt", "--all", "--check")
-    Invoke-PinnedCargo -CargoArguments @(
+    Invoke-Checked -FilePath $CargoPath -Arguments @("fmt", "--all", "--check")
+    Invoke-Checked -FilePath $CargoPath -Arguments @(
         "clippy", "--locked", "--workspace", "--all-targets", "--target", $Target,
         "--", "-D", "warnings"
     )
-    Invoke-PinnedCargo -CargoArguments @(
+    Invoke-Checked -FilePath $CargoPath -Arguments @(
         "test", "--locked", "--workspace", "--all-targets", "--target", $Target
     )
-    Invoke-PinnedCargo -CargoArguments @(
+    Invoke-Checked -FilePath $CargoPath -Arguments @(
         "test", "--locked", "-p", "aer-storage", "--all-targets", "--target", $Target
     )
-    Invoke-PinnedCargo -CargoArguments @(
+    Invoke-Checked -FilePath $CargoPath -Arguments @(
         "run", "--locked", "--target", $Target, "-p", "aer-doc-check", "--", "--check"
     )
-    Invoke-PinnedCargo -CargoArguments @(
+    Invoke-Checked -FilePath $CargoPath -Arguments @(
         "run", "--locked", "--target", $Target, "-p", "aer-phase0-check", "--", "--check"
     )
 
@@ -125,6 +153,7 @@ finally {
     if ($LocationPushed) {
         Pop-Location
     }
+    $env:PATH = $OriginalPath
     foreach ($Name in $OverrideNames) {
         [Environment]::SetEnvironmentVariable($Name, $SavedEnvironment[$Name], "Process")
     }
