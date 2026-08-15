@@ -41,6 +41,10 @@ impl WorkspaceMutationLock {
             .read(true)
             .write(true)
             .create(true)
+            // Never truncate before winning the OS lock: doing so could mutate
+            // the current owner's diagnostic metadata while it still owns the
+            // repository. Metadata is replaced only after try_lock succeeds.
+            .truncate(false)
             .open(&path)
             .map_err(WorkspaceLockError::Io)?;
 
