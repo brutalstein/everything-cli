@@ -133,6 +133,12 @@ impl LeaseBook {
         if lease.id != lease_id {
             return Err(LeaseError::LeaseMismatch);
         }
+        if now_ms < lease.last_heartbeat_ms {
+            return Err(LeaseError::ClockRegression {
+                previous_ms: lease.last_heartbeat_ms,
+                observed_ms: now_ms,
+            });
+        }
         if lease.health(now_ms) == LeaseHealth::Expired {
             return Err(LeaseError::ReconciliationRequired(task_id.to_owned()));
         }
@@ -162,6 +168,12 @@ impl LeaseBook {
         if lease.id != lease_id {
             return Err(LeaseError::LeaseMismatch);
         }
+        if now_ms < lease.last_heartbeat_ms {
+            return Err(LeaseError::ClockRegression {
+                previous_ms: lease.last_heartbeat_ms,
+                observed_ms: now_ms,
+            });
+        }
         if lease.health(now_ms) != LeaseHealth::Expired {
             return Err(LeaseError::NotExpired);
         }
@@ -181,6 +193,12 @@ impl LeaseBook {
             .ok_or_else(|| LeaseError::UnknownTask(task_id.to_owned()))?;
         if lease.id != lease_id {
             return Err(LeaseError::LeaseMismatch);
+        }
+        if now_ms < lease.last_heartbeat_ms {
+            return Err(LeaseError::ClockRegression {
+                previous_ms: lease.last_heartbeat_ms,
+                observed_ms: now_ms,
+            });
         }
         if lease.health(now_ms) != LeaseHealth::Expired || !lease.expiry_observed {
             return Err(LeaseError::ReconciliationRequired(task_id.to_owned()));
@@ -218,6 +236,7 @@ pub enum LeaseError {
     UnknownTask(String),
     LeaseMismatch,
     NotExpired,
+    ClockRegression { previous_ms: u64, observed_ms: u64 },
     ArithmeticOverflow,
 }
 
@@ -244,6 +263,13 @@ impl fmt::Display for LeaseError {
                 formatter.write_str("lease identifier does not match active lease")
             }
             Self::NotExpired => formatter.write_str("lease has not expired"),
+            Self::ClockRegression {
+                previous_ms,
+                observed_ms,
+            } => write!(
+                formatter,
+                "lease clock regressed from {previous_ms}ms to {observed_ms}ms"
+            ),
             Self::ArithmeticOverflow => formatter.write_str("lease deadline arithmetic overflow"),
         }
     }
@@ -292,6 +318,23 @@ mod tests {
         assert_eq!(
             leases.heartbeat("task", first.id, u64::MAX - 15),
             Err(LeaseError::ArithmeticOverflow)
+        );
+        assert_eq!(leases.lease("task"), Some(&first));
+    }
+
+    #[test]
+    fn heartbeat_rejects_clock_regression_without_mutation() {
+        let policy = LeasePolicy::new(10, 20).expect("policy");
+        let mut leases = LeaseBook::new(policy);
+        let first = leases
+            .acquire("task", "worker", EffectClass::Pure, 100)
+            .expect("lease");
+        assert_eq!(
+            leases.heartbeat("task", first.id, 99),
+            Err(LeaseError::ClockRegression {
+                previous_ms: 100,
+                observed_ms: 99,
+            })
         );
         assert_eq!(leases.lease("task"), Some(&first));
     }

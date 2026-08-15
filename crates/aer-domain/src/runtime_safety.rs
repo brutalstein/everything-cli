@@ -117,6 +117,9 @@ impl RuntimeSafetyKernel {
         Ok(())
     }
 
+    /// Performs non-terminal lifecycle transitions. Verification completion and
+    /// cancellation terminalization are deliberately separate protocols because
+    /// they must reconcile owned leases/resources before exposing the new state.
     pub fn transition_task(
         &mut self,
         task_id: &str,
@@ -127,7 +130,10 @@ impl RuntimeSafetyKernel {
             .tasks
             .get_mut(task_id)
             .ok_or_else(|| RuntimeSafetyError::UnknownTask(task_id.to_owned()))?;
-        if !task.cancellation.allows_new_child_actions() && next != TaskState::Cancelled {
+        if matches!(next, TaskState::Accepted | TaskState::Rejected | TaskState::Cancelled) {
+            return Err(RuntimeSafetyError::FinalizationProtocolRequired(next));
+        }
+        if !task.cancellation.allows_new_child_actions() {
             return Err(RuntimeSafetyError::CancellationInProgress);
         }
         task.state = task.state.transition(next, context)?;
@@ -159,6 +165,9 @@ impl RuntimeSafetyKernel {
         if !task.cancellation.allows_new_child_actions() {
             return Err(RuntimeSafetyError::CancellationInProgress);
         }
+        let next_state = task
+            .state
+            .transition(TaskState::Running, TaskTransitionContext::default())?;
 
         let owner = owner.into();
         let reservation = self.governor.admit(task_id.to_owned(), class, estimate)?;
@@ -181,9 +190,7 @@ impl RuntimeSafetyKernel {
             .tasks
             .get_mut(task_id)
             .expect("task existence checked before admission");
-        task.state = task
-            .state
-            .transition(TaskState::Running, TaskTransitionContext::default())?;
+        task.state = next_state;
         task.active_attempt = Some(ownership.clone());
         Ok(ownership)
     }
@@ -246,6 +253,48 @@ impl RuntimeSafetyKernel {
         Ok(())
     }
 
+    /// Completes the verification protocol, releases attempt ownership, and
+    /// only then publishes either `Accepted` or `Rejected` in memory.
+    pub fn finalize_verification(
+        &mut self,
+        task_id: &str,
+        proof_accepted: bool,
+    ) -> Result<TaskState, RuntimeSafetyError> {
+        let (ownership, next_state) = {
+            let task = self
+                .tasks
+                .get(task_id)
+                .ok_or_else(|| RuntimeSafetyError::UnknownTask(task_id.to_owned()))?;
+            if !task.cancellation.allows_new_child_actions() {
+                return Err(RuntimeSafetyError::CancellationInProgress);
+            }
+            let ownership = task
+                .active_attempt
+                .clone()
+                .ok_or(RuntimeSafetyError::NoActiveAttempt)?;
+            let target = if proof_accepted {
+                TaskState::Accepted
+            } else {
+                TaskState::Rejected
+            };
+            let next_state = task.state.transition(
+                target,
+                TaskTransitionContext {
+                    proof_accepted,
+                    cancellation_finalized: false,
+                },
+            )?;
+            (ownership, next_state)
+        };
+
+        self.release_attempt(task_id, &ownership)?;
+        let task = self.task_mut(task_id)?;
+        task.state = next_state;
+        task.active_attempt = None;
+        task.reconciliation_required = false;
+        Ok(next_state)
+    }
+
     pub fn request_cancellation(
         &mut self,
         task_id: &str,
@@ -253,6 +302,9 @@ impl RuntimeSafetyKernel {
         cleanup_grace_ms: u64,
     ) -> Result<CancellationPhase, RuntimeSafetyError> {
         let task = self.task_mut(task_id)?;
+        if task.state.is_terminal() {
+            return Err(RuntimeSafetyError::TaskAlreadyTerminal(task.state));
+        }
         task.cancellation.request(now_ms, cleanup_grace_ms)?;
         Ok(task.cancellation.phase())
     }
@@ -275,27 +327,33 @@ impl RuntimeSafetyKernel {
     }
 
     pub fn complete_cancellation(&mut self, task_id: &str) -> Result<(), RuntimeSafetyError> {
-        let ownership = self
-            .tasks
-            .get(task_id)
-            .ok_or_else(|| RuntimeSafetyError::UnknownTask(task_id.to_owned()))?
-            .active_attempt
-            .clone();
-        if let Some(ownership) = ownership {
-            if let Some(reservation_id) = ownership.reservation_id {
-                self.governor.release(reservation_id)?;
-            }
-            self.leases.release(task_id, ownership.lease_id)?;
+        let (ownership, completed_cancellation, cancelled_state) = {
+            let task = self
+                .tasks
+                .get(task_id)
+                .ok_or_else(|| RuntimeSafetyError::UnknownTask(task_id.to_owned()))?;
+            let mut completed_cancellation = task.cancellation;
+            completed_cancellation.complete()?;
+            let cancelled_state = task.state.transition(
+                TaskState::Cancelled,
+                TaskTransitionContext {
+                    proof_accepted: false,
+                    cancellation_finalized: true,
+                },
+            )?;
+            (
+                task.active_attempt.clone(),
+                completed_cancellation,
+                cancelled_state,
+            )
+        };
+
+        if let Some(ownership) = ownership.as_ref() {
+            self.release_attempt(task_id, ownership)?;
         }
         let task = self.task_mut(task_id)?;
-        task.cancellation.complete()?;
-        task.state = task.state.transition(
-            TaskState::Cancelled,
-            TaskTransitionContext {
-                proof_accepted: false,
-                cancellation_finalized: true,
-            },
-        )?;
+        task.cancellation = completed_cancellation;
+        task.state = cancelled_state;
         task.active_attempt = None;
         task.reconciliation_required = false;
         Ok(())
@@ -316,6 +374,32 @@ impl RuntimeSafetyKernel {
     #[must_use]
     pub const fn resource_usage(&self) -> ResourceVector {
         self.governor.usage()
+    }
+
+    fn release_attempt(
+        &mut self,
+        task_id: &str,
+        ownership: &AttemptOwnership,
+    ) -> Result<(), RuntimeSafetyError> {
+        let lease = self
+            .leases
+            .lease(task_id)
+            .ok_or_else(|| LeaseError::UnknownTask(task_id.to_owned()))?;
+        if lease.id != ownership.lease_id {
+            return Err(LeaseError::LeaseMismatch.into());
+        }
+        if let Some(reservation_id) = ownership.reservation_id {
+            let reservation = self
+                .governor
+                .reservation_for(task_id)
+                .ok_or(ResourceError::AccountingInvariant)?;
+            if reservation.id != reservation_id {
+                return Err(ResourceError::AccountingInvariant.into());
+            }
+            self.governor.release(reservation_id)?;
+        }
+        self.leases.release(task_id, ownership.lease_id)?;
+        Ok(())
     }
 
     fn ownership(&self, task_id: &str) -> Result<&AttemptOwnership, RuntimeSafetyError> {
@@ -343,6 +427,8 @@ pub enum RuntimeSafetyError {
     UnknownTask(String),
     ProjectNotAdmittingWork,
     TaskNotReady(TaskState),
+    TaskAlreadyTerminal(TaskState),
+    FinalizationProtocolRequired(TaskState),
     AttemptAlreadyOwned,
     NoActiveAttempt,
     CancellationInProgress,
@@ -366,6 +452,12 @@ impl fmt::Display for RuntimeSafetyError {
                 formatter.write_str("project is not admitting new work")
             }
             Self::TaskNotReady(state) => write!(formatter, "task is not ready: {state:?}"),
+            Self::TaskAlreadyTerminal(state) => {
+                write!(formatter, "task is already terminal: {state:?}")
+            }
+            Self::FinalizationProtocolRequired(state) => {
+                write!(formatter, "task state {state:?} requires a finalization protocol")
+            }
             Self::AttemptAlreadyOwned => {
                 formatter.write_str("task already has owned attempt state")
             }
@@ -416,7 +508,7 @@ mod tests {
         state_machines::{TaskState, TaskTransitionContext},
     };
 
-    use super::RuntimeSafetyKernel;
+    use super::{RuntimeSafetyError, RuntimeSafetyKernel};
 
     fn kernel() -> RuntimeSafetyKernel {
         let hard = ResourceVector {
@@ -477,6 +569,85 @@ mod tests {
         let task = kernel.task("task").expect("task state");
         assert_eq!(task.state, TaskState::Cancelled);
         assert!(task.active_attempt.is_none());
+    }
+
+    #[test]
+    fn generic_transition_cannot_bypass_finalization_protocols() {
+        let mut kernel = kernel();
+        ready_task(&mut kernel, "task");
+        assert_eq!(
+            kernel.transition_task(
+                "task",
+                TaskState::Cancelled,
+                TaskTransitionContext {
+                    proof_accepted: false,
+                    cancellation_finalized: true,
+                },
+            ),
+            Err(RuntimeSafetyError::FinalizationProtocolRequired(
+                TaskState::Cancelled
+            ))
+        );
+    }
+
+    #[test]
+    fn verification_finalization_releases_attempt_for_reject_and_accept() {
+        let mut kernel = kernel();
+        ready_task(&mut kernel, "task");
+        kernel
+            .start_task(
+                "task",
+                "worker-1",
+                AdmissionClass::Generator,
+                demand(),
+                EffectClass::Pure,
+                0,
+            )
+            .expect("first attempt");
+        kernel
+            .transition_task(
+                "task",
+                TaskState::Verifying,
+                TaskTransitionContext::default(),
+            )
+            .expect("verifying");
+        assert_eq!(
+            kernel.finalize_verification("task", false),
+            Ok(TaskState::Rejected)
+        );
+        assert_eq!(kernel.resource_usage(), ResourceVector::default());
+        assert!(kernel.task("task").expect("task").active_attempt.is_none());
+
+        kernel
+            .transition_task("task", TaskState::Ready, TaskTransitionContext::default())
+            .expect("retry ready");
+        kernel
+            .start_task(
+                "task",
+                "worker-2",
+                AdmissionClass::Generator,
+                demand(),
+                EffectClass::Pure,
+                1,
+            )
+            .expect("second attempt");
+        kernel
+            .transition_task(
+                "task",
+                TaskState::Verifying,
+                TaskTransitionContext::default(),
+            )
+            .expect("verifying again");
+        assert_eq!(
+            kernel.finalize_verification("task", true),
+            Ok(TaskState::Accepted)
+        );
+        assert_eq!(kernel.resource_usage(), ResourceVector::default());
+        assert!(kernel.task("task").expect("task").active_attempt.is_none());
+        assert_eq!(
+            kernel.request_cancellation("task", 2, 1),
+            Err(RuntimeSafetyError::TaskAlreadyTerminal(TaskState::Accepted))
+        );
     }
 
     #[test]

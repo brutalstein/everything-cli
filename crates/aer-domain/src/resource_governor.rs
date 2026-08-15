@@ -282,16 +282,25 @@ impl ResourceGovernor {
         Ok(reservation)
     }
 
+    /// Releases a reservation without mutating any index until all accounting
+    /// preconditions have been validated.
     pub fn release(&mut self, reservation_id: u64) -> Result<Reservation, ResourceError> {
         let reservation = self
             .reservations
-            .remove(&reservation_id)
+            .get(&reservation_id)
+            .cloned()
             .ok_or(ResourceError::UnknownReservation(reservation_id))?;
-        self.owner_index.remove(&reservation.owner);
-        self.used = self
+        if self.owner_index.get(&reservation.owner).copied() != Some(reservation_id) {
+            return Err(ResourceError::AccountingInvariant);
+        }
+        let next_used = self
             .used
             .checked_sub(reservation.demand)
             .ok_or(ResourceError::AccountingInvariant)?;
+
+        self.reservations.remove(&reservation_id);
+        self.owner_index.remove(&reservation.owner);
+        self.used = next_used;
         Ok(reservation)
     }
 
@@ -376,6 +385,32 @@ mod tests {
     }
 
     #[test]
+    fn restriction_lattice_is_monotone_across_small_exhaustive_domain() {
+        for upper_workers in 1..=6 {
+            for lower_workers in 1..=8 {
+                for upper_memory in 1..=6 {
+                    for lower_memory in 1..=8 {
+                        let upper = ResourceLimits::new(
+                            vector(upper_workers, upper_memory),
+                            upper_workers.min(2),
+                        )
+                        .expect("upper");
+                        let lower = ResourceLimits::new(
+                            vector(lower_workers, lower_memory),
+                            lower_workers.min(3),
+                        )
+                        .expect("lower");
+                        let resolved = upper.restrict_with(lower);
+                        assert!(resolved.hard.fits_within(upper.hard));
+                        assert!(resolved.hard.fits_within(lower.hard));
+                        assert!(resolved.reserved_verifier_workers <= resolved.hard.worker_slots);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn verifier_capacity_is_protected_under_generator_load() {
         let limits = ResourceLimits::new(vector(4, 100), 1).expect("limits");
         let mut governor = ResourceGovernor::new(limits);
@@ -405,6 +440,71 @@ mod tests {
             )
             .expect("reserved verifier slot remains usable");
         assert_eq!(governor.usage().worker_slots, 4);
+    }
+
+    #[test]
+    fn admission_never_crosses_worker_hard_cap_or_verifier_reserve() {
+        for capacity in 1..=8 {
+            for reserve in 0..=capacity {
+                let limits = ResourceLimits::new(vector(capacity, 1_000), reserve).expect("limits");
+                let mut governor = ResourceGovernor::new(limits);
+                let generator_capacity = capacity - reserve;
+                for index in 0..generator_capacity {
+                    governor
+                        .admit(
+                            format!("generator-{index}"),
+                            AdmissionClass::Generator,
+                            ResourceEstimate::Known(vector(1, 1)),
+                        )
+                        .expect("generator within ceiling");
+                }
+                assert!(governor.usage().worker_slots <= generator_capacity);
+                if reserve > 0 {
+                    assert!(
+                        governor
+                            .admit(
+                                "extra-generator",
+                                AdmissionClass::Generator,
+                                ResourceEstimate::Known(vector(1, 1)),
+                            )
+                            .is_err()
+                    );
+                }
+                for index in 0..reserve {
+                    governor
+                        .admit(
+                            format!("verifier-{index}"),
+                            AdmissionClass::Verifier,
+                            ResourceEstimate::Known(vector(1, 1)),
+                        )
+                        .expect("verifier reserve remains usable");
+                }
+                assert_eq!(governor.usage().worker_slots, capacity);
+            }
+        }
+    }
+
+    #[test]
+    fn release_restores_capacity_and_owner_index() {
+        let limits = ResourceLimits::new(vector(2, 100), 0).expect("limits");
+        let mut governor = ResourceGovernor::new(limits);
+        let reservation = governor
+            .admit(
+                "task",
+                AdmissionClass::Generator,
+                ResourceEstimate::Known(vector(1, 10)),
+            )
+            .expect("reservation");
+        governor.release(reservation.id).expect("release");
+        assert_eq!(governor.usage(), ResourceVector::default());
+        assert!(governor.reservation_for("task").is_none());
+        governor
+            .admit(
+                "task",
+                AdmissionClass::Generator,
+                ResourceEstimate::Known(vector(1, 10)),
+            )
+            .expect("owner can reserve again after release");
     }
 
     #[test]
