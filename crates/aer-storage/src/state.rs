@@ -11,7 +11,7 @@ use crate::{
     DurabilityDiagnostics, ObjectHash, ObjectMetadata, Result, Sensitivity, StorageError,
     StoragePaths,
     migration::{self, MigrationFault},
-    object_store::{object_path, persist_bytes_atomically, read_verified},
+    object_store::{persist_bytes_atomically, read_verified},
 };
 
 /// Single-coordinator durable-state kernel.
@@ -336,7 +336,7 @@ pub(crate) fn validate_identifier(field: &'static str, value: &str) -> Result<()
 
 #[cfg(test)]
 pub(crate) fn object_file_path(paths: &StoragePaths, hash: &ObjectHash) -> PathBuf {
-    object_path(paths.objects(), hash)
+    crate::object_store::object_path(paths.objects(), hash)
 }
 
 #[cfg(test)]
