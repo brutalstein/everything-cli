@@ -130,7 +130,10 @@ impl RuntimeSafetyKernel {
             .tasks
             .get_mut(task_id)
             .ok_or_else(|| RuntimeSafetyError::UnknownTask(task_id.to_owned()))?;
-        if matches!(next, TaskState::Accepted | TaskState::Rejected | TaskState::Cancelled) {
+        if matches!(
+            next,
+            TaskState::Accepted | TaskState::Rejected | TaskState::Cancelled
+        ) {
             return Err(RuntimeSafetyError::FinalizationProtocolRequired(next));
         }
         if !task.cancellation.allows_new_child_actions() {
@@ -456,7 +459,10 @@ impl fmt::Display for RuntimeSafetyError {
                 write!(formatter, "task is already terminal: {state:?}")
             }
             Self::FinalizationProtocolRequired(state) => {
-                write!(formatter, "task state {state:?} requires a finalization protocol")
+                write!(
+                    formatter,
+                    "task state {state:?} requires a finalization protocol"
+                )
             }
             Self::AttemptAlreadyOwned => {
                 formatter.write_str("task already has owned attempt state")
