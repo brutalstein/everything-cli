@@ -46,6 +46,34 @@ function Resolve-RustupTool {
     return (Resolve-Path -LiteralPath $Path).Path
 }
 
+function Remove-ProcessEnvironmentVariable {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+
+    $Path = "Env:$Name"
+    if (Test-Path -LiteralPath $Path) {
+        Remove-Item -LiteralPath $Path -Force
+    }
+}
+
+function Restore-ProcessEnvironmentVariable {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+        [AllowNull()]
+        [string]$Value
+    )
+
+    if ($null -eq $Value) {
+        Remove-ProcessEnvironmentVariable -Name $Name
+    }
+    else {
+        Set-Item -LiteralPath "Env:$Name" -Value $Value
+    }
+}
+
 $IsCi = $env:CI -eq "true"
 $OverrideNames = @(
     "RUSTC",
@@ -79,7 +107,7 @@ $OverrideNames = @(
 $SavedEnvironment = @{}
 foreach ($Name in $OverrideNames) {
     $SavedEnvironment[$Name] = [Environment]::GetEnvironmentVariable($Name, "Process")
-    [Environment]::SetEnvironmentVariable($Name, $null, "Process")
+    Remove-ProcessEnvironmentVariable -Name $Name
 }
 $OriginalPath = $env:PATH
 
@@ -155,6 +183,6 @@ finally {
     }
     $env:PATH = $OriginalPath
     foreach ($Name in $OverrideNames) {
-        [Environment]::SetEnvironmentVariable($Name, $SavedEnvironment[$Name], "Process")
+        Restore-ProcessEnvironmentVariable -Name $Name -Value $SavedEnvironment[$Name]
     }
 }
