@@ -14,7 +14,7 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 use crate::{
     slash::{self, SlashCommand, SlashEntry, SlashTarget},
-    theme::{Glyphs, Theme},
+    theme::Theme,
 };
 
 const MAX_HISTORY: usize = 100;
@@ -44,48 +44,6 @@ impl Screen {
         Self::Activity,
         Self::Settings,
     ];
-
-    pub(crate) const fn label(self) -> &'static str {
-        match self {
-            Self::Home => "Home",
-            Self::Intent => "Intent",
-            Self::Research => "Research",
-            Self::EngineeringIr => "Engineering IR",
-            Self::Workspace => "Workspace",
-            Self::Environment => "Environment",
-            Self::Providers => "Providers",
-            Self::Activity => "Activity",
-            Self::Settings => "Settings",
-        }
-    }
-
-    pub(crate) const fn slash(self) -> &'static str {
-        match self {
-            Self::Home => "/home",
-            Self::Intent => "/intent",
-            Self::Research => "/research",
-            Self::EngineeringIr => "/ir",
-            Self::Workspace => "/workspace",
-            Self::Environment => "/environment",
-            Self::Providers => "/providers",
-            Self::Activity => "/activity",
-            Self::Settings => "/settings",
-        }
-    }
-
-    pub(crate) const fn icon(self, glyphs: &Glyphs) -> &'static str {
-        match self {
-            Self::Home => glyphs.home,
-            Self::Intent => glyphs.intent,
-            Self::Research => glyphs.research,
-            Self::EngineeringIr => glyphs.engineering_ir,
-            Self::Workspace => glyphs.workspace,
-            Self::Environment => glyphs.environment,
-            Self::Providers => glyphs.providers,
-            Self::Activity => glyphs.activity,
-            Self::Settings => glyphs.settings,
-        }
-    }
 }
 
 impl From<SlashTarget> for Screen {
