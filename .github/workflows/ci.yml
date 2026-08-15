@@ -25,31 +25,12 @@ jobs:
         if: runner.os != 'Windows'
         run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
 
-      - name: Apply final Clippy repair
+      - name: Apply final Step 05 source repair
         if: runner.os == 'Linux'
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path("crates/aer-workspace/src/lib.rs")
-          s = p.read_text()
-          old = '''        if let Some(rest) = without_query.strip_prefix(scheme) {
-            if let Some(at) = rest.rfind('@') {
-                return format!("{scheme}{}", &rest[at + 1..]);
-            }
-        }
-'''
-          new = '''        if let Some(rest) = without_query.strip_prefix(scheme)
-            && let Some(at) = rest.rfind('@')
-        {
-            return format!("{scheme}{}", &rest[at + 1..]);
-        }
-'''
-          if old not in s:
-              raise SystemExit("expected collapsible-if block not found")
-          p.write_text(s.replace(old, new, 1))
-          PY
+          python3 .github/scripts/fix_step05_clippy.py
           cargo +1.97.1 fmt --all
           git config user.name "everything-ci"
           git config user.email "everything-ci@users.noreply.github.com"
