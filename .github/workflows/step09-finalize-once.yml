@@ -1,0 +1,72 @@
+name: step09-finalize-once
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+
+      - name: Fail closed on source-materialization integrity errors
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('crates/aer-context/src/lib.rs')
+          text = path.read_text(encoding='utf-8')
+          old = '''            if let Ok(value) = self.materialize(workspace_root, index, snapshot_id, candidate) {
+                materialized.push(value);
+            } else if mandatory_paths.contains(&candidate.path) {
+                self.materialize(workspace_root, index, snapshot_id, candidate)?;
+            }
+'''
+          new = '''            match self.materialize(workspace_root, index, snapshot_id, candidate) {
+                Ok(value) => materialized.push(value),
+                Err(ContextError::SourceTooLarge { .. } | ContextError::SourceNotRetrievable(_))
+                    if !mandatory_paths.contains(&candidate.path) => {}
+                Err(error) => return Err(error),
+            }
+'''
+          if old not in text:
+              raise SystemExit('expected materialization block not found')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+
+      - name: Canonical formatting
+        run: cargo +1.97.1 fmt --all
+
+      - name: Refresh lockfile and compile workspace
+        run: cargo +1.97.1 check --workspace
+
+      - name: Deny warnings
+        run: cargo +1.97.1 clippy --workspace --all-targets -- -D warnings
+
+      - name: Context Economy focused tests
+        run: cargo +1.97.1 test -p aer-context -p aer-repo -p aer-core --all-targets
+
+      - name: Full workspace tests
+        run: cargo +1.97.1 test --workspace --all-targets
+
+      - name: Commit verified Step 09 activation
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock crates/aer-context crates/aer-core/src/context.rs crates/aer-core/src/root.rs crates/aer-core/Cargo.toml Cargo.toml
+          if git diff --cached --quiet; then
+            echo "No Step 09 finalize changes required."
+            exit 0
+          fi
+          git commit -m "Finalize Context Economy Engine activation"
+          git push origin HEAD:main
