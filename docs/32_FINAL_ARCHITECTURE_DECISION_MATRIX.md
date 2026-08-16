@@ -12,9 +12,18 @@ This file summarizes baseline decisions a coding agent should treat as settled u
 | Model strategy | Multi-provider capability registry | One fixed “best model” | Models differ by task/cost and change rapidly |
 | Provider runtime | Normalized bounded retry/rate-limit/circuit/failover gateway | Direct provider SDK calls throughout core | Operational failures need consistent semantics |
 | Routing | Feedback-aware + scout/escalate | Static prompt classifier | Repository evidence improves decisions |
+| Repository intelligence | Snapshot-bound hybrid Repository Knowledge Fabric: lexical + syntax + build/package + precise semantic adapters + provenance graph + git/runtime/project evidence | Vector-only RAG or graph-only index | Repository questions require complementary evidence families and exact provenance |
+| Language syntax | Tree-sitter as broad incremental syntax substrate with pinned native/verified grammar adapters | Hand-written parser per language or five-language hard-coded ceiling | Broad deterministic syntax coverage without confusing parsing with semantics |
+| Language capability | Tiered per-language capability registry: lexical → syntax → project resolution → precise semantics → dynamic evidence | “Supports N languages” boolean | A grammar does not imply compiler-accurate imports/types/calls; fallback must be explicit |
+| Precise code semantics | Normalize compiler/LSP/SCIP-style adapters into AER snapshot/provenance contracts | Reimplement every language compiler or treat Tree-sitter call sites as exact | Reuse mature semantic tooling while preserving one authority model |
+| Repository graph evidence | Every important relation labeled extracted / semantic-resolved / observed / inferred with source/version/snapshot | Unqualified graph edges | Inference must not masquerade as exact program semantics |
+| Repository storage | Existing SQLite WAL + CAS + indexed adjacency/FTS until RepoIntelBench proves a bottleneck | Graph-database-first rewrite | Local simplicity, durability and migration cost matter; graph-shaped data does not require a graph DB |
+| Repository updates | Content-addressed incremental artifacts + dependency-aware invalidation frontier + per-view freshness | Full reindex after every edit or silently stale cache | Minimize latency/cost without weakening freshness |
+| Repository memory | Evidence-governed temporal facts/decisions/failures linked to repository entities; automatic backlinks; optional regenerated Markdown/Obsidian-compatible view | Chat transcript memory or Markdown vault as machine authority | Long-horizon knowledge must be inspectable, revisable and invalidated as code evolves |
 | Context | Hybrid multi-view retrieval | Embedding-only RAG | No retrieval family dominates |
-| Context budget | Utility/token + coverage | Fill context window | Cost and attention are scarce |
-| Compression | Extractive/source-anchored first | Free-form summary as truth | Preserve fidelity/provenance |
+| Context budget | Utility/token + coverage + provenance/freshness constraints | Fill context window | Cost and attention are scarce |
+| Context exploration | Progressive disclosure and optional dedicated repository explorer returning source anchors | Carry full exploration transcript into solver | Reduce repeated search and context pollution while retaining source fidelity |
+| Compression | Extractive/source-anchored first; role-aware summaries only as derived retrieval artifacts | Free-form summary as truth | Preserve fidelity/provenance while exploiting compact representations where measured useful |
 | Memory | Evidence-gated engineering state | Chat memory | Prevent stale/unverified narrative becoming authority |
 | Agent topology | Single by default, dynamic | Fixed role swarm | Coordination has real cost |
 | Resource scheduling | Bounded admission + backpressure + leases | Unbounded worker/task queues | Adaptive topology must not exhaust runtime/provider capacity |
@@ -40,6 +49,20 @@ This file summarizes baseline decisions a coding agent should treat as settled u
 | Scaling | Local first, remote workers later | Kubernetes-first | Avoid premature operational complexity |
 | Executable contracts | Schema/type registry + semantic validators | Markdown-only “typed” objects | Architecture claims must be machine-enforceable |
 
+## Repository Intelligence 2.0 settlement
+
+The repository-intelligence rows above are a settled target architecture, not a claim that Step 08 already implements every tier.
+
+Step 08 remains a completed executable baseline. The same `aer-repo` subsystem is upgraded in-place in Step 12 / Phase 6 with versioned migrations and benchmarks. No new numbered project step is introduced.
+
+The key non-negotiable distinction is:
+
+```text
+syntax evidence != precise semantic evidence != runtime evidence
+```
+
+AER may combine these signals for ranking, but it must preserve their provenance and confidence through retrieval, context construction and memory.
+
 ## Key architecture boundary
 
 The following are **pluggable policy/adapter decisions**, not permanent foundations:
@@ -53,7 +76,11 @@ The following are **pluggable policy/adapter decisions**, not permanent foundati
 - exact model prompt template;
 - exact package/provenance tooling implementation;
 - exact secure-update implementation;
-- exact domain-profile tool adapters.
+- exact domain-profile tool adapters;
+- exact Tree-sitter grammar packaging format/native-vs-Wasm split;
+- exact compiler/LSP/SCIP adapters enabled for each language;
+- exact graph community/centrality algorithms;
+- exact Repository Intelligence physical indexes after benchmark-driven tuning.
 
 The following are **semantic foundations**:
 
@@ -70,6 +97,11 @@ The following are **semantic foundations**:
 - environment/dependency identity;
 - preservation of user-owned workspace state;
 - explicit compatibility/migration lifecycle;
-- data sensitivity/retention boundaries.
+- data sensitivity/retention boundaries;
+- snapshot-bound repository intelligence;
+- language capability tiers with explicit fallback;
+- provenance-bearing repository relations;
+- governed repository-memory invalidation;
+- source-addressable evidence behind compressed retrieval artifacts.
 
-That distinction keeps AER flexible as models, providers, protocols, tools and deployment environments change.
+That distinction keeps AER flexible as models, providers, protocols, languages, parser ecosystems, tools and deployment environments change.

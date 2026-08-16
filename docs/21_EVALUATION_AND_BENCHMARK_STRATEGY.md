@@ -23,6 +23,7 @@ For:
 - intent extraction / ambiguity detection;
 - research claim/citation/freshness quality;
 - repository retrieval / Context Pack quality;
+- repository graph/semantic-index correctness and freshness;
 - routing decisions;
 - provider resilience;
 - handoff fidelity;
@@ -55,6 +56,8 @@ Sequences of dependent feature requests on the same codebase exposing structural
 ## Public benchmark use
 
 Use public datasets as one input for repository issue resolution, long-horizon roadmap/version tasks, iterative code evolution, specification reasoning, context retrieval and model routing.
+
+Repository-exploration evaluation SHOULD include line-budgeted and multilingual tasks in the style of current repository-localization research rather than measuring only final patch success.
 
 Maintain private held-out suites to reduce contamination and benchmark-shaped optimization.
 
@@ -89,6 +92,124 @@ Score:
 - token cost;
 - post-seed re-exploration;
 - stale/misleading selection.
+
+### RepoIntelBench
+
+Repository Intelligence 2.0 (`06`) requires a dedicated component suite. A graph visualization or high parser count is not evidence of quality.
+
+#### Language/capability coverage
+
+Record per repository and language:
+
+```text
+recognized_source_files
+recognized_source_bytes
+Tier0_lexical_coverage
+Tier1_syntax_coverage
+Tier2_project_resolution_coverage
+Tier3_precise_semantic_coverage
+fallback_rate
+ambiguous_language_rate
+generated_vendor_classification_accuracy
+```
+
+Do not report one “number of supported languages” without the capability distribution.
+
+#### Structural/semantic correctness
+
+Use hand-checked and tool-derived fixtures for:
+
+- declarations/scopes;
+- imports/exports/re-exports;
+- definitions/references;
+- calls and resolved calls;
+- inheritance/implementations;
+- package/build dependencies;
+- generated-source relationships;
+- test associations;
+- source ranges;
+- provenance class.
+
+Report precision/recall by edge type and producer. A syntax-derived candidate edge and a compiler-resolved edge are scored separately.
+
+#### Freshness/incrementality
+
+Mutation sequences MUST exercise:
+
+- edit inside one function;
+- file add/delete;
+- rename/move;
+- module/package rename;
+- lockfile/dependency change;
+- build-target change;
+- parser/query/semantic-adapter version change;
+- dirty worktree;
+- unavailable semantic adapter.
+
+Measure stale-edge incidents and verify that unaffected content-addressed artifacts are reused.
+
+#### Performance
+
+Measure distributions, not one best-case number:
+
+```text
+cold_index_files_per_second
+cold_index_LOC_or_bytes_per_second
+warm_reuse_ratio
+incremental_update_p50/p95
+time_to_first_queryable_snapshot
+graph_query_p50/p95
+exact_symbol_lookup_p50/p95
+impact_query_p50/p95
+peak_RSS
+persistent_bytes_per_LOC_or_symbol
+semantic_adapter_startup_and_amortized_cost
+```
+
+Use small, medium, large and monorepo-scale fixtures. Include Windows and Linux because parser/process/filesystem behavior can differ.
+
+#### Retrieval value
+
+Compare at minimum:
+
+1. lexical-only baseline;
+2. current AER Repository Intelligence baseline;
+3. graph-only retrieval;
+4. embedding-only retrieval;
+5. Repository Intelligence 2.0 hybrid retrieval.
+
+Measure:
+
+- Hit@K/MRR for relevant files;
+- relevant symbol/line recall;
+- relevant lines per 1K context tokens;
+- exploration tool calls/tokens;
+- time to first relevant source;
+- abstention calibration;
+- final verified task success.
+
+The hybrid design is accepted only if its additional complexity earns measurable retrieval or engineering value.
+
+#### Repository-memory value
+
+For repeated work on the same repository, compare fresh-start versus repository-memory-assisted runs. Measure rediscovery, stale-memory selection, invalidation accuracy, repeated dead ends, token cost and verified success.
+
+#### Adversarial repository fixtures
+
+Include:
+
+- syntax errors/partially typed code;
+- ambiguous extensions;
+- generated and vendored code;
+- symlinks/path edge cases;
+- huge files;
+- submodules;
+- cyclic dependencies;
+- mixed-language services;
+- code generation;
+- missing build tools;
+- broken or stale LSP/SCIP/compiler indexes;
+- intentionally misleading inferred edges.
 
 ### ProviderBench
 
@@ -162,6 +283,7 @@ Every eval run records relevant:
 - policy versions;
 - Engineering IR version;
 - repository/workspace snapshot;
+- Repository Intelligence index/schema/parser/adapter versions when repository retrieval is evaluated;
 - Environment Fingerprint;
 - dependency lock/tool versions;
 - sandbox image/policy;
@@ -192,6 +314,6 @@ Do not label model predictions of “what another model would have done” as Ro
 
 ## Human review
 
-Periodically sample accepted/rejected runs, research artifacts, migration failures and policy promotions to discover evaluator blind spots.
+Periodically sample accepted/rejected runs, research artifacts, repository-index errors, migration failures and policy promotions to discover evaluator blind spots.
 
 Human review is calibration data, not the default runtime bottleneck.
