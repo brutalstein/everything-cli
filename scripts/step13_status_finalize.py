@@ -1,3 +1,4 @@
+# One-shot status finalizer; removed before merge.
 from pathlib import Path
 
 path = Path("STATUS.md")
