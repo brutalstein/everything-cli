@@ -10,8 +10,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     error::Error,
-    fmt,
-    fs,
+    fmt, fs,
     path::{Component, Path, PathBuf},
     time::Duration,
 };
@@ -278,7 +277,9 @@ impl VerificationPlan {
         if required_verifiers.iter().any(|id| id.trim().is_empty()) {
             return Err(VerificationError::InvalidVerificationPlan);
         }
-        let mut required_evidence_types = mandatory_evidence_types.into_iter().collect::<BTreeSet<_>>();
+        let mut required_evidence_types = mandatory_evidence_types
+            .into_iter()
+            .collect::<BTreeSet<_>>();
         let mut profile_refs = Vec::new();
         for profile in profiles {
             if profile.profile_id.trim().is_empty() || profile.version == 0 {
@@ -303,7 +304,10 @@ impl VerificationPlan {
         let mut by_id = BTreeMap::new();
         for snapshot in snapshots {
             if by_id
-                .insert(snapshot.verifier_id.clone(), snapshot.snapshot_digest.clone())
+                .insert(
+                    snapshot.verifier_id.clone(),
+                    snapshot.snapshot_digest.clone(),
+                )
                 .is_some()
             {
                 return Err(VerificationError::DuplicateVerifierSnapshot(
@@ -834,7 +838,9 @@ fn collect_asset(
         source,
     })?;
     if metadata.file_type().is_symlink() {
-        return Err(VerificationError::UnsupportedVerifierAsset(path.to_path_buf()));
+        return Err(VerificationError::UnsupportedVerifierAsset(
+            path.to_path_buf(),
+        ));
     }
     let relative = path
         .strip_prefix(root)
@@ -859,7 +865,9 @@ fn collect_asset(
         return Ok(());
     }
     if !metadata.is_file() {
-        return Err(VerificationError::UnsupportedVerifierAsset(path.to_path_buf()));
+        return Err(VerificationError::UnsupportedVerifierAsset(
+            path.to_path_buf(),
+        ));
     }
     let bytes = fs::read(path).map_err(|source| VerificationError::Io {
         path: path.to_path_buf(),
@@ -881,10 +889,12 @@ fn snapshot_digest(definition_digest: &str, assets: &BTreeMap<String, String>) -
 }
 
 fn canonical_directory(path: &Path) -> Result<PathBuf, VerificationError> {
-    let canonical = path.canonicalize().map_err(|source| VerificationError::Io {
-        path: path.to_path_buf(),
-        source,
-    })?;
+    let canonical = path
+        .canonicalize()
+        .map_err(|source| VerificationError::Io {
+            path: path.to_path_buf(),
+            source,
+        })?;
     if !canonical.is_dir() {
         return Err(VerificationError::ExpectedDirectory(canonical));
     }
@@ -1060,53 +1070,147 @@ impl fmt::Display for VerificationError {
         match self {
             Self::InvalidVerifierDefinition => formatter.write_str("invalid verifier definition"),
             Self::DuplicateProtectedPath(path) => {
-                write!(formatter, "duplicate protected verifier path: {}", path.display())
+                write!(
+                    formatter,
+                    "duplicate protected verifier path: {}",
+                    path.display()
+                )
             }
-            Self::InvalidDomainProfile => formatter.write_str("invalid domain verification profile"),
+            Self::InvalidDomainProfile => {
+                formatter.write_str("invalid domain verification profile")
+            }
             Self::InvalidVerificationPlan => formatter.write_str("invalid verification plan"),
-            Self::DuplicateVerifierSnapshot(id) => write!(formatter, "duplicate verifier snapshot: {id}"),
-            Self::MissingVerifierSnapshot(id) => write!(formatter, "missing required verifier snapshot: {id}"),
-            Self::VerifierDefinitionChanged { verifier_id } => {
-                write!(formatter, "verifier definition changed after authority snapshot: {verifier_id}")
+            Self::DuplicateVerifierSnapshot(id) => {
+                write!(formatter, "duplicate verifier snapshot: {id}")
             }
-            Self::VerifierIntegrityViolation { verifier_id, expected, actual } => write!(
+            Self::MissingVerifierSnapshot(id) => {
+                write!(formatter, "missing required verifier snapshot: {id}")
+            }
+            Self::VerifierDefinitionChanged { verifier_id } => {
+                write!(
+                    formatter,
+                    "verifier definition changed after authority snapshot: {verifier_id}"
+                )
+            }
+            Self::VerifierIntegrityViolation {
+                verifier_id,
+                expected,
+                actual,
+            } => write!(
                 formatter,
                 "verifier integrity violation for {verifier_id}: expected {expected}, actual {actual}"
             ),
-            Self::InvalidEvidenceRequest => formatter.write_str("invalid verification evidence request"),
-            Self::EvidenceBinding(message) => write!(formatter, "evidence binding failed: {message}"),
+            Self::InvalidEvidenceRequest => {
+                formatter.write_str("invalid verification evidence request")
+            }
+            Self::EvidenceBinding(message) => {
+                write!(formatter, "evidence binding failed: {message}")
+            }
             Self::Execution(message) => write!(formatter, "verifier execution failed: {message}"),
             Self::Contract(message) => write!(formatter, "verification contract failed: {message}"),
-            Self::InvalidTaskForProof => formatter.write_str("task cannot produce a proof manifest"),
-            Self::RequirementCoverageMismatch => formatter.write_str("proof mapping does not exactly cover task requirements"),
-            Self::MissingImplementation(requirement) => write!(formatter, "requirement {requirement} has no implementation location"),
-            Self::ImplementationPathMissing(path) => write!(formatter, "proof implementation path does not exist: {path}"),
-            Self::InvalidImplementationLocation(path) => write!(formatter, "invalid proof implementation location: {path}"),
-            Self::StaleEvidenceRepoSnapshot => formatter.write_str("evidence belongs to a different repository snapshot"),
-            Self::EvidenceMissingEnvironment => formatter.write_str("passing evidence has no environment fingerprint"),
-            Self::EvidenceMissingIntegrity => formatter.write_str("passing evidence has incomplete verifier integrity metadata"),
-            Self::EvidenceMissingVerifierIdentity => formatter.write_str("passing evidence has no verifier identity"),
-            Self::GeneratorControlledEvidence => formatter.write_str("generator-controlled evidence cannot support accepted proof"),
-            Self::VerifierSnapshotMismatch { verifier_id } => write!(formatter, "evidence verifier snapshot is stale or mismatched: {verifier_id}"),
-            Self::RequiredVerifierDidNotPass(id) => write!(formatter, "required verifier did not produce passing evidence: {id}"),
-            Self::RequiredEvidenceTypeMissing(kind) => write!(formatter, "required evidence type is missing: {kind}"),
-            Self::MissingPassingEvidence(requirement) => write!(formatter, "requirement {requirement} has no passing evidence"),
-            Self::SemanticProofInvalid(issues) => write!(formatter, "proof semantic validation failed: {}", issues.join("; ")),
-            Self::ProofNotAcceptable => formatter.write_str("proof is not eligible for accepted task state"),
-            Self::InvalidPersistenceIdentity => formatter.write_str("verification persistence requires project and task identity"),
-            Self::TaskTransition(message) => write!(formatter, "task acceptance transition failed: {message}"),
-            Self::Storage(message) => write!(formatter, "verification persistence failed: {message}"),
-            Self::Serialization(message) => write!(formatter, "verification serialization failed: {message}"),
-            Self::InvalidRelativePath(path) => write!(formatter, "path must be safe and relative: {}", path.display()),
-            Self::NonUtf8VerifierPath(path) => write!(formatter, "verifier asset path is not UTF-8: {}", path.display()),
-            Self::VerifierPathEscapesRoot(path) => write!(formatter, "verifier asset escaped authority root: {}", path.display()),
-            Self::UnsupportedVerifierAsset(path) => write!(formatter, "unsupported verifier asset type: {}", path.display()),
-            Self::ExpectedDirectory(path) => write!(formatter, "expected directory: {}", path.display()),
-            Self::MissingStringField(field) => write!(formatter, "missing required string field: {field}"),
+            Self::InvalidTaskForProof => {
+                formatter.write_str("task cannot produce a proof manifest")
+            }
+            Self::RequirementCoverageMismatch => {
+                formatter.write_str("proof mapping does not exactly cover task requirements")
+            }
+            Self::MissingImplementation(requirement) => write!(
+                formatter,
+                "requirement {requirement} has no implementation location"
+            ),
+            Self::ImplementationPathMissing(path) => write!(
+                formatter,
+                "proof implementation path does not exist: {path}"
+            ),
+            Self::InvalidImplementationLocation(path) => {
+                write!(formatter, "invalid proof implementation location: {path}")
+            }
+            Self::StaleEvidenceRepoSnapshot => {
+                formatter.write_str("evidence belongs to a different repository snapshot")
+            }
+            Self::EvidenceMissingEnvironment => {
+                formatter.write_str("passing evidence has no environment fingerprint")
+            }
+            Self::EvidenceMissingIntegrity => {
+                formatter.write_str("passing evidence has incomplete verifier integrity metadata")
+            }
+            Self::EvidenceMissingVerifierIdentity => {
+                formatter.write_str("passing evidence has no verifier identity")
+            }
+            Self::GeneratorControlledEvidence => {
+                formatter.write_str("generator-controlled evidence cannot support accepted proof")
+            }
+            Self::VerifierSnapshotMismatch { verifier_id } => write!(
+                formatter,
+                "evidence verifier snapshot is stale or mismatched: {verifier_id}"
+            ),
+            Self::RequiredVerifierDidNotPass(id) => write!(
+                formatter,
+                "required verifier did not produce passing evidence: {id}"
+            ),
+            Self::RequiredEvidenceTypeMissing(kind) => {
+                write!(formatter, "required evidence type is missing: {kind}")
+            }
+            Self::MissingPassingEvidence(requirement) => write!(
+                formatter,
+                "requirement {requirement} has no passing evidence"
+            ),
+            Self::SemanticProofInvalid(issues) => write!(
+                formatter,
+                "proof semantic validation failed: {}",
+                issues.join("; ")
+            ),
+            Self::ProofNotAcceptable => {
+                formatter.write_str("proof is not eligible for accepted task state")
+            }
+            Self::InvalidPersistenceIdentity => {
+                formatter.write_str("verification persistence requires project and task identity")
+            }
+            Self::TaskTransition(message) => {
+                write!(formatter, "task acceptance transition failed: {message}")
+            }
+            Self::Storage(message) => {
+                write!(formatter, "verification persistence failed: {message}")
+            }
+            Self::Serialization(message) => {
+                write!(formatter, "verification serialization failed: {message}")
+            }
+            Self::InvalidRelativePath(path) => write!(
+                formatter,
+                "path must be safe and relative: {}",
+                path.display()
+            ),
+            Self::NonUtf8VerifierPath(path) => write!(
+                formatter,
+                "verifier asset path is not UTF-8: {}",
+                path.display()
+            ),
+            Self::VerifierPathEscapesRoot(path) => write!(
+                formatter,
+                "verifier asset escaped authority root: {}",
+                path.display()
+            ),
+            Self::UnsupportedVerifierAsset(path) => write!(
+                formatter,
+                "unsupported verifier asset type: {}",
+                path.display()
+            ),
+            Self::ExpectedDirectory(path) => {
+                write!(formatter, "expected directory: {}", path.display())
+            }
+            Self::MissingStringField(field) => {
+                write!(formatter, "missing required string field: {field}")
+            }
             Self::InvalidStringArray(field) => write!(formatter, "invalid string array: {field}"),
-            Self::DuplicateStringValue { field, value } => write!(formatter, "duplicate value in {field}: {value}"),
-            Self::InvalidArtifactHash(value) => write!(formatter, "invalid SHA-256 artifact hash: {value}"),
-            Self::Io { path, source } => write!(formatter, "I/O error at {}: {source}", path.display()),
+            Self::DuplicateStringValue { field, value } => {
+                write!(formatter, "duplicate value in {field}: {value}")
+            }
+            Self::InvalidArtifactHash(value) => {
+                write!(formatter, "invalid SHA-256 artifact hash: {value}")
+            }
+            Self::Io { path, source } => {
+                write!(formatter, "I/O error at {}: {source}", path.display())
+            }
         }
     }
 }
@@ -1142,7 +1246,8 @@ mod tests {
 
     impl TestDirectory {
         fn new(label: &str) -> Self {
-            let path = std::env::temp_dir().join(format!("aer-verify-{label}-{}", Ulid::generate()));
+            let path =
+                std::env::temp_dir().join(format!("aer-verify-{label}-{}", Ulid::generate()));
             fs::create_dir_all(&path).expect("create test directory");
             Self { path }
         }
@@ -1154,7 +1259,10 @@ mod tests {
         }
     }
 
-    fn verifier(root: &Path, require_strong_isolation: bool) -> (VerifierDefinition, VerifierSnapshot) {
+    fn verifier(
+        root: &Path,
+        require_strong_isolation: bool,
+    ) -> (VerifierDefinition, VerifierSnapshot) {
         fs::create_dir_all(root.join("tests")).expect("tests directory");
         fs::write(root.join("tests/integrity.txt"), b"immutable\n").expect("verifier asset");
         let definition = VerifierDefinition::new(
@@ -1190,11 +1298,7 @@ mod tests {
         }
     }
 
-    fn passing_evidence(
-        repo_snapshot: &str,
-        requirement: &str,
-        verifier_snapshot: &str,
-    ) -> Value {
+    fn passing_evidence(repo_snapshot: &str, requirement: &str, verifier_snapshot: &str) -> Value {
         json!({
             "schema_version": 1,
             "evidence_id": "EVD-proof",
@@ -1267,7 +1371,10 @@ mod tests {
         .expect("plan");
         assert!(plan.required_verifiers.contains("org-security"));
         assert!(plan.required_verifiers.contains("cli-behavior"));
-        assert!(plan.required_evidence_types.contains(&EvidenceType::Security));
+        assert!(
+            plan.required_evidence_types
+                .contains(&EvidenceType::Security)
+        );
         assert!(plan.required_evidence_types.contains(&EvidenceType::Test));
     }
 
@@ -1329,31 +1436,43 @@ mod tests {
         assert_eq!(evidence["result"], "pass");
         assert_eq!(evidence["repo_snapshot"], "repo-a");
         assert_eq!(evidence["environment_fingerprint"], "env-a");
-        assert_eq!(evidence["integrity"]["verifier_snapshot"], snapshot.snapshot_digest);
-        assert_eq!(evidence["integrity"]["generator_could_modify_verifier"], false);
+        assert_eq!(
+            evidence["integrity"]["verifier_snapshot"],
+            snapshot.snapshot_digest
+        );
+        assert_eq!(
+            evidence["integrity"]["generator_could_modify_verifier"],
+            false
+        );
     }
 
     #[test]
     fn proof_requires_exact_requirement_code_and_passing_evidence_chain() {
         let directory = TestDirectory::new("proof");
         fs::create_dir_all(directory.path.join("src")).expect("src");
-        fs::write(directory.path.join("src/lib.rs"), b"pub fn value() -> u8 { 1 }\n")
-            .expect("implementation");
-        let (definition, snapshot) = verifier(&directory.path, false);
-        let plan = VerificationPlan::compose(
-            [definition.verifier_id.clone()],
-            [EvidenceType::Test],
-            &[],
+        fs::write(
+            directory.path.join("src/lib.rs"),
+            b"pub fn value() -> u8 { 1 }\n",
         )
-        .expect("plan")
-        .bind_snapshots(std::slice::from_ref(&snapshot))
-        .expect("bound plan");
+        .expect("implementation");
+        let (definition, snapshot) = verifier(&directory.path, false);
+        let plan =
+            VerificationPlan::compose([definition.verifier_id.clone()], [EvidenceType::Test], &[])
+                .expect("plan")
+                .bind_snapshots(std::slice::from_ref(&snapshot))
+                .expect("bound plan");
         let (ir, task) = ir_and_task("repo-a");
-        let evidence = vec![passing_evidence("repo-a", "REQ-1", &snapshot.snapshot_digest)];
+        let evidence = vec![passing_evidence(
+            "repo-a",
+            "REQ-1",
+            &snapshot.snapshot_digest,
+        )];
         let mappings = vec![RequirementProofInput {
             requirement_id: "REQ-1".to_owned(),
-            implementation: vec![ImplementationLocation::new("src/lib.rs", Some("value".to_owned()))
-                .expect("location")],
+            implementation: vec![
+                ImplementationLocation::new("src/lib.rs", Some("value".to_owned()))
+                    .expect("location"),
+            ],
         }];
         let proof = build_proof_manifest(&ir, &task, &directory.path, &mappings, &evidence, &plan)
             .expect("proof");
@@ -1366,42 +1485,56 @@ mod tests {
     fn stale_repository_evidence_cannot_support_current_proof() {
         let directory = TestDirectory::new("stale-proof");
         fs::create_dir_all(directory.path.join("src")).expect("src");
-        fs::write(directory.path.join("src/lib.rs"), b"pub fn value() {}\n").expect("implementation");
+        fs::write(directory.path.join("src/lib.rs"), b"pub fn value() {}\n")
+            .expect("implementation");
         let (definition, snapshot) = verifier(&directory.path, false);
         let plan = VerificationPlan::compose([definition.verifier_id.clone()], [], &[])
             .expect("plan")
             .bind_snapshots(std::slice::from_ref(&snapshot))
             .expect("bound plan");
         let (ir, task) = ir_and_task("repo-current");
-        let evidence = vec![passing_evidence("repo-old", "REQ-1", &snapshot.snapshot_digest)];
+        let evidence = vec![passing_evidence(
+            "repo-old",
+            "REQ-1",
+            &snapshot.snapshot_digest,
+        )];
         let mappings = vec![RequirementProofInput {
             requirement_id: "REQ-1".to_owned(),
-            implementation: vec![ImplementationLocation::new("src/lib.rs", None).expect("location")],
+            implementation: vec![
+                ImplementationLocation::new("src/lib.rs", None).expect("location"),
+            ],
         }];
         let error = build_proof_manifest(&ir, &task, &directory.path, &mappings, &evidence, &plan)
             .expect_err("stale evidence must fail");
-        assert!(matches!(error, VerificationError::StaleEvidenceRepoSnapshot));
+        assert!(matches!(
+            error,
+            VerificationError::StaleEvidenceRepoSnapshot
+        ));
     }
 
     #[test]
     fn accepted_task_persists_evidence_then_proof_verdict_then_acceptance() {
         let directory = TestDirectory::new("persist");
         fs::create_dir_all(directory.path.join("src")).expect("src");
-        fs::write(directory.path.join("src/lib.rs"), b"pub fn value() {}\n").expect("implementation");
+        fs::write(directory.path.join("src/lib.rs"), b"pub fn value() {}\n")
+            .expect("implementation");
         let (definition, snapshot) = verifier(&directory.path, false);
-        let plan = VerificationPlan::compose(
-            [definition.verifier_id.clone()],
-            [EvidenceType::Test],
-            &[],
-        )
-        .expect("plan")
-        .bind_snapshots(std::slice::from_ref(&snapshot))
-        .expect("bound plan");
+        let plan =
+            VerificationPlan::compose([definition.verifier_id.clone()], [EvidenceType::Test], &[])
+                .expect("plan")
+                .bind_snapshots(std::slice::from_ref(&snapshot))
+                .expect("bound plan");
         let (ir, task) = ir_and_task("repo-a");
-        let evidence = vec![passing_evidence("repo-a", "REQ-1", &snapshot.snapshot_digest)];
+        let evidence = vec![passing_evidence(
+            "repo-a",
+            "REQ-1",
+            &snapshot.snapshot_digest,
+        )];
         let mappings = vec![RequirementProofInput {
             requirement_id: "REQ-1".to_owned(),
-            implementation: vec![ImplementationLocation::new("src/lib.rs", None).expect("location")],
+            implementation: vec![
+                ImplementationLocation::new("src/lib.rs", None).expect("location"),
+            ],
         }];
         let proof = build_proof_manifest(&ir, &task, &directory.path, &mappings, &evidence, &plan)
             .expect("proof");
@@ -1419,7 +1552,12 @@ mod tests {
         assert_eq!(persisted.evidence_events[0].event_type, "evidence.created");
         assert_eq!(persisted.verdict_event.event_type, "verification.verdict");
         assert_eq!(persisted.accepted_event.event_type, "task.accepted");
-        assert_eq!(persisted.accepted_event.causation_id.as_deref(), Some(persisted.verdict_event.event_id.as_str()));
-        state.verify_project_integrity("project-a").expect("journal integrity");
+        assert_eq!(
+            persisted.accepted_event.causation_id.as_deref(),
+            Some(persisted.verdict_event.event_id.as_str())
+        );
+        state
+            .verify_project_integrity("project-a")
+            .expect("journal integrity");
     }
 }
