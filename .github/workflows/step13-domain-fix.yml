@@ -17,13 +17,11 @@ jobs:
           ref: agent/step-13-bounded-parallel-execution
           fetch-depth: 0
       - run: python scripts/step13_domain_fix.py
-      - run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt
-      - run: cargo +1.97.1 fmt --all
-      - name: Commit repair
+      - name: Commit status ledger
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add crates/aer-domain/src/scheduling.rs crates/aer-core/src/parallel.rs crates/aer-workspace/src/parallel.rs crates/aer-core/tests/resource_bench.rs
+          git add STATUS.md
           git diff --cached --quiet && exit 0
-          git commit -m "Repair Step 13 implementation"
+          git commit -m "Record Step 13 implementation status [skip ci]"
           git push origin HEAD:agent/step-13-bounded-parallel-execution
