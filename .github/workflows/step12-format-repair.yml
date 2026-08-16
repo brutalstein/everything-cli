@@ -1,5 +1,6 @@
 name: Step 12 format repair
 
+# Canonical format pass after strengthening RepoIntelBench and engineering invalidation.
 on:
   push:
     branches:
@@ -26,7 +27,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add crates/aer-repo/src/ri2/invalidation.rs crates/aer-repo/tests/repo_intel_2_bench.rs
+          git add crates/aer-repo/tests/repo_intel_2_bench.rs crates/aer-core/src/engineering_invalidation.rs crates/aer-core/src/root.rs
           git diff --cached --quiet && exit 0
-          git commit -m "Format Step 12 RI2 benchmark surface"
+          git commit -m "Format strengthened Step 12 benchmark surface"
           git push origin HEAD:agent/step-12-ri2-long-horizon-recovery
