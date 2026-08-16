@@ -248,7 +248,7 @@ pub struct SemanticLink {
     pub semantic_id: String,
     pub target_path: String,
     pub target_symbol_id: Option<String>,
-    pub score_micros: u64,
+    pub score_micros: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -272,7 +272,7 @@ pub struct RuntimeLink {
 pub struct SearchQuery {
     pub text: String,
     pub limit: usize,
-    pub min_score_micros: u64,
+    pub min_score_micros: i64,
 }
 
 impl SearchQuery {
@@ -291,7 +291,7 @@ pub struct SearchHit {
     pub path: String,
     pub content_sha256: String,
     pub language: LanguageKind,
-    pub score_micros: u64,
+    pub score_micros: i64,
     pub anchor_line: Option<u32>,
     pub matched_terms: Vec<String>,
     pub matched_symbols: Vec<String>,
@@ -384,29 +384,49 @@ impl fmt::Display for RepoError {
             Self::Sqlite(error) => write!(f, "repository index SQLite failed: {error}"),
             Self::Git(error) => write!(f, "git repository view failed: {error}"),
             Self::OutputTooLarge { operation, bytes } => {
-                write!(f, "{operation} output exceeded its bounded capture ({bytes} bytes)")
+                write!(
+                    f,
+                    "{operation} output exceeded its bounded capture ({bytes} bytes)"
+                )
             }
             Self::FileLimitExceeded(count) => {
                 write!(f, "repository file count exceeds configured limit: {count}")
             }
             Self::TextBudgetExceeded(bytes) => {
-                write!(f, "repository text indexing budget exceeded at {bytes} bytes")
+                write!(
+                    f,
+                    "repository text indexing budget exceeded at {bytes} bytes"
+                )
             }
             Self::NonUtf8Path => write!(f, "repository contains a non-UTF-8 path"),
-            Self::InvalidRelativePath(path) => write!(f, "invalid repository-relative path: {path}"),
-            Self::QueryTooLarge(bytes) => write!(f, "repository query exceeds limit: {bytes} bytes"),
-            Self::ResultLimitExceeded(limit) => write!(f, "repository result limit exceeds policy: {limit}"),
+            Self::InvalidRelativePath(path) => {
+                write!(f, "invalid repository-relative path: {path}")
+            }
+            Self::QueryTooLarge(bytes) => {
+                write!(f, "repository query exceeds limit: {bytes} bytes")
+            }
+            Self::ResultLimitExceeded(limit) => {
+                write!(f, "repository result limit exceeds policy: {limit}")
+            }
             Self::TreeSitter(error) => write!(f, "Tree-sitter adapter failed: {error}"),
             Self::WorkspaceChangedDuringIndex => {
-                write!(f, "workspace changed while repository index was being built")
+                write!(
+                    f,
+                    "workspace changed while repository index was being built"
+                )
             }
-            Self::UnknownSnapshot(snapshot) => write!(f, "repository snapshot is not indexed: {snapshot}"),
+            Self::UnknownSnapshot(snapshot) => {
+                write!(f, "repository snapshot is not indexed: {snapshot}")
+            }
             Self::StaleIndex { indexed, current } => write!(
                 f,
                 "repository index is stale: indexed snapshot {indexed}, current workspace {current}"
             ),
             Self::UnsupportedIndexVersion(version) => {
-                write!(f, "unsupported derived repository-index schema version: {version}")
+                write!(
+                    f,
+                    "unsupported derived repository-index schema version: {version}"
+                )
             }
             Self::Integrity(message) => write!(f, "repository index integrity failure: {message}"),
         }

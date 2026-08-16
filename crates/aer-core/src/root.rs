@@ -14,6 +14,7 @@ use sha2::{Digest, Sha256};
 mod phase1_runtime;
 
 pub use phase1_runtime::*;
+pub mod repository;
 pub mod spec;
 
 fn open_store(project_root: &Path) -> Result<DurableState, aer_storage::StorageError> {

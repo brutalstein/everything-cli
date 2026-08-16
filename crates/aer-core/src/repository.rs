@@ -3,7 +3,11 @@
 //! The repository index is derived/rebuildable state. This service binds it to the exact workspace
 //! snapshot and current Engineering IR without letting retrieval mutate authoritative project state.
 
-use std::{error::Error, fmt, path::{Path, PathBuf}};
+use std::{
+    error::Error,
+    fmt,
+    path::{Path, PathBuf},
+};
 
 use aer_repo::{
     ImpactCandidate, IndexBuildReport, IndexPolicy, RepoError, RepositoryIndex, SearchQuery,
@@ -19,17 +23,9 @@ pub struct RepositoryRefreshReport {
     pub semantic_links: usize,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct RepositoryService {
     policy: IndexPolicy,
-}
-
-impl Default for RepositoryService {
-    fn default() -> Self {
-        Self {
-            policy: IndexPolicy::default(),
-        }
-    }
 }
 
 impl RepositoryService {
@@ -147,21 +143,29 @@ fn semantic_anchors(spec: &SpecSnapshot) -> Vec<SemanticAnchor> {
         id: item.id.clone(),
         text: item.statement.clone(),
     }));
-    anchors.extend(ir.functional_requirements.iter().map(|requirement| SemanticAnchor {
-        kind: "requirement".to_owned(),
-        id: requirement.item.id.clone(),
-        text: requirement.item.statement.clone(),
-    }));
+    anchors.extend(
+        ir.functional_requirements
+            .iter()
+            .map(|requirement| SemanticAnchor {
+                kind: "requirement".to_owned(),
+                id: requirement.item.id.clone(),
+                text: requirement.item.statement.clone(),
+            }),
+    );
     anchors.extend(ir.constraints.iter().map(|item| SemanticAnchor {
         kind: "constraint".to_owned(),
         id: item.id.clone(),
         text: item.statement.clone(),
     }));
-    anchors.extend(ir.acceptance_criteria.iter().map(|criterion| SemanticAnchor {
-        kind: "acceptance_criterion".to_owned(),
-        id: criterion.item.id.clone(),
-        text: criterion.item.statement.clone(),
-    }));
+    anchors.extend(
+        ir.acceptance_criteria
+            .iter()
+            .map(|criterion| SemanticAnchor {
+                kind: "acceptance_criterion".to_owned(),
+                id: criterion.item.id.clone(),
+                text: criterion.item.statement.clone(),
+            }),
+    );
     anchors.extend(ir.decisions.iter().map(|decision| SemanticAnchor {
         kind: "decision".to_owned(),
         id: decision.id.clone(),
@@ -269,11 +273,7 @@ mod tests {
 
     impl Drop for Fixture {
         fn drop(&mut self) {
-            let _ = fs::remove_dir_all(
-                self.root
-                    .parent()
-                    .expect("fixture repository has parent"),
-            );
+            let _ = fs::remove_dir_all(self.root.parent().expect("fixture repository has parent"));
         }
     }
 
@@ -318,8 +318,8 @@ mod tests {
             .expect("semantic links");
         assert!(links.iter().any(|link| link.target_path == "src/auth.rs"));
 
-        let workspace = aer_workspace::WorkspaceIdentity::inspect(&fixture.root)
-            .expect("workspace identity");
+        let workspace =
+            aer_workspace::WorkspaceIdentity::inspect(&fixture.root).expect("workspace identity");
         let index_path = repository_index_path(&fixture.state, &workspace.repo_id);
         assert!(index_path.exists());
         assert!(!index_path.starts_with(&fixture.root));

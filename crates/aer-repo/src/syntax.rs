@@ -83,10 +83,18 @@ pub(crate) fn detect_language(path: &str) -> LanguageKind {
 #[must_use]
 pub(crate) fn parser_key(language: LanguageKind) -> String {
     match language {
-        LanguageKind::Rust => format!("tree-sitter-rust@0.24.2/runtime-{TREE_SITTER_RUNTIME}/aer-v1"),
-        LanguageKind::Python => format!("tree-sitter-python@0.25.0/runtime-{TREE_SITTER_RUNTIME}/aer-v1"),
-        LanguageKind::JavaScript => format!("tree-sitter-javascript@0.25.0/runtime-{TREE_SITTER_RUNTIME}/aer-v1"),
-        LanguageKind::TypeScript => format!("tree-sitter-typescript@0.23.2/runtime-{TREE_SITTER_RUNTIME}/aer-v1"),
+        LanguageKind::Rust => {
+            format!("tree-sitter-rust@0.24.2/runtime-{TREE_SITTER_RUNTIME}/aer-v1")
+        }
+        LanguageKind::Python => {
+            format!("tree-sitter-python@0.25.0/runtime-{TREE_SITTER_RUNTIME}/aer-v1")
+        }
+        LanguageKind::JavaScript => {
+            format!("tree-sitter-javascript@0.25.0/runtime-{TREE_SITTER_RUNTIME}/aer-v1")
+        }
+        LanguageKind::TypeScript => {
+            format!("tree-sitter-typescript@0.23.2/runtime-{TREE_SITTER_RUNTIME}/aer-v1")
+        }
         LanguageKind::Tsx => format!("tree-sitter-tsx@0.23.2/runtime-{TREE_SITTER_RUNTIME}/aer-v1"),
         _ => "text-lexical-v1".to_owned(),
     }
@@ -122,16 +130,15 @@ pub(crate) fn parse_text(
         .ok_or_else(|| RepoError::TreeSitter("parser returned no syntax tree".to_owned()))?;
     let mut symbols = Vec::new();
     let mut links = Vec::new();
-    walk(
-        tree.root_node(),
-        text.as_bytes(),
+    let mut context = WalkContext {
+        bytes: text.as_bytes(),
         path,
         language,
-        None,
-        &mut symbols,
-        &mut links,
         policy,
-    )?;
+        symbols: &mut symbols,
+        links: &mut links,
+    };
+    walk(tree.root_node(), None, &mut context)?;
 
     symbols.sort_by(|left, right| {
         left.start_byte
@@ -172,116 +179,116 @@ fn tree_sitter_language(language: LanguageKind) -> Option<Language> {
     }
 }
 
+struct WalkContext<'a> {
+    bytes: &'a [u8],
+    path: &'a str,
+    language: LanguageKind,
+    policy: &'a IndexPolicy,
+    symbols: &'a mut Vec<LocalSymbol>,
+    links: &'a mut Vec<LocalLink>,
+}
+
 fn walk(
     node: Node<'_>,
-    bytes: &[u8],
-    path: &str,
-    language: LanguageKind,
     parent_symbol: Option<&str>,
-    symbols: &mut Vec<LocalSymbol>,
-    links: &mut Vec<LocalLink>,
-    policy: &IndexPolicy,
+    context: &mut WalkContext<'_>,
 ) -> Result<(), RepoError> {
-    if symbols.len() > policy.max_links_per_file || links.len() > policy.max_links_per_file {
+    if context.symbols.len() > context.policy.max_links_per_file
+        || context.links.len() > context.policy.max_links_per_file
+    {
         return Err(RepoError::Integrity(format!(
-            "syntax structure for {path} exceeds configured per-file bounds"
+            "syntax structure for {} exceeds configured per-file bounds",
+            context.path
         )));
     }
 
     let mut scope = parent_symbol.map(str::to_owned);
-    if let Some(kind) = definition_kind(language, node.kind()) {
-        if let Some(name_node) = definition_name_node(language, node) {
-            if let Ok(name) = name_node.utf8_text(bytes) {
-                let name = name.trim();
-                if !name.is_empty() {
-                    let start = u32::try_from(node.start_byte()).map_err(|_| {
-                        RepoError::Integrity(format!("syntax byte offset overflow in {path}"))
-                    })?;
-                    let end = u32::try_from(node.end_byte()).map_err(|_| {
-                        RepoError::Integrity(format!("syntax byte offset overflow in {path}"))
-                    })?;
-                    let start_line = u32::try_from(node.start_position().row + 1).map_err(|_| {
-                        RepoError::Integrity(format!("syntax line overflow in {path}"))
-                    })?;
-                    let end_line = u32::try_from(node.end_position().row + 1).map_err(|_| {
-                        RepoError::Integrity(format!("syntax line overflow in {path}"))
-                    })?;
-                    let local_id = local_symbol_id(name, kind, start, end);
-                    let signature = signature_for(node, bytes);
-                    let effective_kind = if is_test_symbol(path, language, node, name, bytes) {
-                        SymbolKind::Test
-                    } else {
-                        kind
-                    };
-                    symbols.push(LocalSymbol {
-                        local_id: local_id.clone(),
-                        name: name.to_owned(),
-                        kind: effective_kind,
-                        start_byte: start,
-                        end_byte: end,
-                        start_line,
-                        end_line,
-                        signature,
-                    });
-                    scope = Some(local_id);
-                }
-            }
+    if let Some(kind) = definition_kind(context.language, node.kind())
+        && let Some(name_node) = definition_name_node(context.language, node)
+        && let Ok(name) = name_node.utf8_text(context.bytes)
+    {
+        let name = name.trim();
+        if !name.is_empty() {
+            let start = u32::try_from(node.start_byte()).map_err(|_| {
+                RepoError::Integrity(format!("syntax byte offset overflow in {}", context.path))
+            })?;
+            let end = u32::try_from(node.end_byte()).map_err(|_| {
+                RepoError::Integrity(format!("syntax byte offset overflow in {}", context.path))
+            })?;
+            let start_line = u32::try_from(node.start_position().row + 1).map_err(|_| {
+                RepoError::Integrity(format!("syntax line overflow in {}", context.path))
+            })?;
+            let end_line = u32::try_from(node.end_position().row + 1).map_err(|_| {
+                RepoError::Integrity(format!("syntax line overflow in {}", context.path))
+            })?;
+            let local_id = local_symbol_id(name, kind, start, end);
+            let signature = signature_for(node, context.bytes);
+            let effective_kind =
+                if is_test_symbol(context.path, context.language, node, name, context.bytes) {
+                    SymbolKind::Test
+                } else {
+                    kind
+                };
+            context.symbols.push(LocalSymbol {
+                local_id: local_id.clone(),
+                name: name.to_owned(),
+                kind: effective_kind,
+                start_byte: start,
+                end_byte: end,
+                start_line,
+                end_line,
+                signature,
+            });
+            scope = Some(local_id);
         }
     }
 
-    if is_import_node(language, node.kind()) && links.len() < policy.max_links_per_file {
-        if let Ok(raw) = node.utf8_text(bytes) {
-            let target = normalize_relation_target(raw);
-            if !target.is_empty() {
-                links.push(LocalLink {
-                    source_local_id: scope.clone(),
-                    kind: EdgeKind::Imports,
-                    target_name: target,
-                    line: line_of(node),
-                });
-            }
+    if is_import_node(context.language, node.kind())
+        && context.links.len() < context.policy.max_links_per_file
+        && let Ok(raw) = node.utf8_text(context.bytes)
+    {
+        let target = normalize_relation_target(raw);
+        if !target.is_empty() {
+            context.links.push(LocalLink {
+                source_local_id: scope.clone(),
+                kind: EdgeKind::Imports,
+                target_name: target,
+                line: line_of(node),
+            });
         }
     }
 
-    if is_call_node(node.kind()) && links.len() < policy.max_links_per_file {
-        if let Some(target_node) = node.child_by_field_name("function") {
-            if let Some(target) = terminal_identifier(target_node, bytes) {
-                links.push(LocalLink {
-                    source_local_id: scope.clone(),
-                    kind: EdgeKind::Calls,
-                    target_name: target,
-                    line: line_of(node),
-                });
-            }
-        }
+    if is_call_node(node.kind())
+        && context.links.len() < context.policy.max_links_per_file
+        && let Some(target_node) = node.child_by_field_name("function")
+        && let Some(target) = terminal_identifier(target_node, context.bytes)
+    {
+        context.links.push(LocalLink {
+            source_local_id: scope.clone(),
+            kind: EdgeKind::Calls,
+            target_name: target,
+            line: line_of(node),
+        });
     }
 
-    if is_reference_identifier(node, language) && links.len() < policy.max_links_per_file {
-        if let Ok(target) = node.utf8_text(bytes) {
-            let target = target.trim();
-            if target.len() >= 2 && target.len() <= 128 {
-                links.push(LocalLink {
-                    source_local_id: scope.clone(),
-                    kind: EdgeKind::References,
-                    target_name: target.to_owned(),
-                    line: line_of(node),
-                });
-            }
+    if is_reference_identifier(node, context.language)
+        && context.links.len() < context.policy.max_links_per_file
+        && let Ok(target) = node.utf8_text(context.bytes)
+    {
+        let target = target.trim();
+        if target.len() >= 2 && target.len() <= 128 {
+            context.links.push(LocalLink {
+                source_local_id: scope.clone(),
+                kind: EdgeKind::References,
+                target_name: target.to_owned(),
+                line: line_of(node),
+            });
         }
     }
 
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) {
-        walk(
-            child,
-            bytes,
-            path,
-            language,
-            scope.as_deref(),
-            symbols,
-            links,
-            policy,
-        )?;
+        walk(child, scope.as_deref(), context)?;
     }
     Ok(())
 }
@@ -372,7 +379,12 @@ fn terminal_identifier(node: Node<'_>, bytes: &[u8]) -> Option<String> {
         node.kind(),
         "identifier" | "field_identifier" | "property_identifier" | "type_identifier"
     ) {
-        return node.utf8_text(bytes).ok().map(str::trim).filter(|v| !v.is_empty()).map(str::to_owned);
+        return node
+            .utf8_text(bytes)
+            .ok()
+            .map(str::trim)
+            .filter(|v| !v.is_empty())
+            .map(str::to_owned);
     }
     let mut cursor = node.walk();
     let mut result = None;
@@ -394,14 +406,13 @@ fn is_test_symbol(
     if is_test_path(path) || name.starts_with("test_") || name.ends_with("_test") {
         return true;
     }
-    if language == LanguageKind::Rust {
-        if let Some(parent) = node.parent() {
-            if parent.kind() == "attribute_item" {
-                return parent
-                    .utf8_text(bytes)
-                    .is_ok_and(|value| value.contains("test"));
-            }
-        }
+    if language == LanguageKind::Rust
+        && let Some(parent) = node.parent()
+        && parent.kind() == "attribute_item"
+    {
+        return parent
+            .utf8_text(bytes)
+            .is_ok_and(|value| value.contains("test"));
     }
     false
 }
@@ -559,7 +570,23 @@ fn expand_token(raw: &str) -> BTreeSet<String> {
 fn is_stopword(term: &str) -> bool {
     matches!(
         term,
-        "the" | "and" | "for" | "with" | "from" | "this" | "that" | "into" | "use" | "pub" | "let" | "const" | "self" | "true" | "false" | "none" | "null"
+        "the"
+            | "and"
+            | "for"
+            | "with"
+            | "from"
+            | "this"
+            | "that"
+            | "into"
+            | "use"
+            | "pub"
+            | "let"
+            | "const"
+            | "self"
+            | "true"
+            | "false"
+            | "none"
+            | "null"
     )
 }
 
@@ -599,7 +626,90 @@ mod tests {
         assert!(parsed.symbols.iter().any(|symbol| {
             symbol.name == "verify_token" && symbol.kind == SymbolKind::Function
         }));
-        assert!(parsed.links.iter().any(|link| link.target_name == "verify_token"));
+        assert!(
+            parsed
+                .links
+                .iter()
+                .any(|link| link.target_name == "verify_token")
+        );
+    }
+
+    #[test]
+    fn python_adapter_extracts_functions_and_calls() {
+        let parsed = parse_text(
+            "pkg/auth.py",
+            "def verify_token(token):\n    return bool(token)\n\ndef run(token):\n    return verify_token(token)\n",
+            LanguageKind::Python,
+            &IndexPolicy::default(),
+        )
+        .expect("parse python");
+        assert!(parsed.symbols.iter().any(|symbol| {
+            symbol.name == "verify_token" && symbol.kind == SymbolKind::Function
+        }));
+        assert!(
+            parsed
+                .links
+                .iter()
+                .any(|link| link.target_name == "verify_token")
+        );
+    }
+
+    #[test]
+    fn javascript_adapter_extracts_functions_and_calls() {
+        let parsed = parse_text(
+            "web/auth.js",
+            "function verifyToken(token) { return Boolean(token); }\nfunction run() { return verifyToken('x'); }\n",
+            LanguageKind::JavaScript,
+            &IndexPolicy::default(),
+        )
+        .expect("parse javascript");
+        assert!(
+            parsed.symbols.iter().any(|symbol| {
+                symbol.name == "verifyToken" && symbol.kind == SymbolKind::Function
+            })
+        );
+        assert!(
+            parsed
+                .links
+                .iter()
+                .any(|link| link.target_name == "verifyToken")
+        );
+    }
+
+    #[test]
+    fn typescript_adapter_extracts_interface_and_function() {
+        let parsed = parse_text(
+            "web/auth.ts",
+            "interface Token { value: string }\nfunction verifyToken(token: Token): boolean { return Boolean(token.value); }\n",
+            LanguageKind::TypeScript,
+            &IndexPolicy::default(),
+        )
+        .expect("parse typescript");
+        assert!(
+            parsed
+                .symbols
+                .iter()
+                .any(|symbol| { symbol.name == "Token" && symbol.kind == SymbolKind::Interface })
+        );
+        assert!(
+            parsed.symbols.iter().any(|symbol| {
+                symbol.name == "verifyToken" && symbol.kind == SymbolKind::Function
+            })
+        );
+    }
+
+    #[test]
+    fn unsupported_language_uses_lexical_fallback_without_fake_symbols() {
+        let parsed = parse_text(
+            "README.md",
+            "expired token verification behavior",
+            LanguageKind::Markdown,
+            &IndexPolicy::default(),
+        )
+        .expect("parse fallback");
+        assert!(parsed.symbols.is_empty());
+        assert!(parsed.links.is_empty());
+        assert!(parsed.terms.iter().any(|term| term.term == "verification"));
     }
 
     #[test]

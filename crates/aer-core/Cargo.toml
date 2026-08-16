@@ -13,6 +13,7 @@ aer-domain = { path = "../aer-domain" }
 aer-environment = { path = "../aer-environment" }
 aer-exec = { path = "../aer-exec" }
 aer-provider = { path = "../aer-provider" }
+aer-repo = { path = "../aer-repo" }
 aer-research = { path = "../aer-research" }
 aer-storage = { path = "../aer-storage" }
 aer-workspace = { path = "../aer-workspace" }
