@@ -20,6 +20,16 @@ jobs:
           fetch-depth: 0
       - name: Update provider closeout documentation
         run: python scripts/close_provider_docs.py
+      - name: Normalize changed status header whitespace
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('STATUS.md')
+          lines = path.read_text(encoding='utf-8').splitlines()
+          for index in range(min(15, len(lines))):
+              lines[index] = lines[index].rstrip()
+          path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          PY
       - name: Check textual diff
         run: git diff --check
       - name: Commit documentation and remove one-shot scaffolding
