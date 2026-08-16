@@ -5,6 +5,7 @@
 //! inspection happens only when the user explicitly requests the corresponding capability.
 
 mod commands;
+mod provider_cli;
 mod shell;
 
 pub use commands::run_cli;
