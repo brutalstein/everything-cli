@@ -170,6 +170,21 @@ try {
         "test", "--locked", "-p", "aer-provider", "--test", "provider_router_bench", "--target", $Target
     )
     Invoke-Checked -FilePath $CargoPath -Arguments @(
+        "test", "--locked", "-p", "aer-provider", "--target", $Target, "delegated"
+    )
+    Invoke-Checked -FilePath $CargoPath -Arguments @(
+        "test", "--locked", "-p", "aer-core", "--target", $Target, "permissions"
+    )
+    Invoke-Checked -FilePath $CargoPath -Arguments @(
+        "test", "--locked", "-p", "aer-core", "--target", $Target, "model_context"
+    )
+    Invoke-Checked -FilePath $CargoPath -Arguments @(
+        "test", "--locked", "-p", "aer-core", "--target", $Target, "tools"
+    )
+    Invoke-Checked -FilePath $CargoPath -Arguments @(
+        "test", "--locked", "-p", "everything", "--target", $Target, "provider_cli"
+    )
+    Invoke-Checked -FilePath $CargoPath -Arguments @(
         "test", "--locked", "-p", "aer-provider", "-p", "aer-core", "--all-targets", "--target", $Target
     )
     Invoke-Checked -FilePath $CargoPath -Arguments @(

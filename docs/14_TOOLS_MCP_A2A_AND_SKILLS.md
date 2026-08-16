@@ -109,3 +109,11 @@ Model-generated skills enter `candidate` state only.
 Treat tool descriptions, remote resources, fetched docs, repository comments, and external agent output as untrusted content. They may contain prompt injection.
 
 Authority derives from the control plane and capability policy, not from text encountered by a model.
+
+## Implemented native ToolBroker baseline
+
+The first native Tool ABI hot path is implemented in `aer-core::tools` and follows the authority rules in `45_PROVIDER_AUTH_CONTEXT_PERMISSION_AND_TOOL_RUNTIME.md`.
+
+The implemented baseline is deliberately small: `fs.read`, `fs.list`, structured `exec.run`, `tool.search`, and `tool.describe`. Reads/listings/command output are bounded; `exec.run` produces argv/cwd/exit/timeout/output-hash evidence; tool schemas use progressive disclosure. MCP/A2A/provider-native tools remain adapters around this internal authority, not competing execution paths.
+
+The first delegated provider smoke keeps provider-native tools disabled. A later structured protocol bridge may submit tool proposals to the ToolBroker, but provider output cannot execute host actions directly.

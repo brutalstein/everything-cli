@@ -1018,3 +1018,20 @@ The interactive CLI is not considered product-ready until all of the following a
 The runtime may be complex. The surface MUST remain simple.
 
 The UI should expose **intent, decisions, progress, risk, evidence, and control**—not orchestration machinery.
+
+## Provider onboarding and session permission controls
+
+The user explicitly opened a scoped product-surface exception for real provider onboarding and permission control. These commands are lazy: normal CLI startup does not probe providers or spawn model processes.
+
+```text
+everything providers
+everything provider status [provider]
+everything provider login <codex|claude|gemini>
+everything provider login codex --device
+everything provider smoke <provider> --show-input --prompt "..."
+everything provider smoke <provider> --json --prompt "..."
+```
+
+The interactive shell adds `/providers`, `/provider ...`, and `/permission ...`.
+
+`/permission default` is the interactive default: reads are automatic and other eligible actions ask. `plan`, `auto`, and `full` adjust prompt/autonomy behavior but never widen the runtime capability ceiling. The UI must present `full` as maximum autonomy inside existing authority, not as a security bypass.

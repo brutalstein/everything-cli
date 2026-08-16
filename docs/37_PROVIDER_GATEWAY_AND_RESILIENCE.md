@@ -277,3 +277,11 @@ Non-interactive commands MUST NOT unexpectedly open a browser or interactive pro
 Core CI MUST NOT require live paid provider credentials. Provider adapters use mocked/recorded authentication, expiry, refresh, revocation and profile-selection fixtures; live credential smoke tests are opt-in integration tests outside deterministic core correctness gates.
 
 The provider setup UI is a projection over typed runtime/authentication state and follows the interaction, accessibility, redaction and headless-degradation rules in `23_CLI_AND_USER_EXPERIENCE.md`.
+
+## Delegated subscription authentication and production transport
+
+Step 11's routing/fault/cost semantics remain authoritative. The real local subscription transport introduced after Step 13 is specified in `45_PROVIDER_AUTH_CONTEXT_PERMISSION_AND_TOOL_RUNTIME.md`.
+
+Authentication capability declarations in this document describe what a provider/profile can support; they do not imply that AER should copy a consumer OAuth token into its own store. For Codex, Claude Code and Gemini CLI subscription profiles, prefer vendor-owned delegated sessions. Routing sees non-secret auth/health/capability observations while the vendor owns browser authorization and refresh material.
+
+A provider transport can be production-eligible only when it preserves AER context, permission, tool and evidence authority. Provider-native permission bypasses are never equivalent to AER `full` mode.
