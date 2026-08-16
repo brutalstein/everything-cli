@@ -1,7 +1,7 @@
 use std::{
     env,
     error::Error,
-    ffi::{OsStr, OsString},
+    ffi::OsString,
     fmt,
     io::{self, Read, Write},
     path::{Path, PathBuf},
@@ -163,7 +163,6 @@ pub struct ModelIoTrace {
 /// controls the request envelope and keeps smoke execution non-mutating.
 pub struct DelegatedCliProvider {
     kind: DelegatedProviderKind,
-    workspace: PathBuf,
     architecture_context: String,
     architecture_context_digest: String,
     model: Option<String>,
@@ -173,14 +172,12 @@ impl DelegatedCliProvider {
     #[must_use]
     pub fn new(
         kind: DelegatedProviderKind,
-        workspace: impl Into<PathBuf>,
         architecture_context: impl Into<String>,
         architecture_context_digest: impl Into<String>,
         model: Option<String>,
     ) -> Self {
         Self {
             kind,
-            workspace: workspace.into(),
             architecture_context: architecture_context.into(),
             architecture_context_digest: architecture_context_digest.into(),
             model,
@@ -720,8 +717,6 @@ fn classify_failed_process(
         ProviderFailureClass::Authentication
     } else if normalized.contains("rate limit") || normalized.contains("429") {
         ProviderFailureClass::RateLimited
-    } else if result.timed_out {
-        ProviderFailureClass::Timeout
     } else {
         ProviderFailureClass::ProviderInternal
     };
@@ -737,11 +732,9 @@ fn classify_failed_process(
 }
 
 fn provider_error_from_delegated(error: DelegatedProviderError) -> ProviderError {
-    let class = match error {
+    let class = match &error {
         DelegatedProviderError::TimedOut { .. } => ProviderFailureClass::Timeout,
-        DelegatedProviderError::Spawn { ref error, .. }
-            if error.kind() == io::ErrorKind::NotFound =>
-        {
+        DelegatedProviderError::Spawn { error, .. } if error.kind() == io::ErrorKind::NotFound => {
             ProviderFailureClass::InvalidRequest
         }
         _ => ProviderFailureClass::ProviderInternal,
@@ -807,7 +800,6 @@ struct BoundedProcessResult {
     stdout: Vec<u8>,
     stderr: Vec<u8>,
     truncated: bool,
-    timed_out: bool,
 }
 
 fn run_bounded(
@@ -893,7 +885,6 @@ fn run_bounded(
         truncated: stdout.truncated || stderr.truncated,
         stdout: stdout.bytes,
         stderr: stderr.bytes,
-        timed_out,
     })
 }
 
@@ -912,11 +903,12 @@ fn capture_bounded(mut reader: impl Read, limit: usize) -> io::Result<BoundedCap
         if count == 0 {
             break;
         }
-        if bytes.len() < limit {
-            let remaining = limit - bytes.len();
-            bytes.extend_from_slice(&buffer[..count.min(remaining)]);
+        let remaining = limit.saturating_sub(bytes.len());
+        let keep = count.min(remaining);
+        if keep > 0 {
+            bytes.extend_from_slice(&buffer[..keep]);
         }
-        if count > limit.saturating_sub(bytes.len()) || bytes.len() == limit {
+        if keep < count {
             truncated = true;
         }
     }

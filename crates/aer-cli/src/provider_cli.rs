@@ -274,7 +274,6 @@ pub(crate) fn provider_smoke(
     let capsule = ArchitectureContextCapsule::compile(path)?;
     let adapter = DelegatedCliProvider::new(
         provider,
-        path,
         capsule.rendered.clone(),
         capsule.digest.clone(),
         model,
