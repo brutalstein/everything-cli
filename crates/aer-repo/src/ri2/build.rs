@@ -48,7 +48,7 @@ pub(crate) fn collect_project_topology(repo: &Path, policy: &IndexPolicy) -> Bui
         return BuildTopology::unavailable();
     }
     let environment_fingerprint = match EnvironmentFingerprint::discover(repo) {
-        Ok(fingerprint) => Some(fingerprint.digest_hex()),
+        Ok(fingerprint) => Some(fingerprint.digest),
         Err(_) => return BuildTopology::unavailable(),
     };
     let Ok(execution) =
