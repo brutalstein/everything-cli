@@ -1,3 +1,4 @@
+# One-shot provider acceptance finalizer. Removed before merge.
 from pathlib import Path
 import hashlib
 
