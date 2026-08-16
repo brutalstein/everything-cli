@@ -129,6 +129,7 @@ fn handoff_bench_compacts_verified_state_without_transcript_bloat() {
     assert!(handoff.estimated_tokens < raw_trajectory.len().div_ceil(4));
     assert!(!handoff.handoff_id.is_empty());
     store.verify_integrity().expect("journal integrity");
+    drop(store);
     fs::remove_dir_all(root).expect("cleanup");
 }
 
@@ -199,6 +200,7 @@ fn handoff_bench_repository_change_invalidates_only_linked_current_memory() {
             .iter()
             .any(|record| record.record_id == "user-decision")
     );
+    drop(store);
     fs::remove_dir_all(root).expect("cleanup");
 }
 
