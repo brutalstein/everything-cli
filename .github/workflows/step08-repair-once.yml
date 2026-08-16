@@ -23,6 +23,9 @@ jobs:
       - name: Apply deterministic activation
         run: python scripts/step08_activate.py
 
+      - name: Apply structural Clippy hardening
+        run: python scripts/step08_clippy_fix.py
+
       - name: Canonical formatting
         run: cargo +1.97.1 fmt --all
 
