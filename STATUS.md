@@ -659,6 +659,7 @@ The interactive shell exposes `/providers`, `/provider ...`, and `/permission ..
 | Claude/Gemini JSON final-output parser | PASS | delegated parser test. |
 | Progressive Tool ABI disclosure | PASS | `tool.search`/`tool.describe` tests. |
 | Structured `exec.run` command evidence | PASS | Auto-mode real `git --version` ToolBroker test. |
+| Process execution requires AER-owned worktree authority | PASS | production constructor requires `OwnedWorktree`; read-only broker fails closed even in Auto mode. |
 | Default mode command approval request | PASS | ToolBroker permission test. |
 | Plan mode command denial | PASS | ToolBroker permission test. |
 | Lazy provider CLI routing | PASS | provider CLI unit test. |

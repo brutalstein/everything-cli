@@ -145,7 +145,7 @@ The runtime should be faster and more precise than a generic “give the model a
 3. **Range- and artifact-oriented I/O.** Large files/output are not injected wholesale. Return bounded previews, hashes, line/range handles and artifact references.
 4. **Repository-intelligence integration.** Prefer symbol/reference/impact retrieval from RI2 over repeated blind grep/tree scans.
 5. **Batch safe reads.** Independent reads/searches MAY run concurrently under resource bounds. Writes reuse Step-13 dependency/write-set conflict controls.
-6. **One write authority.** Workspace mutation occurs only in AER-owned isolated worktrees.
+6. **One write authority.** Workspace mutation occurs only in AER-owned isolated worktrees. Process-capable `ToolBroker` construction requires an `aer_workspace::OwnedWorktree` authority token; permission mode alone cannot authorize commands in a user-owned checkout.
 7. **Command evidence.** Commands are normalized argv + cwd + environment policy + timeout + output hashes + exit/resource evidence.
 8. **No hidden host shell.** A model never receives an unrestricted host-process handle or host Docker socket.
 9. **Idempotency before external mutation.** External writes receive dedup identity and verification before retry.

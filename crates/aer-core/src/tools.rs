@@ -10,6 +10,7 @@ use std::{
 use aer_exec::{
     CommandSpec, ExecutionError, ExecutionPolicy, LocalProcessExecutor, SideEffectClass,
 };
+use aer_workspace::OwnedWorktree;
 use sha2::{Digest, Sha256};
 
 use crate::permissions::{PermissionController, PermissionDecision, PermissionRequest};
@@ -213,12 +214,34 @@ pub struct ToolSummary {
 
 pub struct ToolBroker {
     workspace_root: PathBuf,
+    process_execution_authorized: bool,
 }
 
 impl ToolBroker {
-    pub fn new(workspace_root: &Path) -> Result<Self, ToolError> {
+    /// Creates a broker that can inspect a workspace but cannot execute
+    /// processes, regardless of permission mode. This is safe for user-owned
+    /// checkout inspection surfaces.
+    pub fn read_only(workspace_root: &Path) -> Result<Self, ToolError> {
         Ok(Self {
             workspace_root: workspace_root.canonicalize().map_err(ToolError::Io)?,
+            process_execution_authorized: false,
+        })
+    }
+
+    /// Creates a process-capable broker only from AER's unforgeable owned
+    /// worktree handle. Permission decisions still apply independently.
+    pub fn for_owned_worktree(worktree: &OwnedWorktree) -> Result<Self, ToolError> {
+        Ok(Self {
+            workspace_root: worktree.path.canonicalize().map_err(ToolError::Io)?,
+            process_execution_authorized: true,
+        })
+    }
+
+    #[cfg(test)]
+    fn with_test_process_authority(workspace_root: &Path) -> Result<Self, ToolError> {
+        Ok(Self {
+            workspace_root: workspace_root.canonicalize().map_err(ToolError::Io)?,
+            process_execution_authorized: true,
         })
     }
 
@@ -374,6 +397,9 @@ impl ToolBroker {
         args: &[String],
         cwd: Option<&str>,
     ) -> Result<ExecResult, ToolError> {
+        if !self.process_execution_authorized {
+            return Err(ToolError::ProcessExecutionRequiresOwnedWorktree);
+        }
         if program.trim().is_empty() {
             return Err(ToolError::InvalidProgram);
         }
@@ -493,6 +519,7 @@ pub enum ToolError {
     NotDirectory(String),
     InvalidLineRange { start: u32, end: u32 },
     FileTooLarge,
+    ProcessExecutionRequiresOwnedWorktree,
     InvalidProgram,
     EmptyToolQuery,
     UnknownTool(String),
@@ -517,6 +544,9 @@ impl fmt::Display for ToolError {
                 write!(formatter, "invalid file line range {start}..={end}")
             }
             Self::FileTooLarge => formatter.write_str("file has more addressable lines than u32"),
+            Self::ProcessExecutionRequiresOwnedWorktree => {
+                formatter.write_str("exec.run requires an AER-owned worktree authority token")
+            }
             Self::InvalidProgram => formatter.write_str("exec.run program cannot be empty"),
             Self::EmptyToolQuery => formatter.write_str("tool.search query cannot be empty"),
             Self::UnknownTool(tool) => write!(formatter, "unknown tool `{tool}`"),
@@ -569,7 +599,7 @@ mod tests {
     #[test]
     fn default_mode_auto_reads_but_returns_typed_approval_for_commands() {
         let root = fixture();
-        let broker = ToolBroker::new(&root).expect("broker");
+        let broker = ToolBroker::read_only(&root).expect("broker");
         let permissions = PermissionController::developer_workspace(PermissionMode::Default);
         let read = broker
             .execute(
@@ -607,9 +637,32 @@ mod tests {
     }
 
     #[test]
+    fn auto_mode_cannot_execute_without_owned_worktree_authority() {
+        let root = fixture();
+        let broker = ToolBroker::read_only(&root).expect("broker");
+        let permissions = PermissionController::developer_workspace(PermissionMode::Auto);
+        let error = broker
+            .execute(
+                &permissions,
+                ToolCall::ExecRun {
+                    program: "git".to_owned(),
+                    args: vec!["--version".to_owned()],
+                    cwd: None,
+                    reason: "attempt process without owned worktree".to_owned(),
+                },
+            )
+            .expect_err("process execution must require owned-worktree authority");
+        assert!(matches!(
+            error,
+            super::ToolError::ProcessExecutionRequiresOwnedWorktree
+        ));
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
     fn auto_mode_executes_structured_local_command_with_bounded_evidence() {
         let root = fixture();
-        let broker = ToolBroker::new(&root).expect("broker");
+        let broker = ToolBroker::with_test_process_authority(&root).expect("broker");
         let permissions = PermissionController::developer_workspace(PermissionMode::Auto);
         let result = broker
             .execute(
@@ -638,7 +691,7 @@ mod tests {
         let catalog = ToolBroker::core_catalog();
         assert!(catalog.iter().all(|tool| tool.schema.is_none()));
         let root = fixture();
-        let broker = ToolBroker::new(&root).expect("broker");
+        let broker = ToolBroker::read_only(&root).expect("broker");
         let permissions = PermissionController::developer_workspace(PermissionMode::Default);
         let result = broker
             .execute(
@@ -658,7 +711,7 @@ mod tests {
     #[test]
     fn plan_mode_denies_command_even_when_the_program_is_structured() {
         let root = fixture();
-        let broker = ToolBroker::new(&root).expect("broker");
+        let broker = ToolBroker::read_only(&root).expect("broker");
         let permissions = PermissionController::developer_workspace(PermissionMode::Plan);
         let result = broker
             .execute(
