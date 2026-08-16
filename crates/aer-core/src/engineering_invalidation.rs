@@ -196,6 +196,7 @@ mod tests {
             store.projection().expect("projection").records[0].validity,
             MemoryValidity::Current
         );
+        drop(store);
         fs::remove_dir_all(root).expect("cleanup");
     }
 
@@ -221,6 +222,7 @@ mod tests {
                 store.projection().expect("projection").records[0].validity,
                 MemoryValidity::Invalidated
             );
+            drop(store);
             fs::remove_dir_all(root).expect("cleanup");
         }
     }
