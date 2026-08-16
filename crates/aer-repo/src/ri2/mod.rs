@@ -1,9 +1,11 @@
 mod build;
 mod graph_query;
 mod graph_write;
+mod invalidation;
 mod model;
 mod schema;
 
+pub use invalidation::{InvalidationFrontier, repository_file_entity_id};
 pub use model::*;
 
 use sha2::{Digest, Sha256};
