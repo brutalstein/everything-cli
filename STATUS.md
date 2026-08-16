@@ -5,11 +5,15 @@
 **Public product / executable:** `everything`  
 **Internal architecture terminology:** AER remains valid where the architecture uses it  
 **Current phase:** Phase 3 — Repository Intelligence and Context Economy  
-**Current step:** 08 / 18 — Repository Intelligence  
+**Current step:** 09 / 18 — Context Economy Engine  
 **Repository-side state:** CI VERIFIED — awaiting target Windows reproduction  
-**Verified Step-08 HEAD:** `12b97c6e9c715a19354af6ba5b661eb83ed9f353`  
-**Verified Step-08 CI:** `foundation-ci` run `31918025079` — Ubuntu PASS, canonical isolated Windows verifier PASS  
-**Next step:** 09 — Context Economy Engine — BLOCKED until Step-08 target Windows verification passes
+**Verified Step-09 code HEAD:** `0591452f13e2ba693d677e29b49d43e624fc175e`  
+**Verified Step-09 CI:** `foundation-ci` run `31920562037` — Ubuntu PASS including permanent Context Economy gate; canonical isolated Windows verifier PASS  
+**Next step:** 10 — Verification + Proof System — BLOCKED until Step-09 target Windows verification passes
+
+## Agent engineering policy
+
+`AGENTS.md` is the canonical implementation temperament for coding agents. YAGNI, semantic DRY, dependency restraint, bounded resource use, fail-closed correctness, evidence-before-completion, and measured performance apply to all remaining implementation work. `CLAUDE.md` delegates to it rather than duplicating policy.
 
 ## User-directed product-surface freeze
 
@@ -21,7 +25,7 @@ The CLI/TUI is intentionally frozen while the core architecture is completed. Un
 - preserve the existing zero-redraw CLI only as a regression surface;
 - develop and verify domain/core/storage/repository/context/runtime architecture first.
 
-`crates/aer-cli/**` was not modified by Step 08.
+`crates/aer-cli/**` was not modified by Step 09.
 
 ## Completed milestones
 
@@ -32,169 +36,144 @@ The CLI/TUI is intentionally frozen while the core architecture is completed. Un
 - **Step 04 — Runtime State + Resource Safety:** COMPLETE — CI `31906368065`; target Windows PASS.
 - **Step 05 — Workspace + Execution Boundary:** COMPLETE — CI `31909059844`; target Windows PASS.
 - **Step 06 — Single-Agent Runtime 0.1:** COMPLETE — CI `31911224304`; target Windows PASS.
-- **Step 07 — Intent + Research + Engineering IR:** COMPLETE — semantic baseline `d5668b5d87a3b8a3f598b9cd016cc11cc5504837`; repository and target-Windows product/semantic reproduction confirmed before Step 08 began.
+- **Step 07 — Intent + Research + Engineering IR:** COMPLETE — semantic baseline `d5668b5d87a3b8a3f598b9cd016cc11cc5504837`; target Windows reproduction confirmed.
+- **Step 08 — Repository Intelligence:** COMPLETE — code HEAD `12b97c6e9c715a19354af6ba5b661eb83ed9f353`; CI `31918025079`; target Windows canonical verification reproduced by the user on 2026-08-16 with final `everything Windows verification: PASS`.
 
-## Step 08 — Repository Intelligence
+## Step 09 — Context Economy Engine
 
 **State:** REPOSITORY CI VERIFIED — TARGET WINDOWS PENDING
 
-### Architecture boundary
+### Ownership and scope
 
-`aer-repo` owns derived, rebuildable repository intelligence. It is not an authority store and may not change project intent, decisions, Engineering IR, runtime truth, or the user's workspace.
+New crate `aer-context` owns bounded, provenance-preserving Context Pack compilation. It consumes current Engineering IR plus derived repository intelligence and produces source-faithful context for a specific task. It is not an authority store and cannot alter accepted project semantics.
 
-`aer-core::repository::RepositoryService` is the application boundary that binds repository intelligence to an exact workspace snapshot and current Engineering IR. Derived index state is stored outside the user repository under the project runtime state directory.
+`aer-core::context::ContextService` is the application boundary. It binds a request to:
 
-### Exact repository snapshot identity
+- the current authoritative Engineering IR revision;
+- the exact current repository snapshot;
+- the current repository-derived index;
+- an explicit context policy;
+- a hard input-token budget.
 
-Repository retrieval is tied to an exact snapshot identity derived from:
+A stale Engineering IR revision or stale repository snapshot fails closed.
 
-- repository identity;
-- HEAD commit;
-- tracked dirty-diff SHA-256;
-- aggregate **actual untracked-content SHA-256** identity;
-- submodule-state SHA-256.
+### Context objective
 
-The workspace is captured before and after indexing. If it changes during the build, indexing fails with `WorkspaceChangedDuringIndex`; an incomplete build never becomes current.
+The engine optimizes for useful evidence per context cost rather than growing context. It combines bounded signals from:
 
-`search_current` fails closed with `StaleIndex` when the current workspace no longer matches the indexed snapshot. There is no nearby-commit or best-effort silent reuse.
+- lexical/symbol repository retrieval;
+- Engineering IR semantic links;
+- repository structural/impact relationships;
+- explicitly supplied runtime hints.
 
-### Derived index and bounded inventory
+Initial fusion is deterministic rank-based scoring. A single repository path is one redundancy group: multiple signals enrich the same candidate rather than duplicating source content.
 
-The repository index is a separate SQLite database configured with WAL, FULL synchronous durability, foreign keys enabled, `trusted_schema=OFF`, busy timeout, and an explicit derived-index schema version.
+### Exact source identity
 
-Inventory is ignore-aware and deterministic through:
+Step 09 added `RepositoryIndex::file(snapshot_id, path)` for exact snapshot-file lookup. Semantic, runtime, and structural paths use this direct identity lookup rather than running a lexical search to rediscover a known path.
 
-```text
-git ls-files --cached --others --exclude-standard -z
-```
+Selected source is checked against its indexed full-file SHA-256 before use. Context segments carry exact line ranges and segment SHA-256. Fidelity verification rechecks both full-file and segment identity.
 
-Configured hard bounds cover:
+### Progressive disclosure
 
-- repository file count;
-- per-file text bytes;
-- aggregate text bytes;
-- terms per file;
-- syntax links per file;
-- Git commit history;
-- co-change fanout;
-- Git command output capture;
-- query bytes;
-- returned results;
-- retained snapshots.
+Context has four explicit tiers:
 
-Limit violations fail closed rather than silently expanding resource use.
+0. identifier/path only;
+1. structural/anchor evidence;
+2. bounded source span;
+3. bounded expanded neighborhood.
 
-### Incremental content reuse
+Selection begins cheaply and upgrades already-selected items only while budget remains. Source code is extractive in Step 09; no abstractive code summary is introduced, avoiding unverifiable summary drift.
 
-Parsed artifacts are keyed by:
+### Hard bounds and accounting
 
-```text
-content_sha256 + parser_key
-```
+`ContextPolicy` bounds candidate count, selected items, source bytes, span size, semantic IDs, runtime hints, impact seeds, omitted-high-rank reporting, and selection weights.
 
-Unchanged file content is reused across repository snapshots only when both identities match. Parser identity is part of the key, so changing a parser version or adapter identity invalidates reuse deterministically.
+`ContextRequest` carries an explicit input-token budget. The V1 accounting estimator is deliberately deterministic and conservative rather than pretending to be an exact provider tokenizer: one accounting unit per Unicode scalar plus fixed pack/item overhead. Provider/model-specific tokenizer accounting can be added only when a real provider capability requires it and measured evidence justifies the complexity.
 
-Snapshot retention cannot delete the current-snapshot pointer. Unreferenced derived artifacts are garbage-collected only after snapshot transitions commit.
+Mandatory semantic coverage cannot silently disappear. If a required semantic ID has no resolvable current source, or its minimum context cannot fit the budget, compilation fails explicitly.
 
-### Syntax and language adapters
+### Context Pack contract
 
-Pinned Tree-sitter support exists for:
+Compiled packs bind:
 
-- Rust;
-- Python;
-- JavaScript;
-- TypeScript;
-- TSX.
+- task ID;
+- Engineering IR revision;
+- exact repository snapshot;
+- policy version;
+- input-token budget;
+- selected items and tiers;
+- source references;
+- full source hashes;
+- exact segment hashes;
+- selected reasons;
+- omitted high-rank candidates.
 
-The adapters derive bounded symbols and import/call/reference relations. Unsupported text formats use deterministic lexical indexing without fabricating syntax symbols.
+Pack/item identities are deterministic SHA-256 identities. Every produced pack is validated through the existing executable `ContextPack` contract registry before it is returned.
 
-Parser-specific tests cover Rust, Python, JavaScript, TypeScript, and unsupported-language lexical fallback.
+### ContextBench
 
-### Retrieval
+Step-09 tests compare bounded selection against a deliberately noisy whole-context fixture containing relevant auth implementation/tests plus large irrelevant documents.
 
-Repository retrieval currently combines:
+The verified fixture requires:
 
-- deterministic lexical tokenization;
-- BM25-style file scoring;
-- exact symbol-name boosts;
-- path proximity signal;
-- symbol anchor lines;
-- explicit score thresholds;
-- bounded result count.
+- 100% relevant-path recall for its declared relevant set;
+- fewer selected accounting tokens than naive whole context;
+- higher relevant-evidence yield per token than the naive baseline;
+- provenance/hash fidelity;
+- hard token-budget compliance;
+- no duplicate repository-path items.
 
-When evidence is absent or below threshold, retrieval returns an explicit abstention reason rather than inventing a plausible file.
+Additional adversarial tests cover stale workspace refusal, stale IR refusal, missing mandatory semantic coverage, tiny-budget rejection, and exact file lookup independent from lexical search.
 
-No vector database or embedding dependency was added in Step 08. That remains optional and must earn its complexity through measured Step-09 context-retrieval pressure.
+### YAGNI decisions
 
-### Repository graph views
+Step 09 deliberately did **not** add:
 
-The derived index exposes:
+- a vector database;
+- embedding infrastructure;
+- provider-specific tokenizers;
+- learned context routing;
+- abstractive source-code summarization;
+- a background context daemon;
+- another persistent authority store.
 
-- symbols;
-- imports;
-- calls;
-- references;
-- test-to-code associations;
-- bounded Git history;
-- file co-change relationships;
-- semantic links from current Engineering IR anchors;
-- runtime-observation link ingestion for observations that actually reference files in the exact snapshot;
-- impact candidates combining tests, co-change, and lexical/reference proximity.
+Those components must earn their complexity through a demonstrated later requirement or measured regression.
 
-Runtime observations for paths absent from the exact snapshot are ignored instead of creating fabricated repository edges.
-
-### Engineering IR linkage
-
-`RepositoryService::refresh` reads the current authoritative specification state and creates derived semantic anchors for existing:
-
-- goals;
-- functional requirements;
-- constraints;
-- acceptance criteria;
-- decisions.
-
-These are retrieval links only. Repository intelligence cannot promote derived evidence back into accepted semantic authority.
-
-### Retrieval baseline
-
-`aer-repo` contains a deterministic retrieval-evaluation API that reports case count, relevant-path count, relevant paths found, and recall in milli-units. Step-08 tests exercise a small source/test fixture and require the relevant auth implementation and associated test to be recovered.
-
-## Step 08 acceptance ledger
+## Step 09 acceptance ledger
 
 | Gate | State | Evidence |
 |---|---|---|
-| Exact commit/dirty/untracked/submodule snapshot identity | PASS | `RepoSnapshotIdentity` + snapshot capture tests. |
-| Ignore-aware deterministic inventory | PASS | bounded `git ls-files --cached --others --exclude-standard -z`. |
-| Workspace changed during indexing cannot publish current index | PASS | before/after snapshot comparison + transactional current pointer. |
-| Stale index cannot be silently reused | PASS | `search_current` returns `StaleIndex`. |
-| Content-hash + parser-key incremental reuse | PASS | incremental refresh test. |
-| Rust Tree-sitter adapter | PASS | syntax adapter test. |
-| Python Tree-sitter adapter | PASS | syntax adapter test. |
-| JavaScript Tree-sitter adapter | PASS | syntax adapter test. |
-| TypeScript/TSX Tree-sitter adapter | PASS | syntax adapter test. |
-| Unsupported language has lexical fallback without fake symbols | PASS | fallback test. |
-| Lexical/symbol retrieval with explicit abstention | PASS | retrieval tests. |
-| Query/result/resource budgets fail closed | PASS | policy validation + adversarial oversized-query test. |
-| Import/call/reference graph | PASS | parsed-content link index and APIs. |
-| Test relationships | PASS | source/test integration fixture. |
-| Bounded Git history + co-change view | PASS | multi-commit fixture. |
-| Semantic IR-to-repository links | PASS | `RepositoryService` integration test. |
-| Runtime observation port does not fabricate missing-file links | PASS | adversarial runtime-observation test. |
-| Snapshot retention preserves current pointer | PASS | adversarial retention test. |
-| Impact view | PASS | tests + co-change + lexical/reference composition. |
-| Retrieval baseline metrics | PASS | deterministic evaluation fixture. |
-| Derived index lives outside user workspace | PASS | core integration test. |
-| Workspace-wide format + `-D warnings` Clippy | PASS | CI `31918025079`. |
-| Full workspace regression suite | PASS | CI `31918025079`. |
-| Dedicated repository-intelligence gate | PASS | CI `31918025079`. |
-| Canonical isolated Windows CI verifier with `aer-repo` | PASS | CI `31918025079`. |
-| Target Windows verifier | PENDING | user reproduction required. |
+| Dedicated `aer-context` ownership | PASS | workspace crate + core application boundary. |
+| Current Engineering IR revision binding | PASS | `ContextService` stale-IR test. |
+| Exact repository snapshot binding | PASS | `search_current` + final snapshot/fidelity checks. |
+| Exact known-path identity without lexical rediscovery | PASS | `RepositoryIndex::file` + hardening test. |
+| Lexical/symbol + semantic + structural + runtime signal fusion | PASS | Context Engine integration fixture. |
+| Repository-path redundancy elimination | PASS | ContextBench unique-path assertion. |
+| Mandatory semantic coverage | PASS | positive + missing-coverage tests. |
+| Hard context/token budgets | PASS | policy validation + tiny-budget rejection. |
+| Progressive disclosure tiers | PASS | deterministic tier compiler tests. |
+| Extractive source spans with provenance | PASS | full-file + line-segment SHA-256. |
+| Stale workspace/context rejection | PASS | stale-index/fidelity tests. |
+| Current executable Context Pack schema validation | PASS | embedded contract validation on compile/fidelity. |
+| Deterministic pack/item identities | PASS | SHA-256 identity construction. |
+| ContextBench relevant recall | PASS | fixture recall `1000` milli. |
+| ContextBench lower token cost than naive whole context | PASS | baseline assertion. |
+| ContextBench higher relevant yield/token than naive baseline | PASS | baseline assertion. |
+| No new third-party Context Engine dependency | PASS | activation lockfile adds only internal `aer-context` package edge. |
+| Workspace-wide format | PASS | CI `31920562037`. |
+| Workspace-wide `-D warnings` Clippy | PASS | CI `31920562037`. |
+| Full workspace regression suite | PASS | CI `31920562037`. |
+| Permanent Linux Context Economy CI gate | PASS | CI `31920562037`. |
+| Canonical isolated Windows CI verifier including `aer-context` | PASS | CI `31920562037`. |
+| Temporary write workflow/repair scaffolding removed | PASS | verified code HEAD `0591452f13e2ba693d677e29b49d43e624fc175e`; repository workflow is read-only again. |
+| Target Windows canonical verifier | PENDING | user reproduction required. |
 
-## Step 08 exit condition
+## Step 09 exit condition
 
-Repository-side Step 08 is verified. Do **not** start Step 09 until the target Windows checkout reproduces the canonical verifier successfully.
+Repository-side Step 09 is verified. Do **not** start Step 10 until the target Windows checkout reproduces the canonical verifier successfully.
 
-Run only the architecture verification; no interactive CLI testing is required for this step:
+No interactive CLI testing is required. Run only:
 
 ```powershell
 cd C:\Users\cenke\OneDrive\Desktop\everything
@@ -208,4 +187,4 @@ Expected final line:
 everything Windows verification: PASS
 ```
 
-After that PASS, mark Step 08 COMPLETE and proceed to **Step 09 — Context Economy Engine** while keeping the CLI/TUI frozen.
+After that PASS, mark Step 09 COMPLETE and proceed to **Step 10 — Verification + Proof System**, keeping the CLI/TUI frozen.
