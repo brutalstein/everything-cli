@@ -575,7 +575,8 @@ mod tests {
     use std::{
         fs,
         sync::atomic::{AtomicU64, Ordering},
-        time::{SystemTime, UNIX_EPOCH},
+        thread,
+        time::{Duration, SystemTime, UNIX_EPOCH},
     };
 
     use aer_exec::SideEffectClass;
@@ -600,6 +601,24 @@ mod tests {
         fs::create_dir_all(root.join("src")).expect("fixture dirs");
         fs::write(root.join("src/lib.rs"), "one\ntwo\nthree\nfour\n").expect("fixture file");
         root
+    }
+
+    fn cleanup_fixture(root: std::path::PathBuf, broker: ToolBroker) {
+        drop(broker);
+        let mut last_error = None;
+        for attempt in 0..10 {
+            match fs::remove_dir_all(&root) {
+                Ok(()) => return,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+                Err(error) => {
+                    last_error = Some(error);
+                    if attempt < 9 {
+                        thread::sleep(Duration::from_millis(25));
+                    }
+                }
+            }
+        }
+        panic!("cleanup: {}", last_error.expect("cleanup error"));
     }
 
     #[test]
@@ -639,8 +658,7 @@ mod tests {
             panic!("default exec must ask");
         };
         assert_eq!(request.side_effect, SideEffectClass::ProcessExecution);
-        drop(broker);
-        fs::remove_dir_all(root).expect("cleanup");
+        cleanup_fixture(root, broker);
     }
 
     #[test]
@@ -663,8 +681,7 @@ mod tests {
             error,
             super::ToolError::ProcessExecutionRequiresOwnedWorktree
         ));
-        drop(broker);
-        fs::remove_dir_all(root).expect("cleanup");
+        cleanup_fixture(root, broker);
     }
 
     #[test]
@@ -691,8 +708,7 @@ mod tests {
         assert_eq!(exec.argv.first().map(String::as_str), Some("git"));
         assert!(exec.stdout_preview.contains("git version"));
         assert!(!exec.stdout_sha256.is_empty());
-        drop(broker);
-        fs::remove_dir_all(root).expect("cleanup");
+        cleanup_fixture(root, broker);
     }
 
     #[test]
@@ -714,8 +730,7 @@ mod tests {
             panic!("expected tool description");
         };
         assert!(tool.schema.is_some());
-        drop(broker);
-        fs::remove_dir_all(root).expect("cleanup");
+        cleanup_fixture(root, broker);
     }
 
     #[test]
@@ -735,7 +750,6 @@ mod tests {
             )
             .expect("decision");
         assert!(matches!(result, ToolOutcome::Denied(_)));
-        drop(broker);
-        fs::remove_dir_all(root).expect("cleanup");
+        cleanup_fixture(root, broker);
     }
 }
