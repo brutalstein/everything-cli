@@ -1,0 +1,16 @@
+[package]
+name = "aer-context"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+aer-contracts = { path = "../aer-contracts" }
+aer-domain = { path = "../aer-domain" }
+aer-repo = { path = "../aer-repo" }
+serde_json.workspace = true
+sha2.workspace = true
+
+[lints]
+workspace = true
