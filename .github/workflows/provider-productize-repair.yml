@@ -18,12 +18,14 @@ jobs:
           fetch-depth: 0
       - run: python scripts/provider_productize_repair.py
       - run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt
+      - name: Refresh lockfile without changing dependency policy
+        run: cargo +1.97.1 metadata --format-version 1 > /dev/null
       - run: cargo +1.97.1 fmt --all
-      - name: Commit repair and formatting
+      - name: Commit repair, lockfile and formatting
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add crates/aer-provider/src crates/aer-core/src crates/aer-cli/src
+          git add Cargo.lock crates/aer-provider/src crates/aer-core/src crates/aer-cli/src
           git diff --cached --quiet && exit 0
-          git commit -m "Repair and format provider productization source"
+          git commit -m "Refresh and format provider productization source"
           git push origin HEAD:agent/provider-runtime-productization
