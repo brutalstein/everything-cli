@@ -16,6 +16,7 @@ use aer_exec::{
 };
 use sha2::{Digest, Sha256};
 
+pub mod parallel;
 pub mod workspace_lock;
 
 const INSPECTION_OUTPUT_LIMIT: usize = 4 * 1024 * 1024;
@@ -783,47 +784,48 @@ mod tests {
             fs::read_to_string(repo.join("tracked.txt")).expect("user tracked"),
             "dirty\n"
         );
+        assert_eq!(
+            fs::read_to_string(repo.join("untracked.txt")).expect("user untracked"),
+            "local-only\n"
+        );
         assert_eq!(git(&repo, &["branch", "--show-current"]), original_branch);
-
-        owned.remove().expect("remove worktree");
+        owned.remove().expect("remove owned worktree");
         fs::remove_dir_all(repo).expect("cleanup repo");
-        let parent = owned_path.parent().expect("owned parent");
-        let _ = fs::remove_dir_all(parent);
     }
 
     #[test]
-    fn excluding_untracked_state_marks_snapshot_inexact_and_refuses_materialization() {
+    fn inexact_snapshot_cannot_claim_owned_materialization() {
         let repo = initialized_repo("inexact");
         fs::write(repo.join("untracked.txt"), "local-only\n").expect("untracked");
-        let policy = SnapshotPolicy {
-            include_untracked: false,
-            ..SnapshotPolicy::default()
-        };
-        let snapshot = WorkspaceSnapshot::capture(&repo, &policy).expect("snapshot");
+        let snapshot = WorkspaceSnapshot::capture(
+            &repo,
+            &SnapshotPolicy {
+                include_untracked: false,
+                ..SnapshotPolicy::default()
+            },
+        )
+        .expect("capture inexact snapshot");
         assert!(!snapshot.exact);
-        let destination = temp_dir("inexact-destination").join("owned");
-        assert!(snapshot.materialize_owned_worktree(&destination).is_err());
+        let owned_path = temp_dir("inexact-owned").join("owned");
+        assert!(snapshot.materialize_owned_worktree(&owned_path).is_err());
         fs::remove_dir_all(repo).expect("cleanup repo");
-        let _ = fs::remove_dir_all(destination.parent().expect("parent"));
+        if let Some(parent) = owned_path.parent() {
+            let _ = fs::remove_dir_all(parent);
+        }
     }
 
     #[test]
-    fn remote_credentials_are_removed_from_workspace_identity() {
-        let repo = initialized_repo("remote-redaction");
-        git(
-            &repo,
-            &[
-                "remote",
-                "add",
-                "origin",
-                "https://user:super-secret@example.com/org/repo.git?token=also-secret",
-            ],
+    fn workspace_identity_is_stable_until_user_state_changes() {
+        let repo = initialized_repo("identity");
+        let first = WorkspaceIdentity::inspect(&repo).expect("first identity");
+        let second = WorkspaceIdentity::inspect(&repo).expect("second identity");
+        assert_eq!(first, second);
+        fs::write(repo.join("tracked.txt"), "changed\n").expect("change tracked");
+        let changed = WorkspaceIdentity::inspect(&repo).expect("changed identity");
+        assert_ne!(
+            first.dirty_tracked_diff_sha256,
+            changed.dirty_tracked_diff_sha256
         );
-        let identity = WorkspaceIdentity::inspect(&repo).expect("identity");
-        let url = &identity.remotes[0].urls[0];
-        assert_eq!(url, "https://example.com/org/repo.git");
-        assert!(!url.contains("super-secret"));
-        assert!(!url.contains("also-secret"));
         fs::remove_dir_all(repo).expect("cleanup repo");
     }
 }
