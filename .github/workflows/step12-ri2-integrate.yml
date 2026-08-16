@@ -1,5 +1,6 @@
 name: Step 12 RI2 integration
 
+# Replay on the latest branch head after the previous validated runner lost a non-fast-forward race.
 on:
   push:
     branches:
