@@ -6,11 +6,13 @@
 **Internal architecture terminology:** AER remains valid where the architecture uses it  
 **Current phase:** Phase 2 — Intent, Research, and Engineering IR  
 **Current step:** 07 / 18 — Intent + Research + Engineering IR  
-**Repository-side state:** CLI REBUILD VERIFIED LOCALLY IN CI FINALIZER — final normal Linux/Windows CI pending  
+**Repository-side state:** ZERO-REDRAW CLI CI VERIFIED — awaiting target Windows reproduction  
+**Verified product HEAD:** `24204c9fc735bb73776f7545394307d6dd5bd377`  
+**Verified repository CI:** `foundation-ci` run `31916597879` — Ubuntu PASS including zero-redraw guard; canonical isolated Windows verifier PASS  
 **Step-07 semantic implementation baseline:** `d5668b5d87a3b8a3f598b9cd016cc11cc5504837`  
-**Zero-redraw CLI implementation:** `c1980a7d77144bf8b80ba8bcf8cb8d2b382816a0`  
+**Zero-redraw CLI implementation baseline:** `c1980a7d77144bf8b80ba8bcf8cb8d2b382816a0`  
 **Verified rebuild finalizer:** `31916419771` — format PASS, workspace check PASS, `-D warnings` Clippy PASS, full workspace tests PASS  
-**Next step:** 08 — Repository Intelligence — BLOCKED until current Step-07 product passes final repository CI and target Windows reproduction
+**Next step:** 08 — Repository Intelligence — BLOCKED until target Windows reproduction passes
 
 ## Completed milestones
 
@@ -181,15 +183,15 @@ The product surface only invokes these existing boundaries more cheaply.
 | Removed UI-only commands cannot leak into help | PASS | `help_does_not_advertise_removed_ui_only_surfaces`. |
 | `--workspace PATH` does not trigger eager discovery | PASS | command tests. |
 | Research import preserves path spaces and workspace-relative resolution | PASS | shell parser test. |
-| Workspace-wide `-D warnings` Clippy | PASS | finalizer `31916419771`. |
-| Full workspace tests after dependency prune | PASS | finalizer `31916419771`. |
-| Final normal Linux CI including zero-redraw guard | PENDING | next `foundation-ci`. |
-| Canonical isolated Windows CI verifier | PENDING | next `foundation-ci`. |
+| Workspace-wide `-D warnings` Clippy | PASS | finalizer `31916419771`; repository CI `31916597879`. |
+| Full workspace tests after dependency prune | PASS | finalizer `31916419771`; repository CI `31916597879`. |
+| Normal Linux CI including zero-redraw guard | PASS | `foundation-ci` `31916597879`. |
+| Canonical isolated Windows CI verifier | PASS | `foundation-ci` `31916597879`. |
 | Target Windows verifier + real shell launch | PENDING | required before Step 08. |
 
 ## Step 07 exit condition
 
-Do **not** start Step 08 until the final repository CI is green and the target Windows checkout reproduces the rebuilt CLI successfully.
+Repository-side zero-redraw CLI gates are satisfied. Do **not** start Step 08 until the target Windows checkout reproduces the rebuilt CLI successfully.
 
 Canonical target-Windows gate:
 
