@@ -25,7 +25,6 @@ use aer_domain::{
 };
 use aer_workspace::parallel::TaskChangeSet;
 
-#[derive(Debug)]
 pub struct ParallelRuntimeCoordinator {
     scheduler: BoundedScheduler,
     runtime: RuntimeSafetyKernel,
