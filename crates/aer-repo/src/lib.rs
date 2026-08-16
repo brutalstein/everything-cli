@@ -3,10 +3,13 @@
 //! This crate never owns project authority. It indexes an exact workspace snapshot and refuses
 //! current-workspace retrieval when that snapshot no longer matches.
 
+mod language;
 mod model;
+mod ri2;
 mod syntax;
 
 pub use model::*;
+pub use ri2::*;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -21,7 +24,7 @@ use sha2::{Digest, Sha256};
 
 use crate::syntax::{detect_language, is_test_path, parse_text, parser_key, tokenize};
 
-const INDEX_SCHEMA_VERSION: i64 = 1;
+const INDEX_SCHEMA_VERSION: i64 = 2;
 
 pub struct RepositoryIndex {
     connection: Connection,
@@ -52,9 +55,16 @@ impl RepositoryIndex {
         let before =
             WorkspaceSnapshot::capture(workspace_root.as_ref(), &SnapshotPolicy::default())?;
         let snapshot = snapshot_identity(&before)?;
-        if self.current_snapshot_id(&snapshot.repo_id)?.as_deref() == Some(&snapshot.snapshot_id) {
+        let previous_snapshot = self.current_snapshot_id(&snapshot.repo_id)?;
+        let snapshot_unchanged = previous_snapshot.as_deref() == Some(&snapshot.snapshot_id);
+        if snapshot_unchanged && !self.ri2_snapshot_requires_rebuild(&snapshot.snapshot_id)? {
             return self.report_existing(snapshot, true);
         }
+        let continuity_snapshot = if snapshot_unchanged {
+            None
+        } else {
+            previous_snapshot.as_deref()
+        };
 
         let paths = list_repository_files(&before.identity.repo_root, &self.policy)?;
         if paths.len() > self.policy.max_files {
@@ -67,10 +77,18 @@ impl RepositoryIndex {
             .collect::<Result<_, _>>()?;
 
         let mut prepared = Vec::with_capacity(paths.len());
+        let mut missing_paths = BTreeSet::new();
         let mut total_text = 0_u64;
         for relative in paths {
             let full = before.identity.repo_root.join(&relative);
-            let metadata = fs::symlink_metadata(&full)?;
+            let metadata = match fs::symlink_metadata(&full) {
+                Ok(metadata) => metadata,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    missing_paths.insert(relative);
+                    continue;
+                }
+                Err(error) => return Err(error.into()),
+            };
             let language = detect_language(&relative);
             let test = is_test_path(&relative);
             if metadata.file_type().is_symlink() {
@@ -96,16 +114,23 @@ impl RepositoryIndex {
                 ));
                 continue;
             }
+            let bytes = match untracked.get(&relative) {
+                Some(bytes) => bytes.clone(),
+                None => match fs::read(&full) {
+                    Ok(bytes) => bytes,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                        missing_paths.insert(relative);
+                        continue;
+                    }
+                    Err(error) => return Err(error.into()),
+                },
+            };
             total_text = total_text
-                .checked_add(metadata.len())
+                .checked_add(u64::try_from(bytes.len()).unwrap_or(u64::MAX))
                 .ok_or(RepoError::TextBudgetExceeded(u64::MAX))?;
             if total_text > self.policy.max_total_text_bytes {
                 return Err(RepoError::TextBudgetExceeded(total_text));
             }
-            let bytes = match untracked.get(&relative) {
-                Some(bytes) => bytes.clone(),
-                None => fs::read(&full)?,
-            };
             let content_sha256 = sha256(&bytes);
             let Ok(text) = std::str::from_utf8(&bytes) else {
                 prepared.push(PreparedFile {
@@ -145,14 +170,24 @@ impl RepositoryIndex {
             });
         }
 
+        let build_topology =
+            ri2::collect_project_topology(&before.identity.repo_root, &self.policy);
         let after =
             WorkspaceSnapshot::capture(&before.identity.repo_root, &SnapshotPolicy::default())?;
         if snapshot_identity(&after)?.snapshot_id != snapshot.snapshot_id {
             return Err(RepoError::WorkspaceChangedDuringIndex);
         }
+        for relative in &missing_paths {
+            match fs::symlink_metadata(before.identity.repo_root.join(relative)) {
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Ok(_) => return Err(RepoError::WorkspaceChangedDuringIndex),
+                Err(error) => return Err(error.into()),
+            }
+        }
 
         let git_view = collect_git_view(&before.identity.repo_root, &self.policy)?;
         let transaction = self.connection.transaction()?;
+        clear_snapshot_materialized_views(&transaction, &snapshot.snapshot_id, snapshot_unchanged)?;
         insert_snapshot(&transaction, &snapshot)?;
         let mut parsed_artifacts = 0_usize;
         let mut reused_artifacts = 0_usize;
@@ -197,6 +232,13 @@ impl RepositoryIndex {
         }
         insert_git_view(&transaction, &snapshot.snapshot_id, &git_view)?;
         let test_associations = rebuild_test_links(&transaction, &snapshot.snapshot_id, 100)?;
+        ri2::rebuild_snapshot_views(
+            &transaction,
+            &snapshot,
+            continuity_snapshot,
+            &prepared,
+            &build_topology,
+        )?;
         transaction.execute(
             "INSERT INTO current_snapshots(repo_id,snapshot_id) VALUES(?,?) ON CONFLICT(repo_id) DO UPDATE SET snapshot_id=excluded.snapshot_id",
             params![snapshot.repo_id, snapshot.snapshot_id],
@@ -923,8 +965,40 @@ fn initialize_schema(connection: &Connection) -> Result<(), RepoError> {
              PRAGMA user_version=1;
              COMMIT;"
         )?;
+    }
+    let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    if version == 1 {
+        ri2::migrate_v1_to_v2(connection)?;
     } else if version != INDEX_SCHEMA_VERSION {
         return Err(RepoError::UnsupportedIndexVersion(version));
+    }
+    Ok(())
+}
+
+fn clear_snapshot_materialized_views(
+    transaction: &Transaction<'_>,
+    snapshot_id: &str,
+    producer_rebuild: bool,
+) -> Result<(), RepoError> {
+    for table in [
+        "runtime_links",
+        "semantic_links",
+        "test_links",
+        "cochanges",
+        "git_changes",
+        "git_commits",
+        "snapshot_files",
+    ] {
+        transaction.execute(
+            &format!("DELETE FROM {table} WHERE snapshot_id=?"),
+            [snapshot_id],
+        )?;
+    }
+    if producer_rebuild {
+        transaction.execute(
+            "DELETE FROM ri2_symbol_continuity WHERE from_snapshot=? OR to_snapshot=?",
+            params![snapshot_id, snapshot_id],
+        )?;
     }
     Ok(())
 }

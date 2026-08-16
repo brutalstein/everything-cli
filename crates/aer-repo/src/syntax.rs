@@ -3,7 +3,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use sha2::{Digest, Sha256};
 use tree_sitter::{Language, Node, Parser};
 
-use crate::model::{EdgeKind, IndexPolicy, LanguageKind, RepoError, SymbolKind};
+use crate::{
+    language,
+    model::{EdgeKind, IndexPolicy, LanguageKind, RepoError, SymbolKind},
+};
 
 pub(crate) const TREE_SITTER_RUNTIME: &str = "0.26.11";
 
@@ -46,58 +49,16 @@ pub(crate) struct LocalLink {
 
 #[must_use]
 pub(crate) fn detect_language(path: &str) -> LanguageKind {
-    let lower = path.to_ascii_lowercase();
-    if lower.ends_with(".rs") {
-        LanguageKind::Rust
-    } else if lower.ends_with(".py") || lower.ends_with(".pyi") {
-        LanguageKind::Python
-    } else if lower.ends_with(".tsx") {
-        LanguageKind::Tsx
-    } else if lower.ends_with(".ts") || lower.ends_with(".mts") || lower.ends_with(".cts") {
-        LanguageKind::TypeScript
-    } else if lower.ends_with(".js")
-        || lower.ends_with(".mjs")
-        || lower.ends_with(".cjs")
-        || lower.ends_with(".jsx")
-    {
-        LanguageKind::JavaScript
-    } else if lower.ends_with(".json") || lower.ends_with(".jsonc") {
-        LanguageKind::Json
-    } else if lower.ends_with(".toml") {
-        LanguageKind::Toml
-    } else if lower.ends_with(".md") || lower.ends_with(".mdx") {
-        LanguageKind::Markdown
-    } else if lower.ends_with(".sh")
-        || lower.ends_with(".bash")
-        || lower.ends_with(".zsh")
-        || lower.ends_with(".ps1")
-    {
-        LanguageKind::Shell
-    } else if lower.ends_with(".yaml") || lower.ends_with(".yml") {
-        LanguageKind::Yaml
-    } else {
-        LanguageKind::Other
-    }
+    let detection = language::detect(path);
+    debug_assert!(!detection.profile_id.is_empty());
+    let _role = detection.role;
+    let _ambiguous = detection.ambiguous;
+    detection.language
 }
 
 #[must_use]
 pub(crate) fn parser_key(language: LanguageKind) -> String {
-    match language {
-        LanguageKind::Rust => {
-            format!("tree-sitter-rust@0.24.2/runtime-{TREE_SITTER_RUNTIME}/aer-v1")
-        }
-        LanguageKind::Python => {
-            format!("tree-sitter-python@0.25.0/runtime-{TREE_SITTER_RUNTIME}/aer-v1")
-        }
-        LanguageKind::JavaScript => {
-            format!("tree-sitter-javascript@0.25.0/runtime-{TREE_SITTER_RUNTIME}/aer-v1")
-        }
-        LanguageKind::TypeScript => {
-            format!("tree-sitter-typescript@0.23.2/runtime-{TREE_SITTER_RUNTIME}/aer-v1")
-        }
-        LanguageKind::Tsx => format!("tree-sitter-tsx@0.23.2/runtime-{TREE_SITTER_RUNTIME}/aer-v1"),
-        _ => "text-lexical-v1".to_owned(),
-    }
+    language::parser_key(language, TREE_SITTER_RUNTIME)
 }
 
 pub(crate) fn parse_text(

@@ -179,6 +179,15 @@ try {
         "test", "--locked", "-p", "aer-repo", "-p", "aer-core", "--all-targets", "--target", $Target
     )
     Invoke-Checked -FilePath $CargoPath -Arguments @(
+        "test", "--locked", "-p", "aer-repo", "--test", "repo_intel_2_bench", "--target", $Target
+    )
+    Invoke-Checked -FilePath $CargoPath -Arguments @(
+        "test", "--locked", "-p", "aer-repo", "--test", "repo_intel_2_tier2", "--target", $Target
+    )
+    Invoke-Checked -FilePath $CargoPath -Arguments @(
+        "test", "--locked", "-p", "aer-core", "--test", "handoff_bench", "--target", $Target
+    )
+    Invoke-Checked -FilePath $CargoPath -Arguments @(
         "test", "--locked", "-p", "aer-context", "-p", "aer-repo", "-p", "aer-core", "--all-targets", "--target", $Target
     )
     Invoke-Checked -FilePath $CargoPath -Arguments @(
