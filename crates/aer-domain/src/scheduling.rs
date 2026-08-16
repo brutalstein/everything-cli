@@ -357,6 +357,8 @@ pub enum ScheduleBlockReason {
     UnknownResourceDemand,
     SerialOnly,
     HighRiskSerialization,
+    WaveCapacity,
+    SerializationBarrier,
     PredictedWriteOverlap { with_task: String },
     SemanticOverlap { with_task: String },
 }
@@ -425,7 +427,9 @@ impl BoundedScheduler {
     pub fn plan_wave(&self, graph: &TaskGraph) -> Result<ScheduleWave, SchedulingError> {
         let mut candidates = graph
             .tasks()
-            .filter(|task| task.state == TaskState::Ready)
+            .filter(|task| {
+                task.state == TaskState::Ready && !self.active.contains_key(&task.task_id)
+            })
             .collect::<Vec<_>>();
         if candidates.len() > self.policy.max_ready_tasks {
             return Err(SchedulingError::ReadySetExceeded {
@@ -445,6 +449,7 @@ impl BoundedScheduler {
 
         let mut service_shadow = self.run_service_units.clone();
         let mut selected_active = Vec::<ActiveTask>::new();
+        let mut serialization_barrier = false;
 
         while !candidates.is_empty() && wave.selected.len() < available {
             let best_index = (0..candidates.len())
@@ -481,24 +486,22 @@ impl BoundedScheduler {
                 || (self.policy.serialize_high_risk
                     && matches!(task.risk, TaskRisk::High | TaskRisk::Critical))
             {
+                serialization_barrier = true;
                 break;
             }
         }
 
+        let remaining_reason = if serialization_barrier {
+            ScheduleBlockReason::SerializationBarrier
+        } else {
+            ScheduleBlockReason::WaveCapacity
+        };
         for task in candidates {
             push_deferred(
                 &mut wave,
                 self.policy.max_deferred_records,
                 task,
-                if task.serial_only {
-                    ScheduleBlockReason::SerialOnly
-                } else if self.policy.serialize_high_risk
-                    && matches!(task.risk, TaskRisk::High | TaskRisk::Critical)
-                {
-                    ScheduleBlockReason::HighRiskSerialization
-                } else {
-                    ScheduleBlockReason::HighRiskSerialization
-                },
+                remaining_reason.clone(),
             );
         }
         Ok(wave)
