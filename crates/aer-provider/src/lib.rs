@@ -1,8 +1,11 @@
 //! Provider-neutral request/response gateway with bounded retry and cancellation.
 //!
-//! This Phase-1 crate deliberately ships a deterministic reference adapter for
-//! executable CI/E2E coverage. The reference adapter is explicitly non-production
-//! and must never be presented as an authenticated external model connection.
+//! This crate keeps provider-specific operational behavior behind a normalized
+//! gateway and exposes the Step-11 routing/resilience control plane through the
+//! `routing` module. Deterministic fixture adapters remain non-production and
+//! allow core correctness tests to run without paid APIs or credentials.
+
+pub mod routing;
 
 use std::{
     collections::VecDeque,
@@ -56,14 +59,75 @@ pub struct ProviderResponse {
     pub usage: ProviderUsage,
 }
 
+/// Provider-neutral operational failure taxonomy.
+///
+/// `Transient` and `Permanent` are retained as compatibility aliases for the
+/// Phase-1 API. New adapters should prefer the more precise Step-11 variants.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProviderFailureClass {
-    Authentication,
     InvalidRequest,
+    Authentication,
+    Authorization,
+    ContentPolicy,
     RateLimited,
-    Transient,
+    QuotaExhausted,
+    TransientUnavailable,
+    ProviderInternal,
+    Timeout,
+    Connection,
+    StreamInterrupted,
+    SchemaViolation,
+    ContextOverflow,
     Cancelled,
+    Unknown,
+    Transient,
     Permanent,
+}
+
+impl ProviderFailureClass {
+    #[must_use]
+    pub const fn retryable(self) -> bool {
+        matches!(
+            self,
+            Self::RateLimited
+                | Self::TransientUnavailable
+                | Self::ProviderInternal
+                | Self::Timeout
+                | Self::Connection
+                | Self::StreamInterrupted
+                | Self::Transient
+        )
+    }
+
+    #[must_use]
+    pub const fn opens_circuit(self) -> bool {
+        matches!(
+            self,
+            Self::TransientUnavailable
+                | Self::ProviderInternal
+                | Self::Timeout
+                | Self::Connection
+                | Self::StreamInterrupted
+                | Self::Transient
+        )
+    }
+
+    #[must_use]
+    pub const fn fallback_eligible(self) -> bool {
+        matches!(
+            self,
+            Self::Authentication
+                | Self::Authorization
+                | Self::RateLimited
+                | Self::QuotaExhausted
+                | Self::TransientUnavailable
+                | Self::ProviderInternal
+                | Self::Timeout
+                | Self::Connection
+                | Self::StreamInterrupted
+                | Self::Transient
+        )
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -91,10 +155,7 @@ impl ProviderError {
 
     #[must_use]
     pub const fn retryable(&self) -> bool {
-        matches!(
-            self.class,
-            ProviderFailureClass::RateLimited | ProviderFailureClass::Transient
-        )
+        self.class.retryable()
     }
 }
 
@@ -144,6 +205,23 @@ pub trait ProviderAdapter: Send + Sync {
         request: &ProviderRequest,
         cancellation: &dyn CancellationSignal,
     ) -> Result<ProviderResponse, ProviderError>;
+}
+
+impl<T> ProviderAdapter for Arc<T>
+where
+    T: ProviderAdapter + ?Sized,
+{
+    fn descriptor(&self) -> ProviderDescriptor {
+        (**self).descriptor()
+    }
+
+    fn complete(
+        &self,
+        request: &ProviderRequest,
+        cancellation: &dyn CancellationSignal,
+    ) -> Result<ProviderResponse, ProviderError> {
+        (**self).complete(request, cancellation)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -391,6 +469,16 @@ mod tests {
             .expect("retry succeeds");
         assert_eq!(result.attempts, 2);
         assert_eq!(result.response.output_text, "done");
+    }
+
+    #[test]
+    fn precise_transient_classes_are_retryable_but_invalid_and_auth_are_not() {
+        assert!(ProviderFailureClass::Timeout.retryable());
+        assert!(ProviderFailureClass::Connection.retryable());
+        assert!(ProviderFailureClass::ProviderInternal.retryable());
+        assert!(!ProviderFailureClass::InvalidRequest.retryable());
+        assert!(!ProviderFailureClass::Authentication.retryable());
+        assert!(!ProviderFailureClass::ContentPolicy.retryable());
     }
 
     #[test]
