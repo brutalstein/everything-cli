@@ -410,6 +410,7 @@ version = "0.0.1"
 dependencies = [
  "aer-core",
  "aer-environment",
+ "aer-provider",
  "aer-workspace",
  "clap",
  "serde_json",
