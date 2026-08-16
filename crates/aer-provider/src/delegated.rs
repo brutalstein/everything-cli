@@ -75,14 +75,8 @@ impl DelegatedProviderKind {
             Self::Codex => vec![
                 AuthenticationMethod::OAuthPkce,
                 AuthenticationMethod::DeviceAuthorization,
-                AuthenticationMethod::ApiKey,
             ],
-            Self::Claude | Self::Gemini => {
-                vec![
-                    AuthenticationMethod::OAuthPkce,
-                    AuthenticationMethod::ApiKey,
-                ]
-            }
+            Self::Claude | Self::Gemini => vec![AuthenticationMethod::OAuthPkce],
         }
     }
 }
@@ -678,7 +672,6 @@ fn merge_usage(usage: &mut ProviderUsage, value: &Value) {
                 "outputTokens",
                 "completion_tokens",
                 "completionTokens",
-                "candidates",
             ],
         );
     }

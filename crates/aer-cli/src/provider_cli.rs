@@ -112,10 +112,19 @@ pub(crate) fn try_run_provider_surface() -> Result<bool, Box<dyn Error>> {
 }
 
 fn contains_provider_command(args: &[OsString]) -> bool {
-    args.iter().skip(1).any(|arg| {
-        let value = arg.to_string_lossy();
-        value == "provider" || value == "providers"
-    })
+    let mut arguments = args.iter().skip(1);
+    while let Some(argument) = arguments.next() {
+        let value = argument.to_string_lossy();
+        if value == "--workspace" {
+            let _ = arguments.next();
+            continue;
+        }
+        if value.starts_with("--workspace=") || value.starts_with('-') {
+            continue;
+        }
+        return value == "provider" || value == "providers";
+    }
+    false
 }
 
 pub(crate) fn print_providers(path: &Path, json: bool) -> Result<(), Box<dyn Error>> {
@@ -370,8 +379,20 @@ mod tests {
             OsString::from("everything"),
             OsString::from("status"),
         ]));
+        assert!(!contains_provider_command(&[
+            OsString::from("everything"),
+            OsString::from("--workspace"),
+            OsString::from("provider"),
+            OsString::from("status"),
+        ]));
+        assert!(!contains_provider_command(&[
+            OsString::from("everything"),
+            OsString::from("intent"),
+            OsString::from("provider"),
+        ]));
         assert!(contains_provider_command(&[
             OsString::from("everything"),
+            OsString::from("--workspace=repo"),
             OsString::from("provider"),
             OsString::from("status"),
             OsString::from("codex"),
