@@ -1,0 +1,83 @@
+name: Step 12 engineering state integration
+
+on:
+  push:
+    branches:
+      - agent/step-12-ri2-long-horizon-recovery
+    paths:
+      - '.github/workflows/step12-engineering-state-integrate.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: agent/step-12-ri2-long-horizon-recovery
+          fetch-depth: 0
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - name: Wire engineering state and durable payload replay
+        shell: python
+        run: |
+          from pathlib import Path
+
+          root = Path('crates/aer-core/src/root.rs')
+          text = root.read_text(encoding='utf-8')
+          if 'pub mod engineering_state;' not in text:
+              text = text.replace('pub mod context;\n', 'pub mod context;\npub mod engineering_state;\n', 1)
+          root.write_text(text, encoding='utf-8')
+
+          module = Path('crates/aer-core/src/engineering_state.rs')
+          text = module.read_text(encoding='utf-8')
+          text = text.replace(
+              'let record = record_from_json(payload)?;',
+              'let record = record_from_json(&payload)?;',
+              1,
+          )
+          text = text.replace(
+              'let record_id = json_str(payload, "record_id")?;\n                    let validity = MemoryValidity::parse(json_str(payload, "validity")?)?;',
+              'let record_id = json_str(&payload, "record_id")?;\n                    let validity = MemoryValidity::parse(json_str(&payload, "validity")?)?;',
+              1,
+          )
+          old = '''fn parse_payload(value: &Option<String>) -> Result<&Value, EngineeringStateError> {
+              let _ = value;
+              Err(EngineeringStateError::InvalidStoredRecord(
+                  "internal payload parser placeholder must be replaced before validation".to_owned(),
+              ))
+          }
+          '''
+          new = '''fn parse_payload(value: &Option<String>) -> Result<Value, EngineeringStateError> {
+              let raw = value.as_deref().ok_or_else(|| {
+                  EngineeringStateError::InvalidStoredRecord(
+                      "engineering event requires inline JSON payload".to_owned(),
+                  )
+              })?;
+              serde_json::from_str(raw).map_err(|error| {
+                  EngineeringStateError::InvalidStoredRecord(format!(
+                      "engineering event payload is not valid JSON: {error}"
+                  ))
+              })
+          }
+          '''
+          if old not in text:
+              raise SystemExit('payload parser placeholder not found')
+          text = text.replace(old, new, 1)
+          module.write_text(text, encoding='utf-8')
+      - name: Format
+        run: cargo +1.97.1 fmt --all
+      - name: Lint engineering state
+        run: cargo +1.97.1 clippy --locked -p aer-core --all-targets -- -D warnings
+      - name: HandoffBench
+        run: cargo +1.97.1 test --locked -p aer-core --test handoff_bench
+      - name: Commit verified engineering state
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/aer-core
+          git diff --cached --quiet && exit 0
+          git commit -m "Add long-horizon engineering state and recovery"
+          git push origin HEAD:agent/step-12-ri2-long-horizon-recovery
