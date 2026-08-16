@@ -18,6 +18,22 @@ understand, implement, and verify the complete slice without speculative scaffol
 
 Repository Intelligence Step 08 is the executable baseline, not the final ceiling. The settled Repository Intelligence 2.0 target in `docs/06_REPOSITORY_INTELLIGENCE.md` is implemented as an **in-place uplift of the same index in Step 12**, where temporal repository knowledge and long-horizon memory become causally necessary. This does not add a nineteenth step and MUST NOT create a second competing repository index.
 
+### Inter-step Provider Runtime Productization Gate
+
+After Step 13 and before Step 14, complete one **non-numbered productization gate** for capabilities that were architecturally introduced in Steps 05/06/11 but intentionally remained deterministic/reference-only while the core safety and scheduling backbone was built. This gate does **not** create Step 19 and does not alter the numbered roadmap.
+
+The gate must provide an architecture-complete first real-model vertical slice:
+
+- vendor-owned delegated authentication for Codex, Claude Code and Gemini CLI without scraping/copying consumer OAuth secrets;
+- one provider-neutral, source-hashed, bounded Architecture Context Capsule so every model receives the same stable product/architecture identity before task-specific context;
+- a live read-only provider smoke call with inspectable input/output/usage/context identity;
+- AER-owned `plan | default | auto | full` permission policy where modes change prompting but cannot widen the run/sandbox capability ceiling;
+- a small native Tool ABI hot path (`fs.read`, `fs.list`, structured `exec.run`, `tool.search`, `tool.describe`) with bounded outputs and progressive schema disclosure;
+- no provider-native tool or YOLO/bypass mode may become an alternate authority path around AER sandbox, permission, evidence, worktree or verification semantics;
+- deterministic CI remains free of live credentials and paid model calls; at least one target-machine delegated provider login + real model smoke must be reproduced before this gate closes.
+
+The normative semantics live in `docs/45_PROVIDER_AUTH_CONTEXT_PERMISSION_AND_TOOL_RUNTIME.md`. Step 14 remains blocked while this gate is open because architecture-health work should evaluate the real execution/tool/model substrate rather than a reference-only provider boundary.
+
 ## Step sequence
 
 | Step | Architecture phase | Coherent deliverable | Exit evidence |

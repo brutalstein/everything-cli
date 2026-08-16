@@ -7,6 +7,7 @@ rust-version.workspace = true
 [dependencies]
 aer-core = { path = "../aer-core" }
 aer-environment = { path = "../aer-environment" }
+aer-provider = { path = "../aer-provider" }
 aer-workspace = { path = "../aer-workspace" }
 clap.workspace = true
 serde_json.workspace = true

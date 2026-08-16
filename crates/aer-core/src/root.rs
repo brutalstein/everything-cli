@@ -17,9 +17,12 @@ pub use phase1_runtime::*;
 pub mod context;
 pub mod engineering_invalidation;
 pub mod engineering_state;
+pub mod model_context;
 pub mod parallel;
+pub mod permissions;
 pub mod repository;
 pub mod spec;
+pub mod tools;
 pub mod verification;
 
 fn open_store(project_root: &Path) -> Result<DurableState, aer_storage::StorageError> {

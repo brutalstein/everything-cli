@@ -7,15 +7,21 @@ use std::{
 
 use aer_core::{
     default_state_home,
+    permissions::{PermissionController, PermissionMode, parse_side_effect},
     spec::{SpecService, SpecSnapshot, UserSemanticKind},
 };
 
-use crate::commands::{
-    print_doctor, print_intent, print_ir, print_providers, print_research, print_runs,
-    print_status, print_workspace,
+use crate::{
+    commands::{
+        print_doctor, print_intent, print_ir, print_research, print_runs, print_status,
+        print_workspace,
+    },
+    provider_cli::{
+        print_providers, provider_login, provider_logout, provider_smoke, provider_status,
+    },
 };
 
-const HELP: &str = "commands\n  /status                  workspace + spec + runtime summary\n  /workspace               authoritative repository identity\n  /intent                  intent, decisions and open unknowns\n  /ir                      current Engineering IR summary\n  /research                recorded source-backed research evidence\n  /runs                    durable single-agent runtime runs\n  /providers               implemented provider gateway/profile state\n  /doctor                  explicit heavier environment diagnostic\n\nwrite semantics\n  <text>                    record natural-language user intent\n  /goal <text>             record a user-authoritative goal\n  /non-goal <text>         record a user-authoritative non-goal\n  /constraint <text>       record a user-authoritative constraint\n  /accept <text>           record an observable acceptance criterion\n  /assumption <text>       record a user-authoritative assumption\n  /quality <text>          record a quality attribute\n  /decision <text>         record a user-authoritative decision\n  /research-import <file>  ingest a validated ResearchArtifact JSON file\n\n  /help                    show this list\n  /quit                    exit\n";
+const HELP: &str = "commands\n  /status                  workspace + spec + runtime summary\n  /workspace               authoritative repository identity\n  /intent                  intent, decisions and open unknowns\n  /ir                      current Engineering IR summary\n  /research                recorded source-backed research evidence\n  /runs                    durable runtime runs\n  /providers               Codex / Claude / Gemini install + auth state\n  /provider status [name]  inspect one provider or all providers\n  /provider login <name>   start official vendor OAuth/auth flow\n  /provider smoke <name> <prompt>  make one real read-only model call\n  /permission              show current autonomy/permission mode\n  /permission <mode>       set plan | default | auto | full for this session\n  /permission allow|deny|reset <effect>  session override\n  /doctor                  explicit heavier environment diagnostic\n\nwrite semantics\n  <text>                    record natural-language user intent\n  /goal <text>             record a user-authoritative goal\n  /non-goal <text>         record a user-authoritative non-goal\n  /constraint <text>       record a user-authoritative constraint\n  /accept <text>           record an observable acceptance criterion\n  /assumption <text>       record a user-authoritative assumption\n  /quality <text>          record a quality attribute\n  /decision <text>         record a user-authoritative decision\n  /research-import <file>  ingest a validated ResearchArtifact JSON file\n\n  /help                    show this list\n  /quit                    exit\n";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Control {
@@ -26,12 +32,14 @@ enum Control {
 pub(crate) fn run(workspace_root: &Path) -> Result<(), Box<dyn Error>> {
     println!("everything");
     println!("workspace {}", workspace_root.display());
+    println!("permission default · reads automatic, other eligible actions ask");
     println!("type /help for available commands");
     println!();
 
     let stdin = io::stdin();
     let mut input = stdin.lock();
     let mut line = String::with_capacity(1024);
+    let mut permissions = PermissionController::developer_workspace(PermissionMode::Default);
 
     loop {
         print!("❯ ");
@@ -48,7 +56,7 @@ pub(crate) fn run(workspace_root: &Path) -> Result<(), Box<dyn Error>> {
             continue;
         }
 
-        match dispatch(workspace_root, line) {
+        match dispatch(workspace_root, line, &mut permissions) {
             Ok(Control::Continue) => {}
             Ok(Control::Quit) => return Ok(()),
             Err(error) => eprintln!("error: {error}"),
@@ -56,7 +64,11 @@ pub(crate) fn run(workspace_root: &Path) -> Result<(), Box<dyn Error>> {
     }
 }
 
-fn dispatch(workspace_root: &Path, input: &str) -> Result<Control, Box<dyn Error>> {
+fn dispatch(
+    workspace_root: &Path,
+    input: &str,
+    permissions: &mut PermissionController,
+) -> Result<Control, Box<dyn Error>> {
     if !input.starts_with('/') {
         let state_home = require_state_home()?;
         let snapshot = SpecService::submit_message(workspace_root, state_home, input)?;
@@ -73,7 +85,9 @@ fn dispatch(workspace_root: &Path, input: &str) -> Result<Control, Box<dyn Error
         "/ir" => print_ir(workspace_root, false)?,
         "/research" => print_research(workspace_root, false)?,
         "/runs" => print_runs(workspace_root, false)?,
-        "/providers" => print_providers(),
+        "/providers" => print_providers(workspace_root, false)?,
+        "/provider" => handle_provider(workspace_root, argument)?,
+        "/permission" => handle_permission(permissions, argument)?,
         "/doctor" => print_doctor(workspace_root, false)?,
         "/goal" => record_semantic(workspace_root, UserSemanticKind::Goal, command, argument)?,
         "/non-goal" => {
@@ -116,6 +130,99 @@ fn dispatch(workspace_root: &Path, input: &str) -> Result<Control, Box<dyn Error
     }
 
     Ok(Control::Continue)
+}
+
+fn handle_permission(
+    permissions: &mut PermissionController,
+    argument: &str,
+) -> Result<(), Box<dyn Error>> {
+    let parts = argument.split_whitespace().collect::<Vec<_>>();
+    match parts.as_slice() {
+        [] => print_permission(permissions),
+        [mode] => {
+            let mode = mode.parse::<PermissionMode>()?;
+            permissions.set_mode(mode);
+            print_permission(permissions);
+        }
+        ["allow", effect] => {
+            let effect = parse_side_effect(effect)?;
+            permissions.allow_for_session(effect)?;
+            println!("permission session override · {effect:?} = allow");
+        }
+        ["deny", effect] => {
+            let effect = parse_side_effect(effect)?;
+            permissions.deny_for_session(effect);
+            println!("permission session override · {effect:?} = deny");
+        }
+        ["reset", effect] => {
+            let effect = parse_side_effect(effect)?;
+            permissions.clear_session_override(effect);
+            println!("permission session override cleared · {effect:?}");
+        }
+        _ => {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "usage: /permission [plan|default|auto|full] or /permission allow|deny|reset <effect>",
+            )
+            .into());
+        }
+    }
+    Ok(())
+}
+
+fn print_permission(permissions: &PermissionController) {
+    let mode = permissions.mode();
+    println!("permission {}", mode.as_str());
+    println!("  {}", mode.summary());
+    println!(
+        "  hard ceiling: {}",
+        permissions
+            .capability_ceiling()
+            .iter()
+            .map(|effect| format!("{effect:?}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
+    println!(
+        "  `full` removes prompts inside this ceiling; it does not grant privileged host authority"
+    );
+}
+
+fn handle_provider(workspace_root: &Path, argument: &str) -> Result<(), Box<dyn Error>> {
+    let argument = argument.trim();
+    if argument.is_empty() {
+        return print_providers(workspace_root, false);
+    }
+    let mut parts = argument.splitn(3, char::is_whitespace);
+    let operation = parts.next().unwrap_or_default();
+    let provider = parts.next().unwrap_or_default();
+    let rest = parts.next().unwrap_or_default().trim();
+
+    match operation {
+        "status" if provider.is_empty() => print_providers(workspace_root, false),
+        "status" => provider_status(workspace_root, provider, false),
+        "login" if !provider.is_empty() => {
+            provider_login(workspace_root, provider, rest == "--device")
+        }
+        "logout" if !provider.is_empty() => provider_logout(workspace_root, provider),
+        "smoke" if !provider.is_empty() => provider_smoke(
+            workspace_root,
+            provider,
+            None,
+            if rest.is_empty() {
+                "State the product name and one architecture rule you were given."
+            } else {
+                rest
+            },
+            false,
+            true,
+        ),
+        _ => Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "usage: /provider status [name] | login <name> [--device] | logout <name> | smoke <name> [prompt]",
+        )
+        .into()),
+    }
 }
 
 fn record_semantic(
@@ -253,6 +360,9 @@ mod tests {
             "/intent",
             "/ir",
             "/runs",
+            "/providers",
+            "/provider",
+            "/permission",
             "/doctor",
         ] {
             assert!(

@@ -137,3 +137,9 @@ Eval/replay runs may pin:
 - domain verification profile versions.
 
 Normal interactive use may select latest eligible resources according to policy and capability registry, while recording what was actually used.
+
+## Session permission mode versus durable policy
+
+The first `/permission` implementation is intentionally session-local. It must not persist user choices in provider-specific config, shell history, or an ad-hoc dotfile.
+
+When project/organization defaults are promoted later, they belong in this configuration/policy model with normal precedence, schema validation, provenance and migration rules. A durable default may narrow prompting behavior only within the capability ceiling established by organization/project/run/sandbox policy; it cannot grant authority that a higher-precedence layer denies.

@@ -5,6 +5,7 @@
 //! `routing` module. Deterministic fixture adapters remain non-production and
 //! allow core correctness tests to run without paid APIs or credentials.
 
+pub mod delegated;
 pub mod routing;
 
 use std::{
