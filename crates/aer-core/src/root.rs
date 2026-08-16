@@ -1,8 +1,8 @@
 //! AER application/runtime API root.
 //!
 //! Phase-1 execution remains isolated in its proven implementation module while
-//! Phase-2 specification/research APIs are added beside it. Public callers see
-//! one application boundary rather than depending on internal module ownership.
+//! later architecture capabilities are exposed beside it. Public callers see one
+//! application boundary rather than depending on internal module ownership.
 
 use std::path::{Path, PathBuf};
 
@@ -14,6 +14,7 @@ use sha2::{Digest, Sha256};
 mod phase1_runtime;
 
 pub use phase1_runtime::*;
+pub mod context;
 pub mod repository;
 pub mod spec;
 
