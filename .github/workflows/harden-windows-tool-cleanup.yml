@@ -1,0 +1,29 @@
+name: harden-windows-tool-cleanup
+
+on:
+  push:
+    branches: [agent/fix-windows-tool-fixture-cleanup]
+    paths: [scripts/harden_windows_tool_cleanup.py]
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: agent/fix-windows-tool-fixture-cleanup
+          fetch-depth: 0
+      - run: python scripts/harden_windows_tool_cleanup.py
+      - run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt
+      - run: cargo +1.97.1 fmt --all
+      - name: Commit bounded Windows cleanup hardening
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/aer-core/src/tools.rs
+          git diff --cached --quiet && exit 0
+          git commit -m "Retry transient Windows tool fixture cleanup"
+          git push origin HEAD:agent/fix-windows-tool-fixture-cleanup
