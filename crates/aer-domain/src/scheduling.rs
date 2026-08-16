@@ -332,6 +332,8 @@ pub struct ActiveTask {
     pub admission_class: AdmissionClass,
     pub effect_class: EffectClass,
     pub preemption: PreemptionSafety,
+    pub risk: TaskRisk,
+    pub serial_only: bool,
     pub priority_score: i64,
 }
 
@@ -345,6 +347,8 @@ impl ActiveTask {
             admission_class: task.admission_class,
             effect_class: task.effect_class,
             preemption: task.preemption,
+            risk: task.risk,
+            serial_only: task.serial_only,
             priority_score: task.priority.score(),
         }
     }
@@ -623,6 +627,13 @@ impl BoundedScheduler {
         }
         if matches!(task.resource_estimate, ResourceEstimate::Unknown) {
             return Some(ScheduleBlockReason::UnknownResourceDemand);
+        }
+        if self.active.values().chain(selected.iter()).any(|active| {
+            active.serial_only
+                || (self.policy.serialize_high_risk
+                    && matches!(active.risk, TaskRisk::High | TaskRisk::Critical))
+        }) {
+            return Some(ScheduleBlockReason::SerializationBarrier);
         }
         if task.serial_only && (!self.active.is_empty() || !selected.is_empty()) {
             return Some(ScheduleBlockReason::SerialOnly);

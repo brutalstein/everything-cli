@@ -205,6 +205,35 @@ fn resource_bench_scheduler_is_bounded_fair_and_detects_runtime_overlap() {
 }
 
 #[test]
+fn resource_bench_high_risk_serialization_is_bidirectional() {
+    let mut high = task("high", "run-a", "src/high", AdmissionClass::Generator);
+    high.risk = TaskRisk::High;
+    let low = task("low", "run-b", "src/low", AdmissionClass::Generator);
+
+    let mut high_first = coordinator(2);
+    high_first.register_task(&high, 1).expect("high register");
+    high_first.register_task(&low, 1).expect("low register");
+    high_first
+        .admit_task(&high, "high-worker", 1)
+        .expect("high-risk task may run alone");
+    assert!(
+        high_first.admit_task(&low, "low-worker", 2).is_err(),
+        "an already-running high-risk task must serialize later admissions"
+    );
+
+    let mut low_first = coordinator(2);
+    low_first.register_task(&low, 1).expect("low register");
+    low_first.register_task(&high, 1).expect("high register");
+    low_first
+        .admit_task(&low, "low-worker", 1)
+        .expect("low task starts");
+    assert!(
+        low_first.admit_task(&high, "high-worker", 2).is_err(),
+        "high-risk admission must also refuse to join existing work"
+    );
+}
+
+#[test]
 fn resource_bench_preemption_and_orphan_cleanup_are_safe_and_bounded() {
     let mut low = task("low", "run-a", "src/low", AdmissionClass::Generator);
     low.priority.unblock_value = 1;
