@@ -1,5 +1,6 @@
 name: Step 12 engineering state integration
 
+# Replay after Repository Intelligence 2.0 and Cargo.lock were committed to the branch.
 on:
   push:
     branches:
