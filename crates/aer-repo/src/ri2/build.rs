@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
+    fs,
     path::{Path, PathBuf},
 };
 
@@ -181,16 +182,26 @@ fn json_string(value: &Value, key: &str) -> Result<String, RepoError> {
 }
 
 fn relative_metadata_path(repo: &Path, raw: &str) -> Result<String, RepoError> {
-    let path = PathBuf::from(raw);
-    let relative = if path.is_absolute() {
-        path.strip_prefix(repo).map_err(|_| {
+    let raw_path = PathBuf::from(raw);
+    let candidate = if raw_path.is_absolute() {
+        raw_path
+    } else {
+        repo.join(raw_path)
+    };
+
+    // Cargo metadata uses absolute paths. Normalize both sides through the filesystem before the
+    // containment check so Windows verbatim/extended-length paths and ordinary drive paths share
+    // the same representation. Canonicalization also keeps the check fail-closed for symlink
+    // escapes instead of trusting a lexical prefix.
+    let canonical_repo = fs::canonicalize(repo)?;
+    let canonical_candidate = fs::canonicalize(&candidate)?;
+    let relative = canonical_candidate
+        .strip_prefix(&canonical_repo)
+        .map_err(|_| {
             RepoError::Integrity(format!(
                 "project metadata path escaped repository root: {raw}"
             ))
-        })?
-    } else {
-        &path
-    };
+        })?;
     let normalized = path_string(relative)?;
     validate_relative(&normalized)?;
     Ok(normalized)
@@ -198,7 +209,29 @@ fn relative_metadata_path(repo: &Path, raw: &str) -> Result<String, RepoError> {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        fs,
+        sync::atomic::{AtomicU64, Ordering},
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
     use super::*;
+
+    static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
+
+    fn temp_root(label: &str) -> PathBuf {
+        let serial = NEXT_TEMP.fetch_add(1, Ordering::Relaxed);
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "aer-ri2-build-{label}-{}-{now}-{serial}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).expect("create temp root");
+        root
+    }
 
     #[test]
     fn unavailable_topology_is_explicit_not_fabricated() {
@@ -207,5 +240,20 @@ mod tests {
         assert!(topology.environment_fingerprint.is_none());
         assert!(topology.packages.is_empty());
         assert!(topology.targets.is_empty());
+    }
+
+    #[test]
+    fn canonical_absolute_metadata_path_is_normalized_against_repository_root() {
+        let root = temp_root("canonical-path");
+        fs::create_dir_all(root.join("src")).expect("create source dir");
+        let source = root.join("src/lib.rs");
+        fs::write(&source, "pub fn marker() {}\n").expect("write source");
+        let canonical_source = fs::canonicalize(&source).expect("canonical source");
+
+        let relative = relative_metadata_path(&root, &canonical_source.to_string_lossy())
+            .expect("normalize canonical metadata path");
+        assert_eq!(relative, "src/lib.rs");
+
+        fs::remove_dir_all(root).expect("cleanup");
     }
 }
