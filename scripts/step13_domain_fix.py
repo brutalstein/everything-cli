@@ -1,4 +1,5 @@
 # One-shot source repair; removed before Step 13 merge.
+# Repair pass: coordinator derives only what its authoritative kernels expose.
 from pathlib import Path
 
 p = Path("crates/aer-core/src/parallel.rs")
