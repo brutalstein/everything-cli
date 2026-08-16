@@ -1,0 +1,21 @@
+name: step13-dev-check
+
+on:
+  push:
+    branches: [agent/step-13-bounded-parallel-execution]
+
+permissions:
+  contents: read
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - name: Format
+        run: cargo +1.97.1 fmt --all --check
+      - name: Clippy
+        run: cargo +1.97.1 clippy --locked -p aer-domain -p aer-workspace -p aer-core --all-targets -- -D warnings
+      - name: Focused tests
+        run: cargo +1.97.1 test --locked -p aer-domain -p aer-workspace -p aer-core --all-targets
