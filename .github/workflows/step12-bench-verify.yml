@@ -1,5 +1,6 @@
 name: Step 12 benchmark verifier
 
+# Re-run after canonical rustfmt repaired the new benchmark and invalidation surface.
 on:
   push:
     branches:
