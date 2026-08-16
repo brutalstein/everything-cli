@@ -41,6 +41,10 @@ jobs:
         if: runner.os != 'Windows'
         run: cargo +1.97.1 test --locked -p aer-domain -p aer-research -p aer-core --all-targets
 
+      - name: Repository intelligence
+        if: runner.os != 'Windows'
+        run: cargo +1.97.1 test --locked -p aer-repo -p aer-core --all-targets
+
       - name: Single-agent runtime 0.1
         if: runner.os != 'Windows'
         run: cargo +1.97.1 test --locked -p aer-provider -p aer-core --all-targets
