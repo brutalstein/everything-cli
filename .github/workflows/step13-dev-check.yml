@@ -20,4 +20,4 @@ jobs:
       - name: Focused tests
         run: cargo +1.97.1 test --locked -p aer-domain -p aer-workspace -p aer-core --all-targets
 
-# Temporary development gate; ResourceBench verification pass.
+# Temporary development gate; current ResourceBench verification pass.
