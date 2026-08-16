@@ -1,3 +1,4 @@
+# One-shot bidirectional serialization hardening; removed before merge.
 from pathlib import Path
 
 scheduler = Path("crates/aer-domain/src/scheduling.rs")
