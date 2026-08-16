@@ -1,5 +1,6 @@
 name: Step 12 corrected freshness rebuild
 
+# Corrected exact one-line insert_snapshot anchor from current aer-repo source.
 on:
   push:
     branches:
@@ -37,48 +38,48 @@ jobs:
           lib = Path('crates/aer-repo/src/lib.rs')
           text = lib.read_text(encoding='utf-8')
           old = '''        let previous_snapshot = self.current_snapshot_id(&snapshot.repo_id)?;
-                  if previous_snapshot.as_deref() == Some(&snapshot.snapshot_id) {
-                      return self.report_existing(snapshot, true);
-                  }
+          if previous_snapshot.as_deref() == Some(&snapshot.snapshot_id) {
+              return self.report_existing(snapshot, true);
+          }
           '''
           new = '''        let previous_snapshot = self.current_snapshot_id(&snapshot.repo_id)?;
-                  let snapshot_unchanged = previous_snapshot.as_deref() == Some(&snapshot.snapshot_id);
-                  if snapshot_unchanged && !self.ri2_snapshot_requires_rebuild(&snapshot.snapshot_id)? {
-                      return self.report_existing(snapshot, true);
-                  }
-                  let continuity_snapshot = if snapshot_unchanged {
-                      None
-                  } else {
-                      previous_snapshot.as_deref()
-                  };
+          let snapshot_unchanged = previous_snapshot.as_deref() == Some(&snapshot.snapshot_id);
+          if snapshot_unchanged && !self.ri2_snapshot_requires_rebuild(&snapshot.snapshot_id)? {
+              return self.report_existing(snapshot, true);
+          }
+          let continuity_snapshot = if snapshot_unchanged {
+              None
+          } else {
+              previous_snapshot.as_deref()
+          };
           '''
           if old not in text:
               raise SystemExit('refresh freshness target not found')
           text = text.replace(old, new, 1)
           old_tx = '''        let transaction = self.connection.transaction()?;
-                  insert_snapshot(&transaction, &snapshot)?;
+          insert_snapshot(&transaction, &snapshot)?;
           '''
           new_tx = '''        let transaction = self.connection.transaction()?;
-                  clear_snapshot_materialized_views(
-                      &transaction,
-                      &snapshot.snapshot_id,
-                      snapshot_unchanged,
-                  )?;
-                  insert_snapshot(&transaction, &snapshot)?;
+          clear_snapshot_materialized_views(
+              &transaction,
+              &snapshot.snapshot_id,
+              snapshot_unchanged,
+          )?;
+          insert_snapshot(&transaction, &snapshot)?;
           '''
           if old_tx not in text:
               raise SystemExit('refresh transaction target not found')
           text = text.replace(old_tx, new_tx, 1)
           old_call = '''            previous_snapshot.as_deref(),
-                      &prepared,
+              &prepared,
           '''
           new_call = '''            continuity_snapshot,
-                      &prepared,
+              &prepared,
           '''
           if old_call not in text:
               raise SystemExit('continuity call target not found')
           text = text.replace(old_call, new_call, 1)
-          marker = '\nfn insert_snapshot(\n'
+          marker = "\nfn insert_snapshot(tx: &Transaction<'_>, snapshot: &RepoSnapshotIdentity) -> Result<(), RepoError> {"
           helper = r'''
           fn clear_snapshot_materialized_views(
               transaction: &Transaction<'_>,
@@ -107,12 +108,10 @@ jobs:
               }
               Ok(())
           }
-
-          fn insert_snapshot(
           '''
           if marker not in text:
-              raise SystemExit('insert_snapshot marker not found')
-          text = text.replace(marker, '\n' + helper, 1)
+              raise SystemExit('insert_snapshot exact anchor not found')
+          text = text.replace(marker, '\n' + helper + marker, 1)
           lib.write_text(text, encoding='utf-8')
 
           bench = Path('crates/aer-repo/tests/repo_intel_2_bench.rs')
