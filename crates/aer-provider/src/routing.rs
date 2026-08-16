@@ -250,21 +250,11 @@ impl EndpointHealth {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct RateLimitWindow {
     pub remaining_requests: Option<u64>,
     pub remaining_tokens: Option<u64>,
     pub reset_at_ms: Option<u64>,
-}
-
-impl Default for RateLimitWindow {
-    fn default() -> Self {
-        Self {
-            remaining_requests: None,
-            remaining_tokens: None,
-            reset_at_ms: None,
-        }
-    }
 }
 
 impl RateLimitWindow {
@@ -544,18 +534,17 @@ fn eligibility(
     if candidate.privacy.maximum_retention > request.requirements.maximum_retention {
         return Err(RejectionReason::RetentionPolicy);
     }
-    if let Some(required_region) = &request.requirements.required_region {
-        if candidate.region.as_ref() != Some(required_region)
+    if let Some(required_region) = &request.requirements.required_region
+        && (candidate.region.as_ref() != Some(required_region)
             || (!candidate.privacy.allowed_regions.is_empty()
-                && !candidate.privacy.allowed_regions.contains(required_region))
-        {
-            return Err(RejectionReason::RegionPolicy);
-        }
+                && !candidate.privacy.allowed_regions.contains(required_region)))
+    {
+        return Err(RejectionReason::RegionPolicy);
     }
-    if let Some(required_snapshot) = &request.requirements.pinned_model_snapshot {
-        if candidate.model_snapshot.as_ref() != Some(required_snapshot) {
-            return Err(RejectionReason::SnapshotMismatch);
-        }
+    if let Some(required_snapshot) = &request.requirements.pinned_model_snapshot
+        && candidate.model_snapshot.as_ref() != Some(required_snapshot)
+    {
+        return Err(RejectionReason::SnapshotMismatch);
     }
     if candidate.verified_success_ppm < policy.minimum_verified_success_ppm {
         return Err(RejectionReason::BelowQualityFloor);
