@@ -8,4 +8,9 @@ mod commands;
 mod provider_cli;
 mod shell;
 
-pub use commands::run_cli;
+pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
+    if provider_cli::try_run_provider_surface()? {
+        return Ok(());
+    }
+    commands::run_cli()
+}
