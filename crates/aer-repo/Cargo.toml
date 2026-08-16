@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+aer-environment = { path = "../aer-environment" }
 aer-exec = { path = "../aer-exec" }
 aer-workspace = { path = "../aer-workspace" }
 rusqlite.workspace = true
