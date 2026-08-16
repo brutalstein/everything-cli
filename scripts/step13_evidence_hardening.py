@@ -1,3 +1,4 @@
+# One-shot integration evidence hardening; removed before merge.
 from pathlib import Path
 
 workspace = Path("crates/aer-workspace/src/parallel.rs")
@@ -187,18 +188,6 @@ workspace.write_text(s, encoding="utf-8")
 
 bench = Path("crates/aer-core/tests/resource_bench.rs")
 s = bench.read_text(encoding="utf-8")
-anchor = '''    let left_changes = left.change_set().expect("left change set");
-    let right_changes = right.change_set().expect("right change set");
-    let plan = IntegrationPlan::build(
-'''
-replacement = '''    let left_changes = left.change_set().expect("left change set");
-    let right_changes = right.change_set().expect("right change set");
-    let plan = IntegrationPlan::build(
-'''
-# Keep the existing plan construction unchanged; the mutation test is inserted immediately before the right merge.
-if s.count(anchor) != 1:
-    raise SystemExit(f"change-set anchor count {s.count(anchor)}")
-
 anchor = '''    let left_merge = integration.merge_task(&left_changes).expect("merge left");
     barrier
         .record_merge("left", left_merge.resulting_head)
