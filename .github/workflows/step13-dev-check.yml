@@ -19,3 +19,5 @@ jobs:
         run: cargo +1.97.1 clippy --locked -p aer-domain -p aer-workspace -p aer-core --all-targets -- -D warnings
       - name: Focused tests
         run: cargo +1.97.1 test --locked -p aer-domain -p aer-workspace -p aer-core --all-targets
+
+# Temporary development gate; removed before Step 13 merge.
