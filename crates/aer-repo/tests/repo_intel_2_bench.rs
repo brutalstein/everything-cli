@@ -112,6 +112,110 @@ fn relevant_yield(paths: impl IntoIterator<Item = String>, relevant: &BTreeSet<&
         .count()
 }
 
+const BENCH_TEXT_PATHS: &[&str] = &[
+    "src/lib.rs",
+    "src/auth.rs",
+    "src/session.rs",
+    "tests/auth_test.rs",
+    "tools/claims_probe.py",
+    "web/credential.ts",
+    "include/legacy.h",
+];
+
+fn lexical_only(repo: &Path, query: &str, limit: usize) -> Vec<String> {
+    let terms = query
+        .split(|character: char| !character.is_ascii_alphanumeric())
+        .filter(|term| !term.is_empty())
+        .map(str::to_ascii_lowercase)
+        .collect::<Vec<_>>();
+    let mut scored = BENCH_TEXT_PATHS
+        .iter()
+        .filter_map(|relative| {
+            let text = fs::read_to_string(repo.join(relative))
+                .ok()?
+                .to_ascii_lowercase();
+            let score = terms
+                .iter()
+                .map(|term| text.matches(term).count())
+                .sum::<usize>();
+            (score > 0).then_some((score, (*relative).to_owned()))
+        })
+        .collect::<Vec<_>>();
+    scored.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1)));
+    scored.truncate(limit);
+    scored.into_iter().map(|(_, path)| path).collect()
+}
+
+fn hashed_ngram_embedding(text: &str) -> [u32; 64] {
+    let normalized = text
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect::<String>();
+    let bytes = normalized.as_bytes();
+    let mut vector = [0_u32; 64];
+    for ngram in bytes.windows(3) {
+        let mut hash = 0xcbf29ce484222325_u64;
+        for byte in ngram {
+            hash ^= u64::from(*byte);
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+        vector[(hash as usize) % vector.len()] =
+            vector[(hash as usize) % vector.len()].saturating_add(1);
+    }
+    vector
+}
+
+fn embedding_only(repo: &Path, query: &str, limit: usize) -> Vec<String> {
+    let query = hashed_ngram_embedding(query);
+    let mut scored = BENCH_TEXT_PATHS
+        .iter()
+        .filter_map(|relative| {
+            let text = fs::read_to_string(repo.join(relative)).ok()?;
+            let vector = hashed_ngram_embedding(&text);
+            let score = query
+                .iter()
+                .zip(vector.iter())
+                .map(|(left, right)| u64::from(*left) * u64::from(*right))
+                .sum::<u64>();
+            (score > 0).then_some((score, (*relative).to_owned()))
+        })
+        .collect::<Vec<_>>();
+    scored.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1)));
+    scored.truncate(limit);
+    scored.into_iter().map(|(_, path)| path).collect()
+}
+
+fn graph_only(index: &RepositoryIndex, snapshot: &str, limit: usize) -> Vec<String> {
+    let symbol = index
+        .symbols(snapshot, "verify_token")
+        .expect("graph-only symbol seed")
+        .into_iter()
+        .next()
+        .expect("verify_token symbol");
+    let graph = index
+        .graph_traverse(
+            snapshot,
+            &[symbol.symbol_id],
+            GraphDirection::Both,
+            TraversalBudget {
+                max_depth: 1,
+                max_nodes: limit.max(1),
+                max_edges: limit.saturating_mul(4).max(1),
+            },
+        )
+        .expect("graph-only traversal");
+    let mut paths = graph
+        .nodes
+        .into_iter()
+        .filter_map(|node| node.path)
+        .collect::<Vec<_>>();
+    paths.sort();
+    paths.dedup();
+    paths.truncate(limit);
+    paths
+}
+
 #[test]
 fn repo_intel_bench_preserves_tier_provenance_and_improves_bounded_retrieval_yield() {
     let fixture = Fixture::new();
@@ -240,9 +344,12 @@ fn repo_intel_bench_preserves_tier_provenance_and_improves_bounded_retrieval_yie
         limit: 4,
         min_score_micros: 100_000,
     };
-    let baseline = index
+    let lexical_paths = lexical_only(&fixture.repo, &query.text, query.limit);
+    let current = index
         .search(snapshot, &query)
-        .expect("v1 retrieval baseline");
+        .expect("current AER retrieval baseline");
+    let graph_paths = graph_only(&index, snapshot, query.limit);
+    let embedding_paths = embedding_only(&fixture.repo, &query.text, query.limit);
     let retrieval = index
         .hybrid_retrieve(
             snapshot,
@@ -255,12 +362,22 @@ fn repo_intel_bench_preserves_tier_provenance_and_improves_bounded_retrieval_yie
         )
         .expect("hybrid retrieval");
     let relevant = BTreeSet::from(["src/auth.rs", "src/session.rs"]);
-    let baseline_yield = relevant_yield(baseline.hits.into_iter().map(|hit| hit.path), &relevant);
+    let lexical_yield = relevant_yield(lexical_paths, &relevant);
+    let current_yield = relevant_yield(current.hits.into_iter().map(|hit| hit.path), &relevant);
+    let graph_yield = relevant_yield(graph_paths, &relevant);
+    let embedding_yield = relevant_yield(embedding_paths, &relevant);
     let hybrid_yield = relevant_yield(retrieval.iter().map(|hit| hit.path.clone()), &relevant);
-    assert!(
-        hybrid_yield > baseline_yield,
-        "RI2 hybrid retrieval should add the precise semantic neighbor within the same result bound"
-    );
+    for (name, baseline_yield) in [
+        ("lexical-only", lexical_yield),
+        ("current-aer", current_yield),
+        ("graph-only", graph_yield),
+        ("hashed-ngram-embedding-only", embedding_yield),
+    ] {
+        assert!(
+            hybrid_yield > baseline_yield,
+            "RI2 hybrid retrieval must earn its complexity over {name}: hybrid={hybrid_yield}, baseline={baseline_yield}"
+        );
+    }
     assert!(retrieval.iter().any(|hit| hit.path == "src/auth.rs"));
     assert!(retrieval.iter().any(|hit| hit.path == "src/session.rs"));
     assert!(retrieval.iter().all(|hit| !hit.why_relevant.is_empty()));
