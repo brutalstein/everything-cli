@@ -13,6 +13,7 @@ pub(crate) fn migrate_v1_to_v2(connection: &Connection) -> Result<(), RepoError>
            view_name TEXT NOT NULL,
            producer_id TEXT NOT NULL,
            producer_version TEXT NOT NULL,
+           environment_fingerprint TEXT,
            freshness TEXT NOT NULL,
            capability_tier INTEGER NOT NULL,
            PRIMARY KEY(snapshot_id,view_name)
