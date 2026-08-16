@@ -3,6 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use aer_environment::EnvironmentFingerprint;
 use aer_exec::{CommandSpec, ExecutionPolicy, LocalProcessExecutor, SideEffectClass};
 use serde_json::Value;
 
@@ -17,6 +18,7 @@ pub(crate) const CARGO_PRODUCER_VERSION: &str = "1";
 #[derive(Clone, Debug)]
 pub(crate) struct BuildTopology {
     pub state: FreshnessState,
+    pub environment_fingerprint: Option<String>,
     pub packages: Vec<BuildPackage>,
     pub targets: Vec<BuildTarget>,
     pub dependencies: Vec<ProjectDependency>,
@@ -26,9 +28,17 @@ impl BuildTopology {
     pub(crate) fn unavailable() -> Self {
         Self {
             state: FreshnessState::Unavailable,
+            environment_fingerprint: None,
             packages: Vec::new(),
             targets: Vec::new(),
             dependencies: Vec::new(),
+        }
+    }
+
+    fn unavailable_in(environment_fingerprint: Option<String>) -> Self {
+        Self {
+            environment_fingerprint,
+            ..Self::unavailable()
         }
     }
 }
@@ -37,10 +47,14 @@ pub(crate) fn collect_project_topology(repo: &Path, policy: &IndexPolicy) -> Bui
     if !repo.join("Cargo.toml").is_file() {
         return BuildTopology::unavailable();
     }
+    let environment_fingerprint = match EnvironmentFingerprint::discover(repo) {
+        Ok(fingerprint) => Some(fingerprint.digest_hex()),
+        Err(_) => return BuildTopology::unavailable(),
+    };
     let Ok(execution) =
         ExecutionPolicy::trusted_workspace(repo, policy.git_timeout, policy.max_git_output_bytes)
     else {
-        return BuildTopology::unavailable();
+        return BuildTopology::unavailable_in(environment_fingerprint);
     };
     let Ok(result) = LocalProcessExecutor.execute(
         &execution,
@@ -52,18 +66,23 @@ pub(crate) fn collect_project_topology(repo: &Path, policy: &IndexPolicy) -> Bui
             "--locked",
         ]),
     ) else {
-        return BuildTopology::unavailable();
+        return BuildTopology::unavailable_in(environment_fingerprint);
     };
     if !result.success || result.stdout.truncated {
-        return BuildTopology::unavailable();
+        return BuildTopology::unavailable_in(environment_fingerprint);
     }
     let Ok(root) = serde_json::from_slice::<Value>(&result.stdout.preview) else {
-        return BuildTopology::unavailable();
+        return BuildTopology::unavailable_in(environment_fingerprint);
     };
-    parse_cargo_metadata(repo, &root).unwrap_or_else(|_| BuildTopology::unavailable())
+    parse_cargo_metadata(repo, &root, environment_fingerprint.clone())
+        .unwrap_or_else(|_| BuildTopology::unavailable_in(environment_fingerprint))
 }
 
-fn parse_cargo_metadata(repo: &Path, root: &Value) -> Result<BuildTopology, RepoError> {
+fn parse_cargo_metadata(
+    repo: &Path,
+    root: &Value,
+    environment_fingerprint: Option<String>,
+) -> Result<BuildTopology, RepoError> {
     let workspace_members: BTreeSet<String> = root
         .get("workspace_members")
         .and_then(Value::as_array)
@@ -146,6 +165,7 @@ fn parse_cargo_metadata(repo: &Path, root: &Value) -> Result<BuildTopology, Repo
     }
     Ok(BuildTopology {
         state: FreshnessState::Current,
+        environment_fingerprint,
         packages,
         targets,
         dependencies,
@@ -184,6 +204,7 @@ mod tests {
     fn unavailable_topology_is_explicit_not_fabricated() {
         let topology = BuildTopology::unavailable();
         assert_eq!(topology.state, FreshnessState::Unavailable);
+        assert!(topology.environment_fingerprint.is_none());
         assert!(topology.packages.is_empty());
         assert!(topology.targets.is_empty());
     }
