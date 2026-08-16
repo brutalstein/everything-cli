@@ -8,6 +8,7 @@ rust-version.workspace = true
 aer-exec = { path = "../aer-exec" }
 aer-workspace = { path = "../aer-workspace" }
 rusqlite.workspace = true
+serde_json.workspace = true
 sha2.workspace = true
 tree-sitter.workspace = true
 tree-sitter-javascript.workspace = true
