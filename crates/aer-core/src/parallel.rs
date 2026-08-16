@@ -589,18 +589,13 @@ impl OrphanRegistry {
         if resource.resource_id.trim().is_empty() || resource.task_id.trim().is_empty() {
             return Err(OrphanError::EmptyIdentity);
         }
-        if !self.records.contains_key(&resource.resource_id)
-            && self.records.len() >= self.max_records
-        {
-            return Err(OrphanError::RegistryFull);
-        }
-        if self
-            .records
-            .insert(resource.resource_id.clone(), resource)
-            .is_some()
-        {
+        if self.records.contains_key(&resource.resource_id) {
             return Err(OrphanError::DuplicateResource);
         }
+        if self.records.len() >= self.max_records {
+            return Err(OrphanError::RegistryFull);
+        }
+        self.records.insert(resource.resource_id.clone(), resource);
         Ok(())
     }
 

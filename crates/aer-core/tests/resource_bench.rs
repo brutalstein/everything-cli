@@ -253,6 +253,17 @@ fn resource_bench_preemption_and_orphan_cleanup_are_safe_and_bounded() {
             cleanup_deadline_ms: 0,
         })
         .expect("register live");
+    assert!(
+        registry
+            .register(OwnedRuntimeResource {
+                resource_id: "live-worktree".to_owned(),
+                task_id: "dead-shadow".to_owned(),
+                kind: OwnedResourceKind::Container,
+                cleanup_deadline_ms: 0,
+            })
+            .is_err(),
+        "duplicate registration must fail before mutation"
+    );
     registry
         .register(OwnedRuntimeResource {
             resource_id: "orphan-a".to_owned(),
@@ -280,6 +291,13 @@ fn resource_bench_preemption_and_orphan_cleanup_are_safe_and_bounded() {
     let third = registry.reconcile(&live, 3, |_| true);
     assert_eq!(third.cleaned.len(), 1);
     assert_eq!(registry.len(), 1, "live owner resource must never be swept");
+    let remaining = registry
+        .release("live-worktree")
+        .expect("live resource remains");
+    assert_eq!(
+        remaining.task_id, "external",
+        "duplicate failure must not overwrite authority"
+    );
 }
 
 fn change_set(task_id: &str, path: &str) -> LocalBranchEvidence {
