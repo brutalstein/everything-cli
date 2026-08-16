@@ -71,10 +71,18 @@ impl RepositoryIndex {
             .collect::<Result<_, _>>()?;
 
         let mut prepared = Vec::with_capacity(paths.len());
+        let mut missing_paths = BTreeSet::new();
         let mut total_text = 0_u64;
         for relative in paths {
             let full = before.identity.repo_root.join(&relative);
-            let metadata = fs::symlink_metadata(&full)?;
+            let metadata = match fs::symlink_metadata(&full) {
+                Ok(metadata) => metadata,
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                    missing_paths.insert(relative);
+                    continue;
+                }
+                Err(error) => return Err(error.into()),
+            };
             let language = detect_language(&relative);
             let test = is_test_path(&relative);
             if metadata.file_type().is_symlink() {
@@ -100,16 +108,23 @@ impl RepositoryIndex {
                 ));
                 continue;
             }
+            let bytes = match untracked.get(&relative) {
+                Some(bytes) => bytes.clone(),
+                None => match fs::read(&full) {
+                    Ok(bytes) => bytes,
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                        missing_paths.insert(relative);
+                        continue;
+                    }
+                    Err(error) => return Err(error.into()),
+                },
+            };
             total_text = total_text
-                .checked_add(metadata.len())
+                .checked_add(u64::try_from(bytes.len()).unwrap_or(u64::MAX))
                 .ok_or(RepoError::TextBudgetExceeded(u64::MAX))?;
             if total_text > self.policy.max_total_text_bytes {
                 return Err(RepoError::TextBudgetExceeded(total_text));
             }
-            let bytes = match untracked.get(&relative) {
-                Some(bytes) => bytes.clone(),
-                None => fs::read(&full)?,
-            };
             let content_sha256 = sha256(&bytes);
             let Ok(text) = std::str::from_utf8(&bytes) else {
                 prepared.push(PreparedFile {
@@ -155,6 +170,13 @@ impl RepositoryIndex {
             WorkspaceSnapshot::capture(&before.identity.repo_root, &SnapshotPolicy::default())?;
         if snapshot_identity(&after)?.snapshot_id != snapshot.snapshot_id {
             return Err(RepoError::WorkspaceChangedDuringIndex);
+        }
+        for relative in &missing_paths {
+            match fs::symlink_metadata(before.identity.repo_root.join(relative)) {
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Ok(_) => return Err(RepoError::WorkspaceChangedDuringIndex),
+                Err(error) => return Err(error.into()),
+            }
         }
 
         let git_view = collect_git_view(&before.identity.repo_root, &self.policy)?;
