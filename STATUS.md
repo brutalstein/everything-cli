@@ -1,15 +1,13 @@
 # everything Implementation Status
 
 **Last updated:** 2026-08-16  
-**Architecture baseline:** `docs/` on original `main` commit `6c81fa1d0d18e9f279fe1bc59f56d21f2cbffd55`  
+**Architecture baseline:** `docs/` on original `main` commit `6c81fa1d0d18e9f279fe1bc59f56d21f2cbffd55` plus accepted architecture updates on `main`  
 **Public product / executable:** `everything`  
 **Internal architecture terminology:** AER remains valid where the architecture uses it  
-**Current phase:** Phase 4 — Verification and Proof System  
-**Current step:** 10 / 18 — Verification + Proof System  
-**Repository-side state:** CI VERIFIED — awaiting target Windows reproduction  
-**Verified Step-10 code HEAD:** `c48a9afa95e63467198a0ea251c100232f90b79b`  
-**Verified Step-10 CI:** `foundation-ci` run `31939146224` — Ubuntu PASS including permanent Verification + Proof gate; canonical isolated Windows verifier PASS  
-**Next step:** 11 — Provider Resilience + Cost Router — BLOCKED until Step-10 target Windows verification passes
+**Current phase:** Phase 5 — Provider Resilience + Cost Routing  
+**Current step:** 11 / 18 — Provider Resilience + Cost Router  
+**Repository-side state:** IMPLEMENTATION IN PROGRESS — branch `agent/step-11-provider-resilience-cost-router`  
+**Next step:** 12 — Repository Intelligence 2.0 + Long-Horizon Engineering State + Recovery — BLOCKED until Step-11 repository CI and target Windows verification pass
 
 ## Agent engineering policy
 
@@ -25,8 +23,6 @@ The CLI/TUI remains intentionally frozen while the core architecture is complete
 - preserve the existing zero-redraw CLI only as a regression surface;
 - develop and verify domain/core/storage/repository/context/runtime architecture first.
 
-`crates/aer-cli/**` was not modified by Step 10.
-
 ## Completed milestones
 
 - **Step 01 — Foundation Bootstrap:** COMPLETE — CI `31899011790`.
@@ -38,179 +34,85 @@ The CLI/TUI remains intentionally frozen while the core architecture is complete
 - **Step 06 — Single-Agent Runtime 0.1:** COMPLETE — CI `31911224304`; target Windows PASS.
 - **Step 07 — Intent + Research + Engineering IR:** COMPLETE — semantic baseline `d5668b5d87a3b8a3f598b9cd016cc11cc5504837`; target Windows reproduction confirmed.
 - **Step 08 — Repository Intelligence:** COMPLETE — code HEAD `12b97c6e9c715a19354af6ba5b661eb83ed9f353`; CI `31918025079`; target Windows canonical verification reproduced by the user on 2026-08-16.
-- **Step 09 — Context Economy Engine:** COMPLETE — repository CI `31920562037`; target Windows canonical verification reproduced by the user on 2026-08-16 with final `everything Windows verification: PASS`.
+- **Step 09 — Context Economy Engine:** COMPLETE — repository CI `31920562037`; target Windows canonical verification reproduced by the user on 2026-08-16.
+- **Step 10 — Verification + Proof System:** COMPLETE — repository CI `31939146224`; post-merge main CI `31939487328`; target Windows canonical verifier reproduced by the user on 2026-08-16 with final `everything Windows verification: PASS`.
 
-The Step-09 target-machine reproduction also reconfirmed the checked-in documentation/contract inventory and the ContextBench/regression gates before Step 10 was started.
+The Step-10 target reproduction reconfirmed the immutable-verifier/proof tests, full workspace tests, documentation integrity, Phase-0 executable contracts, and final product build before Step 11 started.
 
-## Step 10 — Verification + Proof System
+## Step 11 — Provider Resilience + Cost Router
 
-**State:** REPOSITORY CI VERIFIED — TARGET WINDOWS PENDING
+**State:** IMPLEMENTATION IN PROGRESS
 
-### Ownership and scope
+### Scope
 
-The first architecture-complete verification vertical slice lives in `aer-core::verification`.
+Step 11 evolves the existing `aer-provider` gateway in place. It does not create a parallel provider runtime and does not introduce live paid API requirements into deterministic correctness gates.
 
-Step 10 deliberately does **not** create an `aer-verify` crate merely because the target repository map names one. The current slice already depends on core orchestration, contracts, environment identity, execution, domain state transitions, and durable storage. A separate crate should be introduced only when independent ownership, dependency pressure, or testing boundaries make that split materially clearer.
+The implementation target is the architecture in:
 
-The implementation is intentionally generic. Domain-specific checks are supplied through verification profiles; domain knowledge does not fork the task state machine or weaken organization-level gates.
+- `docs/08_MODEL_CAPABILITY_REGISTRY.md`;
+- `docs/09_ADAPTIVE_MODEL_ROUTER_AND_BUDGETS.md`;
+- `docs/20_OBSERVABILITY_AND_COST_ACCOUNTING.md`;
+- `docs/37_PROVIDER_GATEWAY_AND_RESILIENCE.md`.
 
-### Independent verifier authority
+### Implemented in the current branch
 
-`VerifierDefinition` describes a verifier by stable ID/version, verification layer, evidence type, executable/arguments, protected verifier assets, timeout/capture bounds, and isolation requirement.
+- expanded provider-neutral failure taxonomy covering invalid/auth/authz/policy/rate/quota/transient/internal/timeout/connection/stream/schema/context/cancel/unknown classes while preserving Phase-1 compatibility aliases;
+- retry semantics that remain bounded and retry only retry-safe classes;
+- endpoint capability profiles with context/output/tool/parallel-tool/streaming/multimodal/cache/reasoning/cancellation flags;
+- explicit privacy, retention, region and credential eligibility filtering before optimization;
+- timestamped integer pricing snapshots and overflow-safe, round-up cost estimation;
+- endpoint health state, transient-failure circuit breaking, rate-limit state and local quota reservation;
+- deterministic `economy`, `balanced`, and `maximum-quality` routing policies that optimize only after hard eligibility filters;
+- explicit model-snapshot pinning and stale-capability rejection;
+- scout routing for sufficiently uncertain tasks without hard-coding model names into policy;
+- bounded fallback across distinct eligible endpoints after endpoint-specific failures;
+- attempt-level routing/fallback trace containing selected endpoint, strategy, expected cost, gateway attempts and outcome;
+- ProviderBench/RouterBench deterministic tests with no live credentials or paid APIs;
+- permanent Linux `Provider resilience + cost router` CI gate.
 
-`VerifierSnapshot` binds the definition digest to a deterministic recursive digest of protected verifier/test assets. Candidate verification re-hashes those assets before execution. A changed verifier definition, changed protected test, changed verifier asset, symlinked verifier asset, or path escape fails closed.
+### Step-11 invariants
 
-This is the Step-10 defense against a generator obtaining a false PASS by weakening the oracle it is being judged by.
+- security/privacy/capability constraints are filters, never utility penalties that a cheaper model can override;
+- stale capability data fails closed for routing eligibility;
+- a provider authentication failure is never blindly retried against the same endpoint;
+- retries and failovers are separately bounded;
+- rate-limit reservations cannot oversubscribe a known local quota window;
+- cost arithmetic uses integer micro-USD accounting and never silently undercounts fractional token charges;
+- circuit health is endpoint-scoped rather than provider-global;
+- fallback re-runs eligibility and excludes the failed endpoint;
+- deterministic routing tie-breaks on stable endpoint identity;
+- core correctness tests require no live provider account.
 
-### Verification composition and Domain Profiles
-
-`VerificationPlan` starts from mandatory verifier/evidence requirements and composes every applicable `DomainProfile` by set union.
-
-A lower/domain profile can add gates but cannot remove a mandatory verifier or evidence type. The bound plan also pins the exact verifier snapshots used for the run and derives a deterministic composition snapshot.
-
-### Environment-bound evidence
-
-Verifier execution reuses the existing `aer-exec` and `aer-environment` boundaries rather than introducing a parallel process runtime.
-
-Every produced Evidence Record is bound to:
-
-- exact repository snapshot;
-- `EnvironmentFingerprint` digest;
-- verifier ID/version;
-- immutable verifier snapshot;
-- command argv/cwd;
-- input artifact hashes;
-- stdout/stderr hashes and byte counts;
-- exit/timing result;
-- command-evidence digest;
-- declared security profile.
-
-Strong isolation is not simulated. When a verifier requires stronger isolation than the current direct executor can provide, execution fails closed before the verifier process is admitted.
-
-### Evidence cache boundary
-
-`EvidenceCacheKey` treats repository snapshot, environment fingerprint, verifier snapshot, and input artifact hashes as hard reuse boundaries.
-
-A change in any of them makes prior evidence stale. Step 10 does not claim probabilistic or semantic cache equivalence.
-
-### Proof-carrying acceptance
-
-`build_proof_manifest` requires exact coverage of the task's requirement set. Each requirement must map to:
-
-1. at least one current implementation location;
-2. at least one passing Evidence Record that attests that requirement;
-3. evidence from the same repository snapshot;
-4. evidence carrying environment and verifier-integrity identity;
-5. every verifier/evidence type required by the bound Verification Plan.
-
-The generated Proof Manifest is validated through the executable schema registry and then through the existing cross-contract semantic validator. Generator-controlled verifier evidence cannot support an accepted proof.
-
-### Durable acceptance chain
-
-`persist_accepted_verification` validates the proof and the domain transition before persisting acceptance.
-
-The authoritative sequence is:
-
-1. store Evidence Records as content-addressed internal artifacts;
-2. append `evidence.created` events;
-3. store the passing Proof Manifest as a pinned artifact;
-4. append `verification.verdict` referencing that proof;
-5. append `task.accepted` causally linked to the verification verdict.
-
-The existing `TaskState::Verifying -> TaskState::Accepted` guard remains authoritative and requires accepted proof. The verification slice does not bypass the state machine with a generic status write.
-
-### Step-10 adversarial and invariant tests
-
-The focused Step-10 test surface verifies that:
-
-- deliberate protected-test/verifier tampering is detected;
-- Domain Profiles can only strengthen mandatory verification;
-- repository/environment/verifier/input changes invalidate evidence reuse;
-- unsupported strong-isolation requirements fail closed;
-- command evidence is bound to repo/environment/verifier identity;
-- Proof Manifest construction requires an exact requirement -> implementation -> passing-evidence chain;
-- stale-repository evidence cannot support a current proof;
-- accepted verification persists evidence -> verdict/proof -> task acceptance in causal order and preserves journal integrity.
-
-### Permanent verification gates
-
-Step 10 adds a permanent Linux CI gate:
-
-```text
-cargo +1.97.1 test --locked -p aer-core --all-targets verification
-```
-
-The canonical Windows verifier now includes the corresponding target-specific Step-10 gate before the remaining storage/document/Phase-0/product checks.
-
-The final repository-side verification run `31939146224` passed:
-
-- workspace formatting;
-- workspace-wide `-D warnings` Clippy;
-- full workspace regression suite;
-- Intent + Research + Engineering IR gate;
-- Repository Intelligence gate;
-- Context Economy gate;
-- Verification + Proof integrity gate;
-- Single-Agent Runtime gate;
-- Workspace + execution boundary gate;
-- CLI regression/zero-redraw guard;
-- Durable State Kernel gate;
-- documentation integrity;
-- Phase-0 executable contract gate;
-- canonical isolated Windows verification.
-
-Temporary branch-only format/compile repair workflows used during implementation were removed after their exact repairs. No write-capable repair workflow is part of the verified Step-10 tree.
-
-## Step 10 acceptance ledger
+## Step 11 acceptance ledger
 
 | Gate | State | Evidence |
 |---|---|---|
-| Independent verifier definition + protected asset identity | PASS | `VerifierDefinition` + `VerifierSnapshot`. |
-| Deliberate verifier/test tampering detection | PASS | `immutable_verifier_detects_deliberate_test_tampering`. |
-| Safe relative verifier asset boundary | PASS | path validation + symlink/unsupported-asset rejection. |
-| Mandatory verification cannot be weakened by Domain Profiles | PASS | monotone union composition + focused test. |
-| Bound verifier composition snapshot | PASS | required snapshot resolution + deterministic composition digest. |
-| Evidence bound to exact repository snapshot | PASS | `CommandExecutionEvidence` + Evidence Record construction. |
-| Evidence bound to Environment Fingerprint | PASS | environment digest required and persisted. |
-| Evidence bound to verifier identity/snapshot | PASS | verifier ID/version + integrity snapshot checks. |
-| Evidence input/output artifact identity | PASS | SHA-256 input validation + captured output hashes. |
-| Exact evidence cache invalidation boundary | PASS | repo/environment/verifier/input cache-key test. |
-| Strong-isolation capability mismatch fails closed | PASS | direct executor refusal test. |
-| Exact requirement -> implementation -> evidence coverage | PASS | proof builder coverage rules + focused proof test. |
-| Stale repository evidence rejected | PASS | stale-evidence adversarial test. |
-| Generator-controlled verifier evidence rejected | PASS | proof integrity guard + existing semantic validator. |
-| Current Evidence Record schema validation | PASS | embedded executable contract registry. |
-| Current Proof Manifest schema validation | PASS | embedded executable contract registry. |
-| Cross-contract semantic proof validation | PASS | `validate_semantic_bundle`. |
-| Accepted task requires passing proof | PASS | existing domain state-machine guard reused. |
-| Durable evidence -> verdict/proof -> acceptance chain | PASS | persistence integration test + journal integrity verification. |
-| No new third-party Step-10 dependency | PASS | implementation reuses existing workspace crates/dependencies. |
-| No premature `aer-verify` crate split | PASS | YAGNI ownership decision documented above. |
-| CLI/TUI freeze preserved | PASS | no `crates/aer-cli/**` changes. |
-| Workspace-wide format | PASS | CI `31939146224`. |
-| Workspace-wide `-D warnings` Clippy | PASS | CI `31939146224`. |
-| Full workspace regression suite | PASS | CI `31939146224`. |
-| Permanent Linux Verification + Proof CI gate | PASS | CI `31939146224`. |
-| Canonical isolated Windows CI verifier including Step 10 | PASS | CI `31939146224`. |
-| Temporary write workflow/repair scaffolding removed | PASS | verified Step-10 code HEAD `c48a9afa95e63467198a0ea251c100232f90b79b`. |
-| Target Windows canonical verifier | PENDING | user reproduction required on updated `main`. |
+| Expanded normalized failure taxonomy | IMPLEMENTED | `aer-provider::ProviderFailureClass`. |
+| Retry-safe vs non-retry-safe semantics | IMPLEMENTED | gateway retry predicate + unit tests. |
+| Capability/privacy/region/snapshot eligibility | IMPLEMENTED | `routing::eligibility`. |
+| Capability freshness/drift fails closed | IMPLEMENTED | capability TTL + stale-profile test. |
+| Timestamped pricing + exact integer cost accounting | IMPLEMENTED | `PricingSnapshot::estimate_cost_micros`. |
+| Local rate-limit reservation | IMPLEMENTED | `RateLimitWindow::reserve`. |
+| Endpoint-scoped health + circuit breaker | IMPLEMENTED | `EndpointHealth` + circuit test. |
+| Deterministic economy/balanced/maximum-quality routing | IMPLEMENTED | `route` + RouterBench. |
+| Scout routing under uncertainty | IMPLEMENTED | `ScoutThenRoute` decision test. |
+| Bounded gateway retry | IMPLEMENTED | existing gateway + expanded taxonomy tests. |
+| Bounded provider failover | IMPLEMENTED | `ResilientProviderPool` + ProviderBench. |
+| Inspectable routing/fallback attempt trace | IMPLEMENTED | `ProviderAttemptRecord`. |
+| No live paid API dependency in correctness gates | PASS BY DESIGN | scripted provider fixtures only. |
+| CLI/TUI freeze preserved | PASS | no `crates/aer-cli/**` Step-11 changes. |
+| Workspace format | PENDING | PR CI required. |
+| Workspace `-D warnings` Clippy | PENDING | PR CI required. |
+| Full workspace regression suite | PENDING | PR CI required. |
+| ProviderBench + RouterBench Linux gate | PENDING | PR CI required. |
+| Canonical isolated Windows CI verifier | PENDING | PR CI required. |
+| Target Windows canonical verifier | PENDING | user reproduction required after merge. |
 
-## Step 10 exit condition
+## Step 11 exit condition
 
-Repository-side Step 10 is verified. Do **not** start Step 11 until the target Windows checkout reproduces the canonical verifier successfully.
+Do not mark Step 11 COMPLETE or start Step 12 until:
 
-No interactive CLI testing is required. After Step 10 is merged to `main`, run only:
-
-```powershell
-cd C:\Users\cenke\OneDrive\Desktop\everything
-git pull origin main
-.\scripts\verify-windows.ps1
-```
-
-Expected final line:
-
-```text
-everything Windows verification: PASS
-```
-
-After that PASS, mark Step 10 COMPLETE and proceed to **Step 11 — Provider Resilience + Cost Router**, keeping the CLI/TUI frozen.
+1. the final Step-11 code tree passes workspace format, `-D warnings` Clippy, full tests, ProviderBench/RouterBench and the canonical Windows CI verifier;
+2. temporary repair scaffolding, if any, has been removed;
+3. the verified branch is merged to `main`;
+4. the target Windows checkout runs `scripts/verify-windows.ps1` successfully and ends with `everything Windows verification: PASS`.
