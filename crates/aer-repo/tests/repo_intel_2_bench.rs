@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeSet,
     fs,
     path::{Path, PathBuf},
     process::Command,
@@ -9,7 +10,7 @@ use std::{
 use aer_repo::{
     CapabilityTier, EvidenceClass, FreshnessState, GraphDirection, GraphEdgeKind, IndexPolicy,
     PreciseRelation, PreciseSemanticBatch, PreciseSemanticEdge, RepositoryIndex, SearchQuery,
-    TraversalBudget, repository_file_entity_id,
+    TraversalBudget, language_profiles, repository_file_entity_id,
 };
 
 static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -33,6 +34,8 @@ impl Fixture {
         fs::create_dir_all(repo.join("src")).expect("src dir");
         fs::create_dir_all(repo.join("tests")).expect("tests dir");
         fs::create_dir_all(repo.join("include")).expect("include dir");
+        fs::create_dir_all(repo.join("tools")).expect("tools dir");
+        fs::create_dir_all(repo.join("web")).expect("web dir");
         git(&repo, ["init"]);
         git(&repo, ["config", "user.email", "aer@example.invalid"]);
         git(&repo, ["config", "user.name", "AER Test"]);
@@ -53,12 +56,12 @@ impl Fixture {
         .expect("lib source");
         fs::write(
             repo.join("src/auth.rs"),
-            "use crate::session::session_is_valid;\npub fn verify_token(token: &str) -> bool { session_is_valid(token) }\n",
+            "use crate::session::credential_is_active;\npub fn verify_token(token: &str) -> bool { credential_is_active(token) }\n",
         )
         .expect("auth source");
         fs::write(
             repo.join("src/session.rs"),
-            "pub fn session_is_valid(token: &str) -> bool { !token.is_empty() }\n",
+            "pub fn credential_is_active(value: &str) -> bool { !value.is_empty() }\n",
         )
         .expect("session source");
         fs::write(
@@ -67,8 +70,18 @@ impl Fixture {
         )
         .expect("test source");
         fs::write(
+            repo.join("tools/claims_probe.py"),
+            "def parse_claims(blob):\n    return bool(blob)\n",
+        )
+        .expect("python source");
+        fs::write(
+            repo.join("web/credential.ts"),
+            "export function normalizeCredential(value: string): string { return value.trim(); }\n",
+        )
+        .expect("typescript source");
+        fs::write(
             repo.join("include/legacy.h"),
-            "int legacy_verify_token(const char *token);\n",
+            "int legacy_validate_credential(const char *value);\n",
         )
         .expect("fallback text");
         git(&repo, ["add", "."]);
@@ -92,8 +105,15 @@ fn git<const N: usize>(repo: &Path, args: [&str; N]) {
     assert!(status.success());
 }
 
+fn relevant_yield(paths: impl IntoIterator<Item = String>, relevant: &BTreeSet<&str>) -> usize {
+    paths
+        .into_iter()
+        .filter(|path| relevant.contains(path.as_str()))
+        .count()
+}
+
 #[test]
-fn repo_intel_bench_preserves_tier_provenance_and_bounded_graph_semantics() {
+fn repo_intel_bench_preserves_tier_provenance_and_improves_bounded_retrieval_yield() {
     let fixture = Fixture::new();
     let mut index =
         RepositoryIndex::open(&fixture.index, IndexPolicy::default()).expect("open RI2 index");
@@ -104,12 +124,35 @@ fn repo_intel_bench_preserves_tier_provenance_and_bounded_graph_semantics() {
         .language_capability_report(snapshot)
         .expect("language capability report");
     assert!(
-        report.tier1_files >= 4,
-        "Rust files should have Tier-1 syntax"
+        report.tier1_files >= 6,
+        "Rust, Python and TypeScript files should have Tier-1 syntax"
     );
     assert!(
         report.fallback_files >= 1,
         "unknown .h file must stay Tier-0 fallback"
+    );
+    let profiles = language_profiles();
+    for required in ["rust", "python", "typescript"] {
+        assert!(profiles.iter().any(|profile| {
+            profile.language_id == required
+                && profile.maximum_static_tier == CapabilityTier::Tier1Syntax
+        }));
+    }
+    assert!(
+        index
+            .search(snapshot, &SearchQuery::new("parse_claims"))
+            .expect("python retrieval")
+            .hits
+            .iter()
+            .any(|hit| hit.path == "tools/claims_probe.py")
+    );
+    assert!(
+        index
+            .search(snapshot, &SearchQuery::new("normalizeCredential"))
+            .expect("typescript retrieval")
+            .hits
+            .iter()
+            .any(|hit| hit.path == "web/credential.ts")
     );
 
     let views = index.ri2_view_states(snapshot).expect("view states");
@@ -153,7 +196,7 @@ fn repo_intel_bench_preserves_tier_provenance_and_bounded_graph_semantics() {
                 source_line: Some(2),
                 source_symbol_id: None,
                 relation: PreciseRelation::Call,
-                target_symbol: "crate::session::session_is_valid".to_owned(),
+                target_symbol: "crate::session::credential_is_active".to_owned(),
                 target_path: Some("src/session.rs".to_owned()),
             }],
         })
@@ -192,10 +235,16 @@ fn repo_intel_bench_preserves_tier_provenance_and_bounded_graph_semantics() {
         .expect("bounded traversal");
     assert!(tiny.truncated, "bounded traversal must expose truncation");
 
+    let query = SearchQuery {
+        text: "verify token".to_owned(),
+        limit: 4,
+        min_score_micros: 100_000,
+    };
+    let baseline = index.search(snapshot, &query).expect("v1 retrieval baseline");
     let retrieval = index
         .hybrid_retrieve(
             snapshot,
-            &SearchQuery::new("verify token"),
+            &query,
             TraversalBudget {
                 max_depth: 1,
                 max_nodes: 32,
@@ -203,12 +252,27 @@ fn repo_intel_bench_preserves_tier_provenance_and_bounded_graph_semantics() {
             },
         )
         .expect("hybrid retrieval");
+    let relevant = BTreeSet::from(["src/auth.rs", "src/session.rs"]);
+    let baseline_yield = relevant_yield(
+        baseline.hits.into_iter().map(|hit| hit.path),
+        &relevant,
+    );
+    let hybrid_yield = relevant_yield(retrieval.iter().map(|hit| hit.path.clone()), &relevant);
+    assert!(
+        hybrid_yield > baseline_yield,
+        "RI2 hybrid retrieval should add the precise semantic neighbor within the same result bound"
+    );
     assert!(retrieval.iter().any(|hit| hit.path == "src/auth.rs"));
+    assert!(retrieval.iter().any(|hit| hit.path == "src/session.rs"));
     assert!(retrieval.iter().all(|hit| !hit.why_relevant.is_empty()));
+    assert!(
+        fs::metadata(&fixture.index).expect("index metadata").len() < 16 * 1024 * 1024,
+        "small benchmark fixture must remain inside an explicit 16 MiB index budget"
+    );
 }
 
 #[test]
-fn repo_intel_bench_tracks_exact_content_continuity_and_dependency_invalidation() {
+fn repo_intel_bench_tracks_incremental_reuse_continuity_and_dependency_invalidation() {
     let fixture = Fixture::new();
     let mut index =
         RepositoryIndex::open(&fixture.index, IndexPolicy::default()).expect("open RI2 index");
@@ -221,11 +285,19 @@ fn repo_intel_bench_tracks_exact_content_continuity_and_dependency_invalidation(
     .expect("rename session source");
     fs::write(
         fixture.repo.join("src/auth.rs"),
-        "use crate::session::session_is_valid;\npub fn verify_token(token: &str) -> bool { !token.is_empty() && session_is_valid(token) }\n",
+        "use crate::session::credential_is_active;\npub fn verify_token(token: &str) -> bool { !token.is_empty() && credential_is_active(token) }\n",
     )
     .expect("change auth source");
 
     let second = index.refresh(&fixture.repo).expect("second refresh");
+    assert!(
+        second.reused_artifacts >= 4,
+        "unchanged content should reuse content-addressed parse artifacts"
+    );
+    assert!(
+        second.parsed_artifacts < first.parsed_artifacts,
+        "incremental refresh should parse less unchanged content than the initial build"
+    );
     let changes = index
         .diff_snapshots(&first.snapshot.snapshot_id, &second.snapshot.snapshot_id)
         .expect("snapshot diff");
@@ -249,6 +321,25 @@ fn repo_intel_bench_tracks_exact_content_continuity_and_dependency_invalidation(
             && link.evidence_class == EvidenceClass::Extracted
             && link.confidence_milli == 1000
     }));
+
+    let second_views = index
+        .ri2_view_states(&second.snapshot.snapshot_id)
+        .expect("second view states");
+    assert!(second_views.iter().any(|view| {
+        view.view_name == "precise_semantic" && view.freshness == FreshnessState::Unavailable
+    }));
+    let old_session_entity = repository_file_entity_id("src/session.rs").expect("old session entity");
+    assert!(
+        index
+            .graph_traverse(
+                &second.snapshot.snapshot_id,
+                &[old_session_entity],
+                GraphDirection::Both,
+                TraversalBudget::default(),
+            )
+            .is_err(),
+        "stale deleted-file graph nodes must not silently survive in the new snapshot"
+    );
 
     let frontier = index
         .invalidation_frontier(
