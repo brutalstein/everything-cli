@@ -16,25 +16,34 @@ impl RepositoryIndex {
     pub fn ri2_view_states(&self, snapshot_id: &str) -> Result<Vec<ViewState>, RepoError> {
         self.ensure_snapshot(snapshot_id)?;
         let mut statement = self.connection.prepare(
-            "SELECT view_name,producer_id,producer_version,freshness,capability_tier FROM ri2_view_state WHERE snapshot_id=? ORDER BY view_name",
+            "SELECT view_name,producer_id,producer_version,environment_fingerprint,freshness,capability_tier FROM ri2_view_state WHERE snapshot_id=? ORDER BY view_name",
         )?;
         let rows = statement.query_map([snapshot_id], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, i64>(4)?,
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, i64>(5)?,
             ))
         })?;
         let mut output = Vec::new();
         for row in rows {
-            let (view_name, producer_id, producer_version, freshness, tier) = row?;
+            let (
+                view_name,
+                producer_id,
+                producer_version,
+                environment_fingerprint,
+                freshness,
+                tier,
+            ) = row?;
             output.push(ViewState {
                 view_name,
                 indexed_snapshot: snapshot_id.to_owned(),
                 producer_id,
                 producer_version,
+                environment_fingerprint,
                 freshness: FreshnessState::parse(&freshness)?,
                 capability_tier: CapabilityTier::from_i64(tier)?,
             });

@@ -52,14 +52,13 @@ pub(crate) fn rebuild_snapshot_views(
         FreshnessState::Current,
         CapabilityTier::Tier1Syntax,
     )?;
-    insert_view_state(
+    insert_project_view_state(
         tx,
         snapshot_id,
-        "project",
         CARGO_PRODUCER,
         CARGO_PRODUCER_VERSION,
+        topology.environment_fingerprint.as_deref(),
         topology.state,
-        CapabilityTier::Tier2Project,
     )?;
     insert_view_state(
         tx,
@@ -135,6 +134,29 @@ pub(crate) fn insert_view_state(
     tx.execute(
         "INSERT INTO ri2_view_state(snapshot_id,view_name,producer_id,producer_version,freshness,capability_tier) VALUES(?,?,?,?,?,?)",
         params![snapshot_id, view_name, producer_id, producer_version, freshness.as_str(), i64::from(tier.as_u8())],
+    )?;
+    Ok(())
+}
+
+fn insert_project_view_state(
+    tx: &Transaction<'_>,
+    snapshot_id: &str,
+    producer_id: &str,
+    producer_version: &str,
+    environment_fingerprint: Option<&str>,
+    freshness: FreshnessState,
+) -> Result<(), RepoError> {
+    tx.execute(
+        "INSERT INTO ri2_view_state(snapshot_id,view_name,producer_id,producer_version,environment_fingerprint,freshness,capability_tier) VALUES(?,?,?,?,?,?,?)",
+        params![
+            snapshot_id,
+            "project",
+            producer_id,
+            producer_version,
+            environment_fingerprint,
+            freshness.as_str(),
+            i64::from(CapabilityTier::Tier2Project.as_u8())
+        ],
     )?;
     Ok(())
 }

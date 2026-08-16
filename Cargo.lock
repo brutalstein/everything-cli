@@ -90,6 +90,7 @@ dependencies = [
 name = "aer-repo"
 version = "0.0.1"
 dependencies = [
+ "aer-environment",
  "aer-exec",
  "aer-workspace",
  "rusqlite",

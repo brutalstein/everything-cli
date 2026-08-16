@@ -1,3 +1,4 @@
+use aer_environment::EnvironmentFingerprint;
 use rusqlite::OptionalExtension;
 
 use crate::{RepoError, RepositoryIndex};
@@ -29,18 +30,37 @@ impl RepositoryIndex {
         }
 
         let project_producer = self
-            .connection
-            .query_row(
-                "SELECT producer_id,producer_version FROM ri2_view_state WHERE snapshot_id=? AND view_name='project'",
-                [snapshot_id],
-                |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
-            )
-            .optional()?;
-        if project_producer
-            .as_ref()
-            .is_none_or(|(id, version)| id != CARGO_PRODUCER || version != CARGO_PRODUCER_VERSION)
-        {
+    .connection
+    .query_row(
+        "SELECT producer_id,producer_version,environment_fingerprint FROM ri2_view_state WHERE snapshot_id=? AND view_name='project'",
+        [snapshot_id],
+        |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
+        },
+    )
+    .optional()?;
+        if project_producer.as_ref().is_none_or(|(id, version, _)| {
+            id != CARGO_PRODUCER || version != CARGO_PRODUCER_VERSION
+        }) {
             return Ok(true);
+        }
+        if let Some((_, _, Some(stored_environment))) = project_producer {
+            let repo_root: String = self.connection.query_row(
+                "SELECT repo_root FROM snapshots WHERE snapshot_id=?",
+                [snapshot_id],
+                |row| row.get(0),
+            )?;
+            let current_environment = match EnvironmentFingerprint::discover(repo_root) {
+                Ok(fingerprint) => fingerprint.digest,
+                Err(_) => return Ok(true),
+            };
+            if current_environment != stored_environment {
+                return Ok(true);
+            }
         }
 
         let mut statement = self.connection.prepare(

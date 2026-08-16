@@ -129,6 +129,7 @@ pub struct ViewState {
     pub indexed_snapshot: String,
     pub producer_id: String,
     pub producer_version: String,
+    pub environment_fingerprint: Option<String>,
     pub freshness: FreshnessState,
     pub capability_tier: CapabilityTier,
 }
