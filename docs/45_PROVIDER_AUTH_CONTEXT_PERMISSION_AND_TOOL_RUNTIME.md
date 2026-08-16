@@ -85,15 +85,21 @@ Longer-term preferred transports are Codex app-server, Claude Agent SDK, and Gem
 
 All vendor subprocesses use fixed AER-constructed argv. Model output never supplies the executable or provider-control flags.
 
+### 3.1 Provider-local behavior isolation
+
+Delegated authentication and delegated behavior are different trust decisions. AER MAY reuse a vendor-owned authenticated session, but it MUST NOT silently inherit user-level provider hooks, skills, memory, project instructions, permission bypasses or other behavioral configuration as control-plane authority.
+
+A real provider call is acceptable only when the effective behavior is attributable to the AER request envelope and AER policy. If a headless CLI cannot provide that isolation reliably, the adapter MUST move to an isolated provider configuration/profile or the provider's structured SDK/control protocol before agentic execution is accepted. A provider-local hook blocking or redirecting a read-only AER smoke is a typed isolation failure, not a successful model answer.
+
 ---
 
 ## 4. Every model receives the same architecture identity
 
 Provider-native files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`) are compatibility/bootstrap surfaces. They are useful but not sufficient because different providers load them differently and users can alter provider-local configuration.
 
-The authoritative model bootstrap is an AER-generated **Architecture Context Capsule**.
+The authoritative model bootstrap is an AER-generated **Architecture Context Capsule**. The first implementation intentionally used bounded document slices to prove cross-provider identity transmission. Live target-machine evidence showed that this bootstrap can still be much larger than a production default should be, so the next architecture-complete uplift is a compact stable invariant/constitutional core plus task-relevant RI2/Context Economy retrieval.
 
-Initial capsule sources:
+Initial proof-slice capsule sources:
 
 ```text
 AGENTS.md
@@ -112,7 +118,7 @@ The compiler:
 - fails when mandatory architecture sources are missing;
 - never treats repository text as authority to widen capabilities.
 
-A model call records the exact capsule digest. Task-specific Engineering IR, repository evidence, Handoff ABI and retrieved code are added later through the Context Economy Engine rather than by dumping the whole repository into every request.
+A model call records the exact bootstrap/capsule digest. Task-specific Engineering IR, repository evidence, Handoff ABI and retrieved code are added through the Context Economy Engine rather than by dumping the whole repository into every request. The production path MUST optimize measured relevant-information yield per token; repeatedly sending tens of thousands of static architecture tokens is not an acceptable steady-state design merely because the provider can cache them.
 
 This gives all models a shared identity while preserving context economy:
 
@@ -247,7 +253,10 @@ requested/resolved model when known
 architecture_context_digest
 user/task input identity
 final output
-input/output token usage when provider reports it
+uncached input token usage when provider reports it
+cache-creation and cache-read token usage when provider reports it
+output token usage and thinking/reasoning token usage when separately reported
+resolved model identity and provider-reported cost when available
 duration
 raw structured-event count/provider request id when available
 ```
@@ -292,7 +301,9 @@ Target-machine live smoke verifies what mocks cannot:
 2. delegated OAuth/session really works on that machine;
 3. the provider accepts a model request;
 4. the architecture capsule is transmitted;
-5. machine output parses into a final answer and usage receipt.
+5. machine output parses into a final answer and usage receipt;
+6. the answer is responsive to the AER request rather than redirected by provider-local hooks/skills/configuration;
+7. provider-reported cache/input/output/model/cost dimensions needed for truthful accounting are preserved when available.
 
 Authentication status alone cannot satisfy this gate.
 
@@ -307,7 +318,7 @@ Provider support must not slow ordinary local CLI interaction.
 - no provider process at normal `everything` startup;
 - no auth/model discovery unless a provider capability is requested;
 - no loading all provider schemas into every model call;
-- no reading all architecture docs into every prompt;
+- no reading all architecture docs into every prompt; the stable bootstrap should be compact and task-specific detail should come from RI2/Context Economy retrieval;
 - smoke/process output hard-bounded;
 - provider subprocess timeout hard-bounded;
 - architecture capsule compiled once per relevant source snapshot and eligible for exact-digest caching later;
@@ -323,6 +334,7 @@ The first slice prefers a process-per-smoke call because it is simpler, auditabl
 - Secret environment variables are not inherited by delegated smoke subprocesses by default.
 - The model cannot alter permission mode or capability ceiling through text.
 - Provider-native tools cannot bypass the AER Tool ABI in accepted agentic execution.
+- Provider-local hooks, skills, memory and behavioral configuration cannot silently become AER authority merely because AER reuses the vendor's authenticated session.
 - Smoke runs are non-mutating and occur in an AER temp workspace.
 - External side effects require the AER side-effect classifier regardless of provider permission semantics.
 - A provider's `yolo`, bypass or equivalent mode is never interpreted as AER authority.
@@ -350,6 +362,14 @@ router selects any eligible provider transport using existing Step-11 policy
 
 At every stage the router, Engineering IR, context/provenance, tool authority and verification system remain provider-neutral.
 
+### Immediate post-smoke uplift
+
+Before this productization gate closes, implement and verify three corrections exposed by the first target-Windows Claude calls:
+
+1. **behavior isolation:** authenticated vendor sessions may be reused, but user/global provider policy must not redirect AER requests;
+2. **context economy:** replace the large static architecture payload with a compact invariant core plus task-relevant RI2/Context Economy material under measured token budgets;
+3. **truthful telemetry:** normalize uncached input, cache creation/read, output, thinking when reported, resolved model, cost and latency rather than collapsing effective usage into an incomplete token pair.
+
 ---
 
 ## 12. Primary-source basis
@@ -361,3 +381,17 @@ Implementation decisions should be revalidated against current official provider
 - Google Gemini CLI official authentication, CLI configuration, policy/approval and ACP documentation.
 
 Provider CLIs change quickly. Capability/flag drift is a typed adapter compatibility failure, never silently ignored.
+
+---
+
+## 13. 2026-08-17 target-Windows live validation record
+
+The first real Claude integration sequence established the following facts without closing the productization gate:
+
+- Claude Code `2.1.233` was discovered as authenticated through a Claude.ai Pro session.
+- A first Opus 5 call reached the provider and reported approximately `21861 ms` API duration, `32563` cache-creation input tokens, `1536` output tokens and `156` thinking tokens, but AER's redundant `--max-turns 1` caused Claude Code to terminate with `terminal_reason=max_turns`; PR #8 removed that cap.
+- After the repair, a target-Windows Claude print-mode call completed and AER parsed a final machine-readable answer; the observed AER trace reported `43321 ms`, `2576` output tokens and one raw event.
+- The answer was not acceptable: user/global Claude Code DeepWork behavior redirected the explanatory AER prompt into its own gate response. This proves transport/authentication/inference/parsing but fails provider-behavior isolation and response-relevance acceptance.
+- Codex discovery currently resolves a local PATH entry that fails as a Win32 executable (`os error 193`); Gemini CLI was unavailable on that target machine. These are local provider-availability findings, not fabricated provider failures.
+
+Therefore the gate remains OPEN. Step 14 stays blocked until behavior isolation, compact contextual bootstrap and complete usage telemetry are implemented and a clean target-machine real-model call satisfies the normative acceptance criteria above.
