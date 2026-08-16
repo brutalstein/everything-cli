@@ -1,3 +1,4 @@
+# One-shot provider source repair/format trigger. Removed before merge.
 from pathlib import Path
 
 path = Path("crates/aer-provider/src/lib.rs")
