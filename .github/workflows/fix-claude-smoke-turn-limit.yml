@@ -1,0 +1,29 @@
+name: fix-claude-smoke-turn-limit
+
+on:
+  push:
+    branches: [agent/fix-claude-smoke-max-turns]
+    paths: [scripts/fix_claude_smoke_turn_limit.py]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: agent/fix-claude-smoke-max-turns
+          fetch-depth: 0
+      - run: python scripts/fix_claude_smoke_turn_limit.py
+      - run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt
+      - run: cargo +1.97.1 fmt --all
+      - name: Commit Claude smoke repair
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/aer-provider/src/delegated.rs
+          git diff --cached --quiet && exit 0
+          git commit -m "Remove invalid Claude smoke max-turns cap"
+          git push origin HEAD:agent/fix-claude-smoke-max-turns
