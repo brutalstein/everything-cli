@@ -6,9 +6,9 @@
 **Internal architecture terminology:** AER remains valid where the architecture uses it  
 **Current phase:** Phase 7 — Bounded Parallel Execution  
 **Current step:** 13 / 18 — Bounded Parallel Execution  
-**Repository-side state:** IMPLEMENTED — authoritative Linux/Windows CI pending  
-**Step-13 branch:** `agent/step-13-bounded-parallel-execution`  
-**Step-13 focused verification:** PASS on Ubuntu during implementation; permanent ResourceBench + canonical Windows gates added  
+**Repository-side state:** CI VERIFIED — awaiting target Windows reproduction  
+**Verified Step-13 production code HEAD:** `fb6f10bb72c3dc2b84a1625a746611fcfd658381`  
+**Verified Step-13 CI:** `foundation-ci` run `31961188080` — Ubuntu PASS including permanent ResourceBench; canonical isolated Windows verifier PASS  
 **Next step:** 14 — Architecture Health Controller — BLOCKED until Step-13 target Windows verification passes
 
 ## Agent engineering policy
@@ -450,7 +450,7 @@ Step 12 is closed. The target Windows checkout reproduced the canonical verifier
 
 ## Step 13 — Bounded Parallel Execution
 
-**State:** IMPLEMENTED — AUTHORITATIVE REPOSITORY CI PENDING
+**State:** REPOSITORY CI VERIFIED — TARGET WINDOWS PENDING
 
 ### Ownership and scope
 
@@ -485,6 +485,8 @@ Existing verifier reservation therefore remains effective under generator load. 
 
 Preemption is conservative: only lower-priority generator work explicitly marked discardable/checkpointable can be selected. External-mutating attempts and `PreemptionSafety::Never` work are excluded.
 
+High-risk and explicitly serial-only work create a bidirectional serialization barrier: they cannot join already-active work, and once active they block later parallel admission until their ownership is released.
+
 ### Isolated branch-backed worktrees
 
 A captured exact `WorkspaceSnapshot` is first materialized into an AER-owned integration worktree. Dirty tracked/untracked user state is captured into an internal deterministic baseline commit on the integration branch; the user's branch and working tree are never changed.
@@ -498,6 +500,8 @@ Integration merge commits use AER-owned deterministic Git author/committer ident
 Branch-local verification is necessary but insufficient. `LocalBranchEvidence` requires a clean committed change plus local evidence. `IntegrationPlan` requires one common base, bounded candidate count and no duplicate task evidence; exact changed-path overlap and semantic ownership overlap fail before merge.
 
 Branches are merged into the isolated integration worktree in deterministic task order. `IntegrationBarrier` refuses acceptance until all planned merges are recorded and an integration-aware verification result is bound to the exact final integration head, repository snapshot, environment fingerprint and proof-manifest identities.
+
+Immediately before each merge, the integration worktree re-resolves the task branch ref and requires it to equal the locally verified `head_commit`. It also re-validates base→head ancestry and recomputes the exact changed-path set from Git. A branch commit added after local verification, a fabricated base, or stale/incomplete changed-path evidence therefore fails closed before integration.
 
 ### Bounded orphan cleanup
 
@@ -523,6 +527,8 @@ The Step-13 ResourceBench verifies:
 - duplicate orphan registration cannot overwrite authority;
 - disjoint files with conflicting semantic ownership are rejected;
 - branch-local PASS cannot bypass integration verification/proof;
+- post-verification branch mutation is rejected because merge-time branch head/base/changed-path evidence is re-measured;
+- high-risk serialization is enforced in both admission directions;
 - real dirty-user-state snapshots can fork two isolated task worktrees, merge verified branches, and leave the user's branch/tree unchanged;
 - measured parallel wall-clock utility is positive against its serial control.
 
@@ -563,10 +569,10 @@ The canonical Windows verifier runs the equivalent target-specific ResourceBench
 | No live/paid provider dependency in correctness gates | PASS | deterministic local fixtures only. |
 | CLI/TUI freeze preserved | PASS | no `crates/aer-cli/**` Step-13 changes. |
 | Focused Ubuntu format + `-D warnings` + domain/workspace/core regression | PASS | temporary read-only implementation gate before permanent CI. |
-| Permanent Linux ResourceBench gate | PENDING | authoritative PR CI required. |
-| Canonical isolated Windows verifier including ResourceBench | PENDING | authoritative PR CI required. |
-| Full workspace regression suite | PENDING | authoritative PR CI required. |
-| Temporary Step-13 workflow scaffolding removed | PENDING | remove before PR authoritative code HEAD. |
+| Permanent Linux ResourceBench gate | PASS | CI `31961188080`. |
+| Canonical isolated Windows verifier including ResourceBench | PASS | CI `31961188080`. |
+| Full workspace regression suite | PASS | CI `31961188080`. |
+| Temporary Step-13 workflow scaffolding removed | PASS | final workflow tree contains only permanent `ci.yml`. |
 | Target Windows canonical verifier | PENDING | user reproduction required after Step 13 is merged to `main`. |
 
 ## Step 13 exit condition
