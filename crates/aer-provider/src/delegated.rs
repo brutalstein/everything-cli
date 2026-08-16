@@ -22,6 +22,7 @@ const SMOKE_TIMEOUT: Duration = Duration::from_secs(300);
 const STATUS_TIMEOUT: Duration = Duration::from_secs(20);
 const MAX_PROVIDER_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 const MAX_STATUS_OUTPUT_BYTES: usize = 64 * 1024;
+const EMPTY_MCP_CONFIG: &str = r#"{"mcpServers":{}}"#;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DelegatedProviderKind {
@@ -415,6 +416,11 @@ impl DelegatedCliProvider {
                     OsString::from("json"),
                     OsString::from("--permission-mode"),
                     OsString::from("plan"),
+                    OsString::from("--setting-sources"),
+                    OsString::from(""),
+                    OsString::from("--strict-mcp-config"),
+                    OsString::from("--mcp-config"),
+                    OsString::from(EMPTY_MCP_CONFIG),
                     OsString::from("--tools"),
                     OsString::from(""),
                     OsString::from("--disable-slash-commands"),
@@ -817,6 +823,9 @@ fn run_bounded(
             Stdio::null()
         });
     inherit_safe_provider_environment(&mut command);
+    if executable.eq_ignore_ascii_case(DelegatedProviderKind::Claude.executable()) {
+        command.env("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "1");
+    }
 
     let mut child = command
         .spawn()
@@ -1090,9 +1099,14 @@ impl Error for DelegatedProviderError {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use serde_json::json;
 
-    use super::{AuthenticationState, DelegatedProviderKind, parse_codex_jsonl, parse_single_json};
+    use super::{
+        AuthenticationState, DelegatedCliProvider, DelegatedProviderKind, EMPTY_MCP_CONFIG,
+        parse_codex_jsonl, parse_single_json,
+    };
 
     #[test]
     fn provider_aliases_are_deterministic() {
@@ -1129,6 +1143,32 @@ mod tests {
         assert_eq!(parsed.usage.input_tokens, Some(12));
         assert_eq!(parsed.usage.output_tokens, Some(3));
         assert_eq!(parsed.raw_event_count, 3);
+    }
+
+    #[test]
+    fn claude_smoke_plan_blocks_provider_local_behavior_sources() {
+        let adapter = DelegatedCliProvider::new(
+            DelegatedProviderKind::Claude,
+            "architecture",
+            "digest",
+            None,
+        );
+        let (args, stdin) = adapter.smoke_plan("prompt", Path::new("."));
+        let args = args
+            .iter()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(stdin, b"prompt");
+        assert!(args.windows(2).any(|pair| pair == ["--setting-sources", ""]));
+        assert!(args.iter().any(|arg| arg == "--strict-mcp-config"));
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["--mcp-config", EMPTY_MCP_CONFIG])
+        );
+        assert!(args.windows(2).any(|pair| pair == ["--tools", ""]));
+        assert!(args.iter().any(|arg| arg == "--disable-slash-commands"));
+        assert!(args.iter().any(|arg| arg == "--no-session-persistence"));
+        assert!(!args.iter().any(|arg| arg == "--bare"));
     }
 
     #[test]
