@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# One-shot repair trigger for the target-Windows teardown regression.
 path = Path("crates/aer-core/src/tools.rs")
 text = path.read_text(encoding="utf-8")
 
