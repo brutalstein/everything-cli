@@ -1,4 +1,5 @@
 mod build;
+mod freshness;
 mod graph_query;
 mod graph_write;
 mod invalidation;
