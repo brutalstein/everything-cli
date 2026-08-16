@@ -115,10 +115,7 @@ pub struct UsageEstimate {
 
 impl PricingSnapshot {
     pub fn estimate_cost_micros(self, usage: UsageEstimate) -> Result<u64, RoutingError> {
-        let input = cost_component(
-            usage.input_tokens,
-            self.input_usd_micros_per_million_tokens,
-        )?;
+        let input = cost_component(usage.input_tokens, self.input_usd_micros_per_million_tokens)?;
         let output = cost_component(
             usage.output_tokens,
             self.output_usd_micros_per_million_tokens,
@@ -194,10 +191,16 @@ impl EndpointHealth {
         if self.state == HealthState::DisabledByPolicy || self.state == HealthState::Unavailable {
             return self.state;
         }
-        if self.rate_limited_until_ms.is_some_and(|until| now_ms < until) {
+        if self
+            .rate_limited_until_ms
+            .is_some_and(|until| now_ms < until)
+        {
             return HealthState::RateLimited;
         }
-        if self.circuit_open_until_ms.is_some_and(|until| now_ms < until) {
+        if self
+            .circuit_open_until_ms
+            .is_some_and(|until| now_ms < until)
+        {
             return HealthState::OpenCircuit;
         }
         match self.state {
@@ -278,7 +281,10 @@ impl RateLimitWindow {
         if self.remaining_requests == Some(0) {
             return Err(RoutingError::RateLimitReservation);
         }
-        if self.remaining_tokens.is_some_and(|remaining| remaining < tokens) {
+        if self
+            .remaining_tokens
+            .is_some_and(|remaining| remaining < tokens)
+        {
             return Err(RoutingError::RateLimitReservation);
         }
         if let Some(remaining) = &mut self.remaining_requests {
@@ -375,9 +381,7 @@ impl RouterPolicy {
         scout_uncertainty_threshold_ppm: u32,
         max_failovers: u32,
     ) -> Result<Self, RoutingError> {
-        if minimum_verified_success_ppm > 1_000_000
-            || scout_uncertainty_threshold_ppm > 1_000_000
-        {
+        if minimum_verified_success_ppm > 1_000_000 || scout_uncertainty_threshold_ppm > 1_000_000 {
             return Err(RoutingError::InvalidPolicy(
                 "probability values must be in 0..=1_000_000 ppm",
             ));
@@ -461,7 +465,11 @@ pub fn route(
     let wants_scout = !is_fallback
         && request.allow_scout
         && request.uncertainty_ppm >= policy.scout_uncertainty_threshold_ppm;
-    if wants_scout && eligible.iter().any(|(candidate, _)| candidate.tier == EndpointTier::Scout) {
+    if wants_scout
+        && eligible
+            .iter()
+            .any(|(candidate, _)| candidate.tier == EndpointTier::Scout)
+    {
         eligible.retain(|(candidate, _)| candidate.tier == EndpointTier::Scout);
     }
 
@@ -671,9 +679,13 @@ impl ResilientProviderPool {
     }
 
     pub fn profile(&self, endpoint_id: &str) -> Option<EndpointProfile> {
-        self.providers
-            .get(endpoint_id)
-            .map(|managed| managed.profile.lock().expect("provider profile mutex poisoned").clone())
+        self.providers.get(endpoint_id).map(|managed| {
+            managed
+                .profile
+                .lock()
+                .expect("provider profile mutex poisoned")
+                .clone()
+        })
     }
 
     pub fn complete(
@@ -713,7 +725,9 @@ impl ResilientProviderPool {
             let managed = self
                 .providers
                 .get(&decision.selected_endpoint_id)
-                .ok_or_else(|| FleetError::Integrity("router selected unknown endpoint".to_owned()))?;
+                .ok_or_else(|| {
+                    FleetError::Integrity("router selected unknown endpoint".to_owned())
+                })?;
             let total_tokens = route_request
                 .usage
                 .input_tokens
@@ -771,24 +785,24 @@ impl ResilientProviderPool {
                         endpoint_id: decision.selected_endpoint_id.clone(),
                         routing_strategy: decision.strategy,
                         expected_cost_micros: decision.expected_cost_micros,
-                        gateway_attempts: self.retry_policy.max_attempts,
+                        gateway_attempts: if error.retryable() {
+                            self.retry_policy.max_attempts
+                        } else {
+                            1
+                        },
                         outcome: AttemptOutcome::Failed(error.class),
                     });
-                    if error.class.fallback_eligible() && failovers < self.router_policy.max_failovers {
+                    if error.class.fallback_eligible()
+                        && failovers < self.router_policy.max_failovers
+                    {
                         excluded.insert(decision.selected_endpoint_id);
                         failovers = failovers.saturating_add(1);
                         continue;
                     }
-                    return Err(FleetError::Provider {
-                        error,
-                        attempts,
-                    });
+                    return Err(FleetError::Provider { error, attempts });
                 }
                 Err(error) => {
-                    return Err(FleetError::Gateway {
-                        error,
-                        attempts,
-                    });
+                    return Err(FleetError::Gateway { error, attempts });
                 }
             }
         }
@@ -822,7 +836,9 @@ pub enum RoutingError {
         profile_provider: String,
         profile_model: String,
     },
-    NoEligibleEndpoint { rejections: Vec<CandidateRejection> },
+    NoEligibleEndpoint {
+        rejections: Vec<CandidateRejection>,
+    },
 }
 
 impl fmt::Display for RoutingError {
@@ -831,12 +847,18 @@ impl fmt::Display for RoutingError {
             Self::InvalidPolicy(message) => write!(formatter, "invalid routing policy: {message}"),
             Self::CostOverflow => formatter.write_str("provider cost estimate overflow"),
             Self::RateLimitReservation => formatter.write_str("provider quota reservation refused"),
-            Self::DuplicateEndpoint(endpoint) => write!(formatter, "duplicate endpoint: {endpoint}"),
+            Self::DuplicateEndpoint(endpoint) => {
+                write!(formatter, "duplicate endpoint: {endpoint}")
+            }
             Self::DescriptorProfileMismatch { .. } => {
                 formatter.write_str("provider descriptor does not match routing profile")
             }
             Self::NoEligibleEndpoint { rejections } => {
-                write!(formatter, "no eligible provider endpoint ({} rejections)", rejections.len())
+                write!(
+                    formatter,
+                    "no eligible provider endpoint ({} rejections)",
+                    rejections.len()
+                )
             }
         }
     }
@@ -1144,7 +1166,11 @@ mod tests {
         )
         .expect("cheap provider");
         pool.add_provider(
-            Arc::new(FixtureProvider::new("strong", "m2", [Ok("done".to_owned())])),
+            Arc::new(FixtureProvider::new(
+                "strong",
+                "m2",
+                [Ok("done".to_owned())],
+            )),
             profile("strong", "m2", 2_000_000, 950_000),
         )
         .expect("strong provider");
@@ -1160,7 +1186,10 @@ mod tests {
         assert_eq!(result.endpoint_id, "strong");
         assert_eq!(result.failovers, 1);
         assert_eq!(result.attempts.len(), 2);
-        assert!(matches!(result.attempts[0].outcome, AttemptOutcome::Failed(_)));
+        assert!(matches!(
+            result.attempts[0].outcome,
+            AttemptOutcome::Failed(_)
+        ));
         assert_eq!(result.attempts[1].outcome, AttemptOutcome::Success);
         assert_eq!(
             pool.profile("cheap").expect("profile").health.state,
@@ -1187,7 +1216,11 @@ mod tests {
         )
         .expect("cheap provider");
         pool.add_provider(
-            Arc::new(FixtureProvider::new("strong", "m2", [Ok("done".to_owned())])),
+            Arc::new(FixtureProvider::new(
+                "strong",
+                "m2",
+                [Ok("done".to_owned())],
+            )),
             profile("strong", "m2", 2_000_000, 950_000),
         )
         .expect("strong provider");

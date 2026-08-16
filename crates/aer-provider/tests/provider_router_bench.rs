@@ -5,12 +5,13 @@ use std::{
 
 use aer_provider::{
     AuthenticationMethod, CancellationSignal, NeverCancelled, ProviderAdapter, ProviderDescriptor,
-    ProviderError, ProviderFailureClass, ProviderRequest, ProviderResponse, ProviderUsage, RetryPolicy,
+    ProviderError, ProviderFailureClass, ProviderRequest, ProviderResponse, ProviderUsage,
+    RetryPolicy,
     routing::{
         CircuitPolicy, DataSensitivity, EndpointCapabilities, EndpointHealth, EndpointProfile,
-        EndpointTier, PrivacyPolicy, PricingSnapshot, RateLimitWindow, ResilientProviderPool,
-        RetentionClass, RouteRequest, RouteRequirements, RouterPolicy, RoutingStrategy, UsageEstimate,
-        UserQualityMode, route,
+        EndpointTier, PricingSnapshot, PrivacyPolicy, RateLimitWindow, ResilientProviderPool,
+        RetentionClass, RouteRequest, RouteRequirements, RouterPolicy, RoutingStrategy,
+        UsageEstimate, UserQualityMode, route,
     },
 };
 
@@ -157,8 +158,14 @@ fn provider_bench_bounded_retry_then_failover_preserves_attempt_trace() {
             "economy",
             "fixture-small",
             [
-                Err(ProviderError::new(ProviderFailureClass::Timeout, "timeout-1")),
-                Err(ProviderError::new(ProviderFailureClass::Timeout, "timeout-2")),
+                Err(ProviderError::new(
+                    ProviderFailureClass::Timeout,
+                    "timeout-1",
+                )),
+                Err(ProviderError::new(
+                    ProviderFailureClass::Timeout,
+                    "timeout-2",
+                )),
             ],
         )),
         profile("economy", "fixture-small", 1_000_000, 800_000, 500),
@@ -188,7 +195,10 @@ fn provider_bench_bounded_retry_then_failover_preserves_attempt_trace() {
     assert_eq!(result.attempts.len(), 2);
     assert_eq!(result.attempts[0].gateway_attempts, 2);
     assert_eq!(result.attempts[1].gateway_attempts, 1);
-    assert_eq!(result.attempts[1].routing_strategy, RoutingStrategy::Fallback);
+    assert_eq!(
+        result.attempts[1].routing_strategy,
+        RoutingStrategy::Fallback
+    );
 }
 
 #[test]
