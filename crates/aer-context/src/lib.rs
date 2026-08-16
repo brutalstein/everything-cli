@@ -60,7 +60,9 @@ impl ContextEngine {
                 .or_insert_with(|| Candidate::from_hit(&hit));
             candidate.merge_hit(&hit);
             candidate.lexical_rank = Some(rank + 1);
-            candidate.reasons.insert("lexical/symbol retrieval".to_owned());
+            candidate
+                .reasons
+                .insert("lexical/symbol retrieval".to_owned());
         }
 
         for semantic_id in &request.required_semantic_ids {
@@ -82,7 +84,9 @@ impl ContextEngine {
                 candidate.merge_hit(&hit);
                 candidate.semantic_rank = min_rank(candidate.semantic_rank, rank + 1);
                 candidate.required_semantic_ids.insert(semantic_id.clone());
-                candidate.reasons.insert("Engineering IR semantic link".to_owned());
+                candidate
+                    .reasons
+                    .insert("Engineering IR semantic link".to_owned());
             }
             if !resolved {
                 return Err(ContextError::MandatoryCoverageUnavailable(
@@ -102,8 +106,11 @@ impl ContextEngine {
                 .entry(hit.path.clone())
                 .or_insert_with(|| Candidate::from_hit(&hit));
             candidate.merge_hit(&hit);
-            candidate.runtime_rank = min_rank(candidate.runtime_rank, runtime_rank(hint.score_milli));
-            candidate.reasons.insert(format!("runtime hint: {}", hint.reason));
+            candidate.runtime_rank =
+                min_rank(candidate.runtime_rank, runtime_rank(hint.score_milli));
+            candidate
+                .reasons
+                .insert(format!("runtime hint: {}", hint.reason));
         }
 
         let seed_paths = ranked_seed_paths(&candidates, self.policy.max_impact_seeds);
@@ -246,25 +253,23 @@ impl ContextEngine {
             }
         }
 
-        for candidate in ranked
-            .iter()
-            .take(consideration_limit)
-            .chain(
-                ranked
-                    .iter()
-                    .filter(|candidate| mandatory_paths.contains(&candidate.path)),
-            )
-        {
+        for candidate in ranked.iter().take(consideration_limit).chain(
+            ranked
+                .iter()
+                .filter(|candidate| mandatory_paths.contains(&candidate.path)),
+        ) {
             if materialized
                 .iter()
                 .any(|existing: &MaterializedCandidate| existing.candidate.path == candidate.path)
             {
                 continue;
             }
-            if let Ok(value) = self.materialize(workspace_root, index, snapshot_id, candidate) {
-                materialized.push(value);
-            } else if mandatory_paths.contains(&candidate.path) {
-                self.materialize(workspace_root, index, snapshot_id, candidate)?;
+            match self.materialize(workspace_root, index, snapshot_id, candidate) {
+                Ok(value) => materialized.push(value),
+                Err(
+                    ContextError::SourceTooLarge { .. } | ContextError::SourceNotRetrievable(_),
+                ) if !mandatory_paths.contains(&candidate.path) => {}
+                Err(error) => return Err(error),
             }
         }
 
@@ -272,7 +277,12 @@ impl ContextEngine {
         for semantic_id in &request.required_semantic_ids {
             let candidate = materialized
                 .iter()
-                .filter(|candidate| candidate.candidate.required_semantic_ids.contains(semantic_id))
+                .filter(|candidate| {
+                    candidate
+                        .candidate
+                        .required_semantic_ids
+                        .contains(semantic_id)
+                })
                 .max_by(|left, right| {
                     left.candidate
                         .utility_micros
@@ -345,7 +355,9 @@ impl ContextEngine {
                     .iter()
                     .find(|candidate| candidate.candidate.path == *right)
                     .map_or(0, |candidate| candidate.candidate.utility_micros);
-                right_utility.cmp(&left_utility).then_with(|| left.cmp(right))
+                right_utility
+                    .cmp(&left_utility)
+                    .then_with(|| left.cmp(right))
             });
             for path in paths {
                 let Some(candidate) = materialized
@@ -403,7 +415,10 @@ impl ContextEngine {
             source_hashes,
         };
         let identity = manifest_value(&pack);
-        pack.pack_id = format!("context-pack:{}", sha256_digest(&serde_json::to_vec(&identity)?));
+        pack.pack_id = format!(
+            "context-pack:{}",
+            sha256_digest(&serde_json::to_vec(&identity)?)
+        );
         Ok(pack)
     }
 
@@ -414,7 +429,11 @@ impl ContextEngine {
         snapshot_id: &str,
         candidate: &Candidate,
     ) -> Result<MaterializedCandidate, ContextError> {
-        let bytes = read_source(workspace_root, &candidate.path, self.policy.max_source_bytes)?;
+        let bytes = read_source(
+            workspace_root,
+            &candidate.path,
+            self.policy.max_source_bytes,
+        )?;
         if sha256(&bytes) != candidate.content_hash {
             return Err(ContextError::SourceHashMismatch {
                 path: candidate.path.clone(),
@@ -423,7 +442,9 @@ impl ContextEngine {
         let text = std::str::from_utf8(&bytes)
             .map_err(|_| ContextError::SourceNotRetrievable(candidate.path.clone()))?
             .to_owned();
-        let line_count = u32::try_from(text.lines().count()).unwrap_or(u32::MAX).max(1);
+        let line_count = u32::try_from(text.lines().count())
+            .unwrap_or(u32::MAX)
+            .max(1);
         let mut symbol_span = None;
         for symbol_name in &candidate.matched_symbols {
             for symbol in index.symbols(snapshot_id, symbol_name)? {
@@ -508,15 +529,15 @@ struct MaterializedCandidate {
 }
 
 impl MaterializedCandidate {
-    fn tier(
-        &self,
-        tier: ContextTier,
-        policy: &ContextPolicy,
-    ) -> Result<ContextItem, ContextError> {
+    fn tier(&self, tier: ContextTier, policy: &ContextPolicy) -> Result<ContextItem, ContextError> {
         let (segments, body) = match tier {
             ContextTier::Identifier => (Vec::new(), format!("path: {}", self.candidate.path)),
             ContextTier::Structural => {
-                let line = self.candidate.anchor_line.unwrap_or(1).clamp(1, self.line_count);
+                let line = self
+                    .candidate
+                    .anchor_line
+                    .unwrap_or(1)
+                    .clamp(1, self.line_count);
                 let segment = source_segment(&self.text, line, line)?;
                 (
                     vec![segment.clone()],
@@ -555,13 +576,18 @@ impl MaterializedCandidate {
                     policy.max_span_lines,
                 );
                 let desired = policy.max_tier3_lines.min(self.line_count);
-                let extra = desired.saturating_sub(base_end.saturating_sub(base_start).saturating_add(1));
+                let extra =
+                    desired.saturating_sub(base_end.saturating_sub(base_start).saturating_add(1));
                 let before = extra / 2;
                 let mut start = base_start.saturating_sub(before).max(1);
-                let mut end = start.saturating_add(desired.saturating_sub(1)).min(self.line_count);
+                let mut end = start
+                    .saturating_add(desired.saturating_sub(1))
+                    .min(self.line_count);
                 if end.saturating_sub(start).saturating_add(1) < desired {
                     start = end.saturating_sub(desired.saturating_sub(1)).max(1);
-                    end = start.saturating_add(desired.saturating_sub(1)).min(self.line_count);
+                    end = start
+                        .saturating_add(desired.saturating_sub(1))
+                        .min(self.line_count);
                 }
                 let segment = source_segment(&self.text, start, end)?;
                 (
@@ -627,7 +653,9 @@ fn validate_request(request: &ContextRequest, policy: &ContextPolicy) -> Result<
         return Err(ContextError::InvalidRequest("task_id is empty".to_owned()));
     }
     if request.objective.trim().is_empty() {
-        return Err(ContextError::InvalidRequest("objective is empty".to_owned()));
+        return Err(ContextError::InvalidRequest(
+            "objective is empty".to_owned(),
+        ));
     }
     if request.engineering_ir_version == 0 {
         return Err(ContextError::InvalidRequest(
@@ -780,7 +808,11 @@ fn bounded_source_span(
     (start, end)
 }
 
-fn source_segment(text: &str, start_line: u32, end_line: u32) -> Result<SourceSegment, ContextError> {
+fn source_segment(
+    text: &str,
+    start_line: u32,
+    end_line: u32,
+) -> Result<SourceSegment, ContextError> {
     let excerpt = extract_lines(text, start_line, end_line)?;
     Ok(SourceSegment {
         start_line,
@@ -831,17 +863,20 @@ pub fn evaluate_context_pack(
     relevant_paths: &[String],
     naive_token_cost: u64,
 ) -> ContextBenchMetrics {
-    let selected = pack.items.iter().map(|item| item.path.as_str()).collect::<BTreeSet<_>>();
+    let selected = pack
+        .items
+        .iter()
+        .map(|item| item.path.as_str())
+        .collect::<BTreeSet<_>>();
     let relevant_selected = relevant_paths
         .iter()
         .filter(|path| selected.contains(path.as_str()))
         .count();
     let relevant_total = relevant_paths.len();
-    let recall_milli = if relevant_total == 0 {
-        1000
-    } else {
-        u16::try_from(relevant_selected.saturating_mul(1000) / relevant_total).unwrap_or(1000)
-    };
+    let recall_milli = relevant_selected
+        .saturating_mul(1000)
+        .checked_div(relevant_total)
+        .map_or(1000, |value| u16::try_from(value).unwrap_or(1000));
     let selected_tokens = u64::from(pack.total_token_cost()).max(1);
     let naive_tokens = naive_token_cost.max(1);
     let selected_yield_micros = u64::try_from(relevant_selected)
@@ -956,7 +991,7 @@ mod tests {
         let (start, end) = bounded_source_span(1000, 500, Some((1, 900)), 80);
         assert!(start >= 1);
         assert!(end <= 1000);
-        assert!(end - start + 1 <= 80);
+        assert!(end - start < 80);
         assert!(start <= 500 && end >= 500);
     }
 
@@ -970,6 +1005,9 @@ mod tests {
     fn invalid_policy_is_rejected() {
         let mut policy = ContextPolicy::default();
         policy.max_items = policy.max_candidates + 1;
-        assert!(matches!(policy.validate(), Err(ContextError::InvalidPolicy)));
+        assert!(matches!(
+            policy.validate(),
+            Err(ContextError::InvalidPolicy)
+        ));
     }
 }

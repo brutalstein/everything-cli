@@ -3,6 +3,17 @@
 version = 4
 
 [[package]]
+name = "aer-context"
+version = "0.0.1"
+dependencies = [
+ "aer-contracts",
+ "aer-domain",
+ "aer-repo",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "aer-contracts"
 version = "0.0.1"
 dependencies = [
@@ -17,6 +28,7 @@ dependencies = [
 name = "aer-core"
 version = "0.0.1"
 dependencies = [
+ "aer-context",
  "aer-contracts",
  "aer-domain",
  "aer-environment",

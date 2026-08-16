@@ -53,7 +53,8 @@ impl ContextService {
             });
         }
 
-        RepositoryService::new(self.repository_policy.clone()).refresh(workspace_root, state_home)?;
+        RepositoryService::new(self.repository_policy.clone())
+            .refresh(workspace_root, state_home)?;
         let workspace = WorkspaceIdentity::inspect(workspace_root)?;
         let index = RepositoryIndex::open(
             repository_index_path(state_home, &workspace.repo_id),
@@ -82,7 +83,8 @@ impl ContextService {
             repository_index_path(state_home, &workspace.repo_id),
             self.repository_policy.clone(),
         )?;
-        self.engine.verify_fidelity(&workspace.repo_root, &index, pack)?;
+        self.engine
+            .verify_fidelity(&workspace.repo_root, &index, pack)?;
         Ok(())
     }
 }
@@ -102,7 +104,10 @@ impl fmt::Display for ContextServiceError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::MissingEngineeringIr => {
-                write!(f, "Context Pack compilation requires a current Engineering IR")
+                write!(
+                    f,
+                    "Context Pack compilation requires a current Engineering IR"
+                )
             }
             Self::IrVersionMismatch { requested, current } => write!(
                 f,

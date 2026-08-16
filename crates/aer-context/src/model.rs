@@ -208,18 +208,33 @@ impl fmt::Display for ContextError {
             Self::Repository(error) => write!(f, "repository context retrieval failed: {error}"),
             Self::Io(error) => write!(f, "context source I/O failed: {error}"),
             Self::SourceTooLarge { path, bytes } => {
-                write!(f, "context source exceeds configured bound: {path} ({bytes} bytes)")
+                write!(
+                    f,
+                    "context source exceeds configured bound: {path} ({bytes} bytes)"
+                )
             }
             Self::SourceHashMismatch { path } => {
-                write!(f, "context source changed or does not match indexed hash: {path}")
+                write!(
+                    f,
+                    "context source changed or does not match indexed hash: {path}"
+                )
             }
             Self::SourceNotRetrievable(path) => {
-                write!(f, "repository source could not be resolved from the exact index: {path}")
+                write!(
+                    f,
+                    "repository source could not be resolved from the exact index: {path}"
+                )
             }
             Self::MandatoryCoverageUnavailable(id) => {
-                write!(f, "mandatory semantic context has no resolvable source: {id}")
+                write!(
+                    f,
+                    "mandatory semantic context has no resolvable source: {id}"
+                )
             }
-            Self::BudgetTooSmall { required, available } => write!(
+            Self::BudgetTooSmall {
+                required,
+                available,
+            } => write!(
                 f,
                 "context token budget is too small: requires at least {required}, available {available}"
             ),

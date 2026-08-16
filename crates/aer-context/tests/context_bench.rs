@@ -57,8 +57,11 @@ impl Fixture {
                 "# unrelated subsystem {index}\n{}\n",
                 "rendering cache widget layout background telemetry ".repeat(120)
             );
-            fs::write(repo.join("docs").join(format!("unrelated-{index}.md")), content)
-                .expect("irrelevant source");
+            fs::write(
+                repo.join("docs").join(format!("unrelated-{index}.md")),
+                content,
+            )
+            .expect("irrelevant source");
         }
         git(&repo, ["add", "."]);
         git(&repo, ["commit", "-m", "initial"]);
@@ -144,7 +147,10 @@ fn context_bench_beats_naive_whole_context_yield_with_full_provenance() {
     );
     assert!(pack.items.iter().all(|item| {
         item.content_hash.starts_with("sha256:")
-            && item.segments.iter().all(|segment| segment.sha256.starts_with("sha256:"))
+            && item
+                .segments
+                .iter()
+                .all(|segment| segment.sha256.starts_with("sha256:"))
     }));
     engine
         .verify_fidelity(&fixture.repo, &index, &pack)
@@ -154,8 +160,13 @@ fn context_bench_beats_naive_whole_context_yield_with_full_provenance() {
         .into_iter()
         .map(|path| fs::read_to_string(fixture.repo.join(path)).expect("source"))
         .chain((0..12).map(|idx| {
-            fs::read_to_string(fixture.repo.join("docs").join(format!("unrelated-{idx}.md")))
-                .expect("doc")
+            fs::read_to_string(
+                fixture
+                    .repo
+                    .join("docs")
+                    .join(format!("unrelated-{idx}.md")),
+            )
+            .expect("doc")
         }))
         .map(|content| u64::from(estimate_tokens(&content)))
         .sum::<u64>();
