@@ -17,6 +17,7 @@ pub use phase1_runtime::*;
 pub mod context;
 pub mod repository;
 pub mod spec;
+pub mod verification;
 
 fn open_store(project_root: &Path) -> Result<DurableState, aer_storage::StorageError> {
     DurableState::open(project_root.join("durable"))
