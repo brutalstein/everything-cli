@@ -5,6 +5,7 @@
 //! `routing` module. Deterministic fixture adapters remain non-production and
 //! allow core correctness tests to run without paid APIs or credentials.
 
+pub mod delegated;
 pub mod routing;
 
 use std::{
@@ -383,7 +384,7 @@ impl ReferenceProvider {
     }
 
     #[must_use]
-    pub fn scripted<I>(steps: I) -> Self
+    pub fn scripted<I>(steps: I)
     where
         I: IntoIterator<Item = Result<String, ProviderError>>,
     {
