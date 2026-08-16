@@ -49,6 +49,10 @@ jobs:
         if: runner.os != 'Windows'
         run: cargo +1.97.1 test --locked -p aer-context -p aer-repo -p aer-core --all-targets
 
+      - name: Verification + proof integrity
+        if: runner.os != 'Windows'
+        run: cargo +1.97.1 test --locked -p aer-core --all-targets verification
+
       - name: Single-agent runtime 0.1
         if: runner.os != 'Windows'
         run: cargo +1.97.1 test --locked -p aer-provider -p aer-core --all-targets

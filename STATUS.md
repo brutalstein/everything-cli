@@ -4,12 +4,12 @@
 **Architecture baseline:** `docs/` on original `main` commit `6c81fa1d0d18e9f279fe1bc59f56d21f2cbffd55`  
 **Public product / executable:** `everything`  
 **Internal architecture terminology:** AER remains valid where the architecture uses it  
-**Current phase:** Phase 3 — Repository Intelligence and Context Economy  
-**Current step:** 09 / 18 — Context Economy Engine  
+**Current phase:** Phase 4 — Verification and Proof System  
+**Current step:** 10 / 18 — Verification + Proof System  
 **Repository-side state:** CI VERIFIED — awaiting target Windows reproduction  
-**Verified Step-09 code HEAD:** `0591452f13e2ba693d677e29b49d43e624fc175e`  
-**Verified Step-09 CI:** `foundation-ci` run `31920562037` — Ubuntu PASS including permanent Context Economy gate; canonical isolated Windows verifier PASS  
-**Next step:** 10 — Verification + Proof System — BLOCKED until Step-09 target Windows verification passes
+**Verified Step-10 code HEAD:** `c48a9afa95e63467198a0ea251c100232f90b79b`  
+**Verified Step-10 CI:** `foundation-ci` run `31939146224` — Ubuntu PASS including permanent Verification + Proof gate; canonical isolated Windows verifier PASS  
+**Next step:** 11 — Provider Resilience + Cost Router — BLOCKED until Step-10 target Windows verification passes
 
 ## Agent engineering policy
 
@@ -17,7 +17,7 @@
 
 ## User-directed product-surface freeze
 
-The CLI/TUI is intentionally frozen while the core architecture is completed. Until the user explicitly lifts this rule:
+The CLI/TUI remains intentionally frozen while the core architecture is completed. Until the user explicitly lifts this rule:
 
 - do not add or redesign CLI/TUI features;
 - do not expose new core capabilities through `crates/aer-cli`;
@@ -25,7 +25,7 @@ The CLI/TUI is intentionally frozen while the core architecture is completed. Un
 - preserve the existing zero-redraw CLI only as a regression surface;
 - develop and verify domain/core/storage/repository/context/runtime architecture first.
 
-`crates/aer-cli/**` was not modified by Step 09.
+`crates/aer-cli/**` was not modified by Step 10.
 
 ## Completed milestones
 
@@ -37,143 +37,169 @@ The CLI/TUI is intentionally frozen while the core architecture is completed. Un
 - **Step 05 — Workspace + Execution Boundary:** COMPLETE — CI `31909059844`; target Windows PASS.
 - **Step 06 — Single-Agent Runtime 0.1:** COMPLETE — CI `31911224304`; target Windows PASS.
 - **Step 07 — Intent + Research + Engineering IR:** COMPLETE — semantic baseline `d5668b5d87a3b8a3f598b9cd016cc11cc5504837`; target Windows reproduction confirmed.
-- **Step 08 — Repository Intelligence:** COMPLETE — code HEAD `12b97c6e9c715a19354af6ba5b661eb83ed9f353`; CI `31918025079`; target Windows canonical verification reproduced by the user on 2026-08-16 with final `everything Windows verification: PASS`.
+- **Step 08 — Repository Intelligence:** COMPLETE — code HEAD `12b97c6e9c715a19354af6ba5b661eb83ed9f353`; CI `31918025079`; target Windows canonical verification reproduced by the user on 2026-08-16.
+- **Step 09 — Context Economy Engine:** COMPLETE — repository CI `31920562037`; target Windows canonical verification reproduced by the user on 2026-08-16 with final `everything Windows verification: PASS`.
 
-## Step 09 — Context Economy Engine
+The Step-09 target-machine reproduction also reconfirmed the checked-in documentation/contract inventory and the ContextBench/regression gates before Step 10 was started.
+
+## Step 10 — Verification + Proof System
 
 **State:** REPOSITORY CI VERIFIED — TARGET WINDOWS PENDING
 
 ### Ownership and scope
 
-New crate `aer-context` owns bounded, provenance-preserving Context Pack compilation. It consumes current Engineering IR plus derived repository intelligence and produces source-faithful context for a specific task. It is not an authority store and cannot alter accepted project semantics.
+The first architecture-complete verification vertical slice lives in `aer-core::verification`.
 
-`aer-core::context::ContextService` is the application boundary. It binds a request to:
+Step 10 deliberately does **not** create an `aer-verify` crate merely because the target repository map names one. The current slice already depends on core orchestration, contracts, environment identity, execution, domain state transitions, and durable storage. A separate crate should be introduced only when independent ownership, dependency pressure, or testing boundaries make that split materially clearer.
 
-- the current authoritative Engineering IR revision;
-- the exact current repository snapshot;
-- the current repository-derived index;
-- an explicit context policy;
-- a hard input-token budget.
+The implementation is intentionally generic. Domain-specific checks are supplied through verification profiles; domain knowledge does not fork the task state machine or weaken organization-level gates.
 
-A stale Engineering IR revision or stale repository snapshot fails closed.
+### Independent verifier authority
 
-### Context objective
+`VerifierDefinition` describes a verifier by stable ID/version, verification layer, evidence type, executable/arguments, protected verifier assets, timeout/capture bounds, and isolation requirement.
 
-The engine optimizes for useful evidence per context cost rather than growing context. It combines bounded signals from:
+`VerifierSnapshot` binds the definition digest to a deterministic recursive digest of protected verifier/test assets. Candidate verification re-hashes those assets before execution. A changed verifier definition, changed protected test, changed verifier asset, symlinked verifier asset, or path escape fails closed.
 
-- lexical/symbol repository retrieval;
-- Engineering IR semantic links;
-- repository structural/impact relationships;
-- explicitly supplied runtime hints.
+This is the Step-10 defense against a generator obtaining a false PASS by weakening the oracle it is being judged by.
 
-Initial fusion is deterministic rank-based scoring. A single repository path is one redundancy group: multiple signals enrich the same candidate rather than duplicating source content.
+### Verification composition and Domain Profiles
 
-### Exact source identity
+`VerificationPlan` starts from mandatory verifier/evidence requirements and composes every applicable `DomainProfile` by set union.
 
-Step 09 added `RepositoryIndex::file(snapshot_id, path)` for exact snapshot-file lookup. Semantic, runtime, and structural paths use this direct identity lookup rather than running a lexical search to rediscover a known path.
+A lower/domain profile can add gates but cannot remove a mandatory verifier or evidence type. The bound plan also pins the exact verifier snapshots used for the run and derives a deterministic composition snapshot.
 
-Selected source is checked against its indexed full-file SHA-256 before use. Context segments carry exact line ranges and segment SHA-256. Fidelity verification rechecks both full-file and segment identity.
+### Environment-bound evidence
 
-### Progressive disclosure
+Verifier execution reuses the existing `aer-exec` and `aer-environment` boundaries rather than introducing a parallel process runtime.
 
-Context has four explicit tiers:
+Every produced Evidence Record is bound to:
 
-0. identifier/path only;
-1. structural/anchor evidence;
-2. bounded source span;
-3. bounded expanded neighborhood.
-
-Selection begins cheaply and upgrades already-selected items only while budget remains. Source code is extractive in Step 09; no abstractive code summary is introduced, avoiding unverifiable summary drift.
-
-### Hard bounds and accounting
-
-`ContextPolicy` bounds candidate count, selected items, source bytes, span size, semantic IDs, runtime hints, impact seeds, omitted-high-rank reporting, and selection weights.
-
-`ContextRequest` carries an explicit input-token budget. The V1 accounting estimator is deliberately deterministic and conservative rather than pretending to be an exact provider tokenizer: one accounting unit per Unicode scalar plus fixed pack/item overhead. Provider/model-specific tokenizer accounting can be added only when a real provider capability requires it and measured evidence justifies the complexity.
-
-Mandatory semantic coverage cannot silently disappear. If a required semantic ID has no resolvable current source, or its minimum context cannot fit the budget, compilation fails explicitly.
-
-### Context Pack contract
-
-Compiled packs bind:
-
-- task ID;
-- Engineering IR revision;
 - exact repository snapshot;
-- policy version;
-- input-token budget;
-- selected items and tiers;
-- source references;
-- full source hashes;
-- exact segment hashes;
-- selected reasons;
-- omitted high-rank candidates.
+- `EnvironmentFingerprint` digest;
+- verifier ID/version;
+- immutable verifier snapshot;
+- command argv/cwd;
+- input artifact hashes;
+- stdout/stderr hashes and byte counts;
+- exit/timing result;
+- command-evidence digest;
+- declared security profile.
 
-Pack/item identities are deterministic SHA-256 identities. Every produced pack is validated through the existing executable `ContextPack` contract registry before it is returned.
+Strong isolation is not simulated. When a verifier requires stronger isolation than the current direct executor can provide, execution fails closed before the verifier process is admitted.
 
-### ContextBench
+### Evidence cache boundary
 
-Step-09 tests compare bounded selection against a deliberately noisy whole-context fixture containing relevant auth implementation/tests plus large irrelevant documents.
+`EvidenceCacheKey` treats repository snapshot, environment fingerprint, verifier snapshot, and input artifact hashes as hard reuse boundaries.
 
-The verified fixture requires:
+A change in any of them makes prior evidence stale. Step 10 does not claim probabilistic or semantic cache equivalence.
 
-- 100% relevant-path recall for its declared relevant set;
-- fewer selected accounting tokens than naive whole context;
-- higher relevant-evidence yield per token than the naive baseline;
-- provenance/hash fidelity;
-- hard token-budget compliance;
-- no duplicate repository-path items.
+### Proof-carrying acceptance
 
-Additional adversarial tests cover stale workspace refusal, stale IR refusal, missing mandatory semantic coverage, tiny-budget rejection, and exact file lookup independent from lexical search.
+`build_proof_manifest` requires exact coverage of the task's requirement set. Each requirement must map to:
 
-### YAGNI decisions
+1. at least one current implementation location;
+2. at least one passing Evidence Record that attests that requirement;
+3. evidence from the same repository snapshot;
+4. evidence carrying environment and verifier-integrity identity;
+5. every verifier/evidence type required by the bound Verification Plan.
 
-Step 09 deliberately did **not** add:
+The generated Proof Manifest is validated through the executable schema registry and then through the existing cross-contract semantic validator. Generator-controlled verifier evidence cannot support an accepted proof.
 
-- a vector database;
-- embedding infrastructure;
-- provider-specific tokenizers;
-- learned context routing;
-- abstractive source-code summarization;
-- a background context daemon;
-- another persistent authority store.
+### Durable acceptance chain
 
-Those components must earn their complexity through a demonstrated later requirement or measured regression.
+`persist_accepted_verification` validates the proof and the domain transition before persisting acceptance.
 
-## Step 09 acceptance ledger
+The authoritative sequence is:
+
+1. store Evidence Records as content-addressed internal artifacts;
+2. append `evidence.created` events;
+3. store the passing Proof Manifest as a pinned artifact;
+4. append `verification.verdict` referencing that proof;
+5. append `task.accepted` causally linked to the verification verdict.
+
+The existing `TaskState::Verifying -> TaskState::Accepted` guard remains authoritative and requires accepted proof. The verification slice does not bypass the state machine with a generic status write.
+
+### Step-10 adversarial and invariant tests
+
+The focused Step-10 test surface verifies that:
+
+- deliberate protected-test/verifier tampering is detected;
+- Domain Profiles can only strengthen mandatory verification;
+- repository/environment/verifier/input changes invalidate evidence reuse;
+- unsupported strong-isolation requirements fail closed;
+- command evidence is bound to repo/environment/verifier identity;
+- Proof Manifest construction requires an exact requirement -> implementation -> passing-evidence chain;
+- stale-repository evidence cannot support a current proof;
+- accepted verification persists evidence -> verdict/proof -> task acceptance in causal order and preserves journal integrity.
+
+### Permanent verification gates
+
+Step 10 adds a permanent Linux CI gate:
+
+```text
+cargo +1.97.1 test --locked -p aer-core --all-targets verification
+```
+
+The canonical Windows verifier now includes the corresponding target-specific Step-10 gate before the remaining storage/document/Phase-0/product checks.
+
+The final repository-side verification run `31939146224` passed:
+
+- workspace formatting;
+- workspace-wide `-D warnings` Clippy;
+- full workspace regression suite;
+- Intent + Research + Engineering IR gate;
+- Repository Intelligence gate;
+- Context Economy gate;
+- Verification + Proof integrity gate;
+- Single-Agent Runtime gate;
+- Workspace + execution boundary gate;
+- CLI regression/zero-redraw guard;
+- Durable State Kernel gate;
+- documentation integrity;
+- Phase-0 executable contract gate;
+- canonical isolated Windows verification.
+
+Temporary branch-only format/compile repair workflows used during implementation were removed after their exact repairs. No write-capable repair workflow is part of the verified Step-10 tree.
+
+## Step 10 acceptance ledger
 
 | Gate | State | Evidence |
 |---|---|---|
-| Dedicated `aer-context` ownership | PASS | workspace crate + core application boundary. |
-| Current Engineering IR revision binding | PASS | `ContextService` stale-IR test. |
-| Exact repository snapshot binding | PASS | `search_current` + final snapshot/fidelity checks. |
-| Exact known-path identity without lexical rediscovery | PASS | `RepositoryIndex::file` + hardening test. |
-| Lexical/symbol + semantic + structural + runtime signal fusion | PASS | Context Engine integration fixture. |
-| Repository-path redundancy elimination | PASS | ContextBench unique-path assertion. |
-| Mandatory semantic coverage | PASS | positive + missing-coverage tests. |
-| Hard context/token budgets | PASS | policy validation + tiny-budget rejection. |
-| Progressive disclosure tiers | PASS | deterministic tier compiler tests. |
-| Extractive source spans with provenance | PASS | full-file + line-segment SHA-256. |
-| Stale workspace/context rejection | PASS | stale-index/fidelity tests. |
-| Current executable Context Pack schema validation | PASS | embedded contract validation on compile/fidelity. |
-| Deterministic pack/item identities | PASS | SHA-256 identity construction. |
-| ContextBench relevant recall | PASS | fixture recall `1000` milli. |
-| ContextBench lower token cost than naive whole context | PASS | baseline assertion. |
-| ContextBench higher relevant yield/token than naive baseline | PASS | baseline assertion. |
-| No new third-party Context Engine dependency | PASS | activation lockfile adds only internal `aer-context` package edge. |
-| Workspace-wide format | PASS | CI `31920562037`. |
-| Workspace-wide `-D warnings` Clippy | PASS | CI `31920562037`. |
-| Full workspace regression suite | PASS | CI `31920562037`. |
-| Permanent Linux Context Economy CI gate | PASS | CI `31920562037`. |
-| Canonical isolated Windows CI verifier including `aer-context` | PASS | CI `31920562037`. |
-| Temporary write workflow/repair scaffolding removed | PASS | verified code HEAD `0591452f13e2ba693d677e29b49d43e624fc175e`; repository workflow is read-only again. |
-| Target Windows canonical verifier | PENDING | user reproduction required. |
+| Independent verifier definition + protected asset identity | PASS | `VerifierDefinition` + `VerifierSnapshot`. |
+| Deliberate verifier/test tampering detection | PASS | `immutable_verifier_detects_deliberate_test_tampering`. |
+| Safe relative verifier asset boundary | PASS | path validation + symlink/unsupported-asset rejection. |
+| Mandatory verification cannot be weakened by Domain Profiles | PASS | monotone union composition + focused test. |
+| Bound verifier composition snapshot | PASS | required snapshot resolution + deterministic composition digest. |
+| Evidence bound to exact repository snapshot | PASS | `CommandExecutionEvidence` + Evidence Record construction. |
+| Evidence bound to Environment Fingerprint | PASS | environment digest required and persisted. |
+| Evidence bound to verifier identity/snapshot | PASS | verifier ID/version + integrity snapshot checks. |
+| Evidence input/output artifact identity | PASS | SHA-256 input validation + captured output hashes. |
+| Exact evidence cache invalidation boundary | PASS | repo/environment/verifier/input cache-key test. |
+| Strong-isolation capability mismatch fails closed | PASS | direct executor refusal test. |
+| Exact requirement -> implementation -> evidence coverage | PASS | proof builder coverage rules + focused proof test. |
+| Stale repository evidence rejected | PASS | stale-evidence adversarial test. |
+| Generator-controlled verifier evidence rejected | PASS | proof integrity guard + existing semantic validator. |
+| Current Evidence Record schema validation | PASS | embedded executable contract registry. |
+| Current Proof Manifest schema validation | PASS | embedded executable contract registry. |
+| Cross-contract semantic proof validation | PASS | `validate_semantic_bundle`. |
+| Accepted task requires passing proof | PASS | existing domain state-machine guard reused. |
+| Durable evidence -> verdict/proof -> acceptance chain | PASS | persistence integration test + journal integrity verification. |
+| No new third-party Step-10 dependency | PASS | implementation reuses existing workspace crates/dependencies. |
+| No premature `aer-verify` crate split | PASS | YAGNI ownership decision documented above. |
+| CLI/TUI freeze preserved | PASS | no `crates/aer-cli/**` changes. |
+| Workspace-wide format | PASS | CI `31939146224`. |
+| Workspace-wide `-D warnings` Clippy | PASS | CI `31939146224`. |
+| Full workspace regression suite | PASS | CI `31939146224`. |
+| Permanent Linux Verification + Proof CI gate | PASS | CI `31939146224`. |
+| Canonical isolated Windows CI verifier including Step 10 | PASS | CI `31939146224`. |
+| Temporary write workflow/repair scaffolding removed | PASS | verified Step-10 code HEAD `c48a9afa95e63467198a0ea251c100232f90b79b`. |
+| Target Windows canonical verifier | PENDING | user reproduction required on updated `main`. |
 
-## Step 09 exit condition
+## Step 10 exit condition
 
-Repository-side Step 09 is verified. Do **not** start Step 10 until the target Windows checkout reproduces the canonical verifier successfully.
+Repository-side Step 10 is verified. Do **not** start Step 11 until the target Windows checkout reproduces the canonical verifier successfully.
 
-No interactive CLI testing is required. Run only:
+No interactive CLI testing is required. After Step 10 is merged to `main`, run only:
 
 ```powershell
 cd C:\Users\cenke\OneDrive\Desktop\everything
@@ -187,4 +213,4 @@ Expected final line:
 everything Windows verification: PASS
 ```
 
-After that PASS, mark Step 09 COMPLETE and proceed to **Step 10 — Verification + Proof System**, keeping the CLI/TUI frozen.
+After that PASS, mark Step 10 COMPLETE and proceed to **Step 11 — Provider Resilience + Cost Router**, keeping the CLI/TUI frozen.
