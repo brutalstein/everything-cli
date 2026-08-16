@@ -1,6 +1,5 @@
 name: Step 12 corrected freshness rebuild
 
-# Corrected exact one-line insert_snapshot anchor from current aer-repo source.
 on:
   push:
     branches:
@@ -25,63 +24,76 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
+          import re
 
           graph = Path('crates/aer-repo/src/ri2/graph_write.rs')
           text = graph.read_text(encoding='utf-8')
-          text = text.replace(
-              'const GRAPH_PRODUCER: &str = "aer-ri2-graph";\nconst GRAPH_PRODUCER_VERSION: &str = "1";',
+          text, count = re.subn(
+              r'(?m)^const GRAPH_PRODUCER: &str = "aer-ri2-graph";\nconst GRAPH_PRODUCER_VERSION: &str = "1";$',
               'pub(crate) const GRAPH_PRODUCER: &str = "aer-ri2-graph";\npub(crate) const GRAPH_PRODUCER_VERSION: &str = "1";',
-              1,
+              text,
+              count=1,
           )
+          if count != 1:
+              raise SystemExit(f'graph producer visibility count={count}')
           graph.write_text(text, encoding='utf-8')
 
           lib = Path('crates/aer-repo/src/lib.rs')
           text = lib.read_text(encoding='utf-8')
-          old = '''        let previous_snapshot = self.current_snapshot_id(&snapshot.repo_id)?;
-          if previous_snapshot.as_deref() == Some(&snapshot.snapshot_id) {
-              return self.report_existing(snapshot, true);
-          }
-          '''
-          new = '''        let previous_snapshot = self.current_snapshot_id(&snapshot.repo_id)?;
-          let snapshot_unchanged = previous_snapshot.as_deref() == Some(&snapshot.snapshot_id);
-          if snapshot_unchanged && !self.ri2_snapshot_requires_rebuild(&snapshot.snapshot_id)? {
-              return self.report_existing(snapshot, true);
-          }
-          let continuity_snapshot = if snapshot_unchanged {
-              None
-          } else {
-              previous_snapshot.as_deref()
-          };
-          '''
-          if old not in text:
-              raise SystemExit('refresh freshness target not found')
-          text = text.replace(old, new, 1)
-          old_tx = '''        let transaction = self.connection.transaction()?;
-          insert_snapshot(&transaction, &snapshot)?;
-          '''
-          new_tx = '''        let transaction = self.connection.transaction()?;
-          clear_snapshot_materialized_views(
-              &transaction,
-              &snapshot.snapshot_id,
-              snapshot_unchanged,
-          )?;
-          insert_snapshot(&transaction, &snapshot)?;
-          '''
-          if old_tx not in text:
-              raise SystemExit('refresh transaction target not found')
-          text = text.replace(old_tx, new_tx, 1)
-          old_call = '''            previous_snapshot.as_deref(),
-              &prepared,
-          '''
-          new_call = '''            continuity_snapshot,
-              &prepared,
-          '''
-          if old_call not in text:
-              raise SystemExit('continuity call target not found')
-          text = text.replace(old_call, new_call, 1)
-          marker = "\nfn insert_snapshot(tx: &Transaction<'_>, snapshot: &RepoSnapshotIdentity) -> Result<(), RepoError> {"
-          helper = r'''
-          fn clear_snapshot_materialized_views(
+          pattern = re.compile(
+              r'(?m)^(?P<i>\s*)let previous_snapshot = self\.current_snapshot_id\(&snapshot\.repo_id\)\?;\n'
+              r'(?P=i)if previous_snapshot\.as_deref\(\) == Some\(&snapshot\.snapshot_id\) \{\n'
+              r'(?P=i)    return self\.report_existing\(snapshot, true\);\n'
+              r'(?P=i)\}\n'
+          )
+          def freshness(match):
+              i = match.group('i')
+              return (
+                  f'{i}let previous_snapshot = self.current_snapshot_id(&snapshot.repo_id)?;\n'
+                  f'{i}let snapshot_unchanged = previous_snapshot.as_deref() == Some(&snapshot.snapshot_id);\n'
+                  f'{i}if snapshot_unchanged && !self.ri2_snapshot_requires_rebuild(&snapshot.snapshot_id)? {{\n'
+                  f'{i}    return self.report_existing(snapshot, true);\n'
+                  f'{i}}}\n'
+                  f'{i}let continuity_snapshot = if snapshot_unchanged {{\n'
+                  f'{i}    None\n'
+                  f'{i}}} else {{\n'
+                  f'{i}    previous_snapshot.as_deref()\n'
+                  f'{i}}};\n'
+              )
+          text, count = pattern.subn(freshness, text, count=1)
+          if count != 1:
+              raise SystemExit(f'refresh freshness replacement count={count}')
+
+          pattern = re.compile(
+              r'(?m)^(?P<i>\s*)let transaction = self\.connection\.transaction\(\)\?;\n'
+              r'(?P=i)insert_snapshot\(&transaction, &snapshot\)\?;\n'
+          )
+          def tx_replace(match):
+              i = match.group('i')
+              return (
+                  f'{i}let transaction = self.connection.transaction()?;\n'
+                  f'{i}clear_snapshot_materialized_views(\n'
+                  f'{i}    &transaction,\n'
+                  f'{i}    &snapshot.snapshot_id,\n'
+                  f'{i}    snapshot_unchanged,\n'
+                  f'{i})?;\n'
+                  f'{i}insert_snapshot(&transaction, &snapshot)?;\n'
+              )
+          text, count = pattern.subn(tx_replace, text, count=1)
+          if count != 1:
+              raise SystemExit(f'refresh transaction replacement count={count}')
+
+          text, count = re.subn(
+              r'(ri2::rebuild_snapshot_views\(\s*&transaction,\s*&snapshot,\s*)previous_snapshot\.as_deref\(\),',
+              r'\1continuity_snapshot,',
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit(f'continuity replacement count={count}')
+
+          marker = "fn insert_snapshot(tx: &Transaction<'_>, snapshot: &RepoSnapshotIdentity) -> Result<(), RepoError> {"
+          helper = r'''fn clear_snapshot_materialized_views(
               transaction: &Transaction<'_>,
               snapshot_id: &str,
               producer_rebuild: bool,
@@ -108,10 +120,11 @@ jobs:
               }
               Ok(())
           }
+
           '''
-          if marker not in text:
-              raise SystemExit('insert_snapshot exact anchor not found')
-          text = text.replace(marker, '\n' + helper + marker, 1)
+          if text.count(marker) != 1:
+              raise SystemExit(f'insert_snapshot anchor count={text.count(marker)}')
+          text = text.replace(marker, helper + marker, 1)
           lib.write_text(text, encoding='utf-8')
 
           bench = Path('crates/aer-repo/tests/repo_intel_2_bench.rs')
@@ -149,10 +162,7 @@ jobs:
               let rebuilt = index.refresh(&fixture.repo).expect("freshness rebuild");
               assert_eq!(rebuilt.snapshot.snapshot_id, snapshot);
               assert!(!rebuilt.already_current, "producer drift must rebuild even when repository bytes are unchanged");
-              let auth = index
-                  .file(&snapshot, "src/auth.rs")
-                  .expect("auth lookup")
-                  .expect("auth file");
+              let auth = index.file(&snapshot, "src/auth.rs").expect("auth lookup").expect("auth file");
               assert_ne!(auth.parser_key.as_deref(), Some("stale-parser-v0"));
               assert!(index.ri2_view_states(&snapshot).expect("view states").iter().any(|view| {
                   view.view_name == "graph" && view.producer_version == "1"
