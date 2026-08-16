@@ -1,5 +1,4 @@
 from pathlib import Path
-import re
 
 syntax = Path("crates/aer-repo/src/syntax.rs")
 text = syntax.read_text(encoding="utf-8")
@@ -272,11 +271,7 @@ syntax.write_text(text, encoding="utf-8")
 
 lib = Path("crates/aer-repo/src/lib.rs")
 text = lib.read_text(encoding="utf-8")
-old_recall = '''        let recall = if total == 0 {
-            1000
-        } else {
-            u16::try_from((found * 1000) / total).unwrap_or(1000)
-        };'''
+old_recall = "        let recall = if total == 0 { 1000 } else { u16::try_from((found * 1000) / total).unwrap_or(1000) };"
 new_recall = '''        let recall = found
             .saturating_mul(1000)
             .checked_div(total)
