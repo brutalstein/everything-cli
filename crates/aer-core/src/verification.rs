@@ -931,7 +931,7 @@ fn portable_path(path: &Path) -> Result<String, VerificationError> {
     Ok(output)
 }
 
-fn string_set(root: &Value, key: &str) -> Result<BTreeSet<String>, VerificationError> {
+fn string_set(root: &Value, key: &'static str) -> Result<BTreeSet<String>, VerificationError> {
     let values = root
         .get(key)
         .and_then(Value::as_array)
