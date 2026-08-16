@@ -73,6 +73,17 @@ jobs:
         if: runner.os != 'Windows'
         run: cargo +1.97.1 test --locked -p aer-provider --test provider_router_bench
 
+      - name: Provider runtime + permission + tool substrate
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo +1.97.1 test --locked -p aer-provider delegated
+          cargo +1.97.1 test --locked -p aer-core permissions
+          cargo +1.97.1 test --locked -p aer-core model_context
+          cargo +1.97.1 test --locked -p aer-core tools
+          cargo +1.97.1 test --locked -p everything provider_cli
+
       - name: Single-agent runtime 0.1
         if: runner.os != 'Windows'
         run: cargo +1.97.1 test --locked -p aer-provider -p aer-core --all-targets
