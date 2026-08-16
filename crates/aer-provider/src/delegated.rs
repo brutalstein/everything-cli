@@ -611,10 +611,10 @@ fn parse_codex_jsonl(stdout: &[u8]) -> Result<ParsedOutput, ProviderError> {
         events = events.saturating_add(1);
         if value.get("type").and_then(Value::as_str) == Some("item.completed") {
             let item = value.get("item").unwrap_or(&Value::Null);
-            if item.get("type").and_then(Value::as_str) == Some("agent_message") {
-                if let Some(text) = item.get("text").and_then(Value::as_str) {
-                    output = Some(text.to_owned());
-                }
+            if item.get("type").and_then(Value::as_str) == Some("agent_message")
+                && let Some(text) = item.get("text").and_then(Value::as_str)
+            {
+                output = Some(text.to_owned());
             }
         }
         merge_usage(&mut usage, &value);
