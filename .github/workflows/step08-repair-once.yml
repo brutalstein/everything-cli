@@ -26,6 +26,9 @@ jobs:
       - name: Apply structural Clippy hardening
         run: python scripts/step08_clippy_fix.py
 
+      - name: Apply core service hardening
+        run: python scripts/step08_core_fix.py
+
       - name: Canonical formatting
         run: cargo +1.97.1 fmt --all
 
