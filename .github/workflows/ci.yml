@@ -53,6 +53,10 @@ jobs:
         if: runner.os != 'Windows'
         run: cargo +1.97.1 test --locked -p aer-core --all-targets verification
 
+      - name: Provider resilience + cost router
+        if: runner.os != 'Windows'
+        run: cargo +1.97.1 test --locked -p aer-provider --test provider_router_bench
+
       - name: Single-agent runtime 0.1
         if: runner.os != 'Windows'
         run: cargo +1.97.1 test --locked -p aer-provider -p aer-core --all-targets
