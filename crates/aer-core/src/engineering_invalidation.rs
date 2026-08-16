@@ -132,7 +132,10 @@ impl EngineeringStateStore {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, sync::atomic::{AtomicU64, Ordering}};
+    use std::{
+        fs,
+        sync::atomic::{AtomicU64, Ordering},
+    };
 
     use crate::engineering_state::{
         EngineeringMemoryRecord, InvalidationScope, MemoryKind, MemoryValidity,
@@ -183,8 +186,16 @@ mod tests {
     fn unchanged_dimension_does_not_invalidate_memory() {
         let (root, mut store) = store("unchanged");
         store.record(&scoped_record("fact")).expect("record fact");
-        assert!(store.invalidate_environment_change("env-v1", "env-v1").expect("invalidate").is_empty());
-        assert_eq!(store.projection().expect("projection").records[0].validity, MemoryValidity::Current);
+        assert!(
+            store
+                .invalidate_environment_change("env-v1", "env-v1")
+                .expect("invalidate")
+                .is_empty()
+        );
+        assert_eq!(
+            store.projection().expect("projection").records[0].validity,
+            MemoryValidity::Current
+        );
         fs::remove_dir_all(root).expect("cleanup");
     }
 

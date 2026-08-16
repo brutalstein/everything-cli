@@ -240,7 +240,9 @@ fn repo_intel_bench_preserves_tier_provenance_and_improves_bounded_retrieval_yie
         limit: 4,
         min_score_micros: 100_000,
     };
-    let baseline = index.search(snapshot, &query).expect("v1 retrieval baseline");
+    let baseline = index
+        .search(snapshot, &query)
+        .expect("v1 retrieval baseline");
     let retrieval = index
         .hybrid_retrieve(
             snapshot,
@@ -253,10 +255,7 @@ fn repo_intel_bench_preserves_tier_provenance_and_improves_bounded_retrieval_yie
         )
         .expect("hybrid retrieval");
     let relevant = BTreeSet::from(["src/auth.rs", "src/session.rs"]);
-    let baseline_yield = relevant_yield(
-        baseline.hits.into_iter().map(|hit| hit.path),
-        &relevant,
-    );
+    let baseline_yield = relevant_yield(baseline.hits.into_iter().map(|hit| hit.path), &relevant);
     let hybrid_yield = relevant_yield(retrieval.iter().map(|hit| hit.path.clone()), &relevant);
     assert!(
         hybrid_yield > baseline_yield,
@@ -328,7 +327,8 @@ fn repo_intel_bench_tracks_incremental_reuse_continuity_and_dependency_invalidat
     assert!(second_views.iter().any(|view| {
         view.view_name == "precise_semantic" && view.freshness == FreshnessState::Unavailable
     }));
-    let old_session_entity = repository_file_entity_id("src/session.rs").expect("old session entity");
+    let old_session_entity =
+        repository_file_entity_id("src/session.rs").expect("old session entity");
     assert!(
         index
             .graph_traverse(
