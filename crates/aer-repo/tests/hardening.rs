@@ -6,9 +6,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use aer_repo::{
-    IndexPolicy, RepoError, RepositoryIndex, RuntimeObservation, SearchQuery,
-};
+use aer_repo::{IndexPolicy, RepoError, RepositoryIndex, RuntimeObservation, SearchQuery};
 
 static COUNTER: AtomicU64 = AtomicU64::new(0);
 
