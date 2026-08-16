@@ -142,6 +142,43 @@ impl IntegrationWorktree {
                 changes.branch_name.clone(),
             ));
         }
+
+        let branch_head = rev_parse_ref(
+            &self.owned.source_repo_root,
+            &format!("refs/heads/{}", changes.branch_name),
+        )?;
+        if branch_head != changes.head_commit {
+            return Err(ParallelWorkspaceError::TaskBranchHeadChanged {
+                branch: changes.branch_name.clone(),
+                expected: changes.head_commit.clone(),
+                observed: branch_head,
+            });
+        }
+        if !is_ancestor(
+            &self.owned.source_repo_root,
+            &changes.base_commit,
+            &changes.head_commit,
+        )? {
+            return Err(ParallelWorkspaceError::TaskBranchBaseMismatch {
+                branch: changes.branch_name.clone(),
+                base: changes.base_commit.clone(),
+                head: changes.head_commit.clone(),
+            });
+        }
+        let observed_paths = changed_paths_between(
+            &self.owned.source_repo_root,
+            &changes.base_commit,
+            &changes.head_commit,
+        )?;
+        let mut expected_paths = changes.changed_paths.clone();
+        expected_paths.sort();
+        expected_paths.dedup();
+        if observed_paths != expected_paths {
+            return Err(ParallelWorkspaceError::TaskChangeSetChanged {
+                branch: changes.branch_name.clone(),
+            });
+        }
+
         let previous_head = self.current_head()?;
         if !is_ancestor(
             &self.owned.source_repo_root,
@@ -455,9 +492,13 @@ fn validate_branch_name(repo_root: &Path, branch: &str) -> Result<(), ParallelWo
 }
 
 fn rev_parse_head(path: &Path) -> Result<String, ParallelWorkspaceError> {
+    rev_parse_ref(path, "HEAD")
+}
+
+fn rev_parse_ref(path: &Path, reference: &str) -> Result<String, ParallelWorkspaceError> {
     let result = run_git(
         path,
-        [OsString::from("rev-parse"), OsString::from("HEAD")],
+        [OsString::from("rev-parse"), OsString::from(reference)],
         SideEffectClass::PureRead,
         None,
         INSPECTION_OUTPUT_LIMIT,
@@ -469,6 +510,35 @@ fn rev_parse_head(path: &Path) -> Result<String, ParallelWorkspaceError> {
         return Err(ParallelWorkspaceError::UnexpectedEmptyGitOutput);
     }
     Ok(head)
+}
+
+fn changed_paths_between(
+    repo_root: &Path,
+    base: &str,
+    head: &str,
+) -> Result<Vec<PathBuf>, ParallelWorkspaceError> {
+    let result = run_git(
+        repo_root,
+        [
+            OsString::from("diff"),
+            OsString::from("--name-only"),
+            OsString::from("-z"),
+            OsString::from(format!("{base}..{head}")),
+            OsString::from("--"),
+        ],
+        SideEffectClass::PureRead,
+        None,
+        INSPECTION_OUTPUT_LIMIT,
+    )?;
+    if result.stdout.truncated {
+        return Err(ParallelWorkspaceError::ChangedPathInventoryTooLarge(
+            result.stdout.total_bytes,
+        ));
+    }
+    let mut paths = parse_nul_paths(&result.stdout.preview)?;
+    paths.sort();
+    paths.dedup();
+    Ok(paths)
 }
 
 fn worktree_is_dirty(path: &Path) -> Result<bool, ParallelWorkspaceError> {
@@ -600,6 +670,19 @@ pub enum ParallelWorkspaceError {
     DestinationNotEmpty(PathBuf),
     DirtyTaskWorktree(String),
     EmptyTaskChange(String),
+    TaskBranchHeadChanged {
+        branch: String,
+        expected: String,
+        observed: String,
+    },
+    TaskBranchBaseMismatch {
+        branch: String,
+        base: String,
+        head: String,
+    },
+    TaskChangeSetChanged {
+        branch: String,
+    },
     StaleTaskBase {
         branch: String,
         base: String,
@@ -636,6 +719,22 @@ impl fmt::Display for ParallelWorkspaceError {
             Self::EmptyTaskChange(branch) => {
                 write!(formatter, "task branch has no committed change: {branch}")
             }
+            Self::TaskBranchHeadChanged {
+                branch,
+                expected,
+                observed,
+            } => write!(
+                formatter,
+                "task branch changed after evidence was captured: {branch} expected {expected} observed {observed}"
+            ),
+            Self::TaskBranchBaseMismatch { branch, base, head } => write!(
+                formatter,
+                "task branch evidence base is not an ancestor of its head: {branch} {base} -> {head}"
+            ),
+            Self::TaskChangeSetChanged { branch } => write!(
+                formatter,
+                "task branch changed-path evidence no longer matches the verified commit range: {branch}"
+            ),
             Self::StaleTaskBase {
                 branch,
                 base,

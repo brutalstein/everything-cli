@@ -551,6 +551,23 @@ fn resource_bench_real_worktrees_preserve_user_state_and_integrate_verified_bran
     barrier
         .record_merge("left", left_merge.resulting_head)
         .expect("record left");
+
+    fs::write(
+        right.path().join("src/right.txt"),
+        "right-after-verification\n",
+    )
+    .expect("post-verification branch mutation");
+    git(right.path(), &["add", "src/right.txt"]);
+    git(right.path(), &["commit", "-m", "unverified mutation"]);
+    assert!(
+        integration.merge_task(&right_changes).is_err(),
+        "integration must reject a branch whose HEAD moved after local evidence was captured"
+    );
+    git(
+        right.path(),
+        &["reset", "--hard", &right_changes.head_commit],
+    );
+
     let right_merge = integration.merge_task(&right_changes).expect("merge right");
     barrier
         .record_merge("right", right_merge.resulting_head.clone())
