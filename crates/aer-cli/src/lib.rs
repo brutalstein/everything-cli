@@ -1,19 +1,10 @@
-//! `everything` — terminal-native product surface.
+//! `everything` — low-overhead terminal CLI over the authoritative AER application boundaries.
 //!
-//! The interactive root is a two-stage product shell: a local launcher selects a
-//! real repository workspace, then the workspace surface becomes a conversation-
-//! first terminal client. Presentation remains outside domain/runtime authority.
+//! The interactive path is intentionally a line-oriented shell, not a full-screen TUI. It performs
+//! no eager environment/runtime/specification discovery and no per-key rendering. Expensive state
+//! inspection happens only when the user explicitly requests the corresponding capability.
 
-mod app;
 mod commands;
-mod entry;
-mod launcher;
-mod material_icons;
-mod slash;
-mod theme;
-mod ui;
+mod shell;
 
-pub use app::{AppState, FocusTarget, Overlay, Screen, UiAction, normalize_key};
-pub use entry::run_cli;
-pub use theme::{Glyphs, Theme};
-pub use ui::render;
+pub use commands::run_cli;
