@@ -49,9 +49,25 @@ jobs:
         if: runner.os != 'Windows'
         run: cargo +1.97.1 test --locked -p aer-exec -p aer-environment -p aer-workspace --all-targets
 
-      - name: Terminal product surface
+      - name: CLI product surface
         if: runner.os != 'Windows'
         run: cargo +1.97.1 test --locked -p everything --all-targets
+
+      - name: Zero-redraw CLI guard
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if cargo +1.97.1 tree --locked -p everything | grep -E 'ratatui|crossterm'; then
+            echo "retired TUI dependency returned to the everything dependency graph" >&2
+            exit 1
+          fi
+          test ! -e crates/aer-cli/src/ui.rs
+          test ! -e crates/aer-cli/src/app.rs
+          test ! -e crates/aer-cli/src/launcher.rs
+          test ! -e crates/aer-cli/src/theme.rs
+          test ! -e crates/aer-cli/src/material_icons.rs
+          test ! -e crates/aer-cli/assets
 
       - name: Durable state kernel
         if: runner.os != 'Windows'
