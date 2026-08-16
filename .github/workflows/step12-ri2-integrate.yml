@@ -154,15 +154,17 @@ jobs:
           build.write_text(text, encoding='utf-8')
       - name: Format
         run: cargo +1.97.1 fmt --all
-      - name: Lint RI2
+      - name: Refresh lock for aer-repo dependency surface
+        run: cargo +1.97.1 check -p aer-repo
+      - name: Lint RI2 with frozen lock
         run: cargo +1.97.1 clippy --locked -p aer-repo --all-targets -- -D warnings
-      - name: Test RI2 baseline
+      - name: Test RI2 baseline with frozen lock
         run: cargo +1.97.1 test --locked -p aer-repo --all-targets
       - name: Commit integrated RI2
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add crates/aer-repo
+          git add Cargo.lock crates/aer-repo
           git diff --cached --quiet && exit 0
           git commit -m "Integrate Repository Intelligence 2.0 core"
           git push origin HEAD:agent/step-12-ri2-long-horizon-recovery
