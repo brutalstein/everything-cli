@@ -1,10 +1,109 @@
-use std::{error::Error, io, path::Path};
+use std::{env, error::Error, ffi::OsString, io, path::{Path, PathBuf}};
 
 use aer_core::model_context::ArchitectureContextCapsule;
 use aer_provider::{
     NeverCancelled,
     delegated::{DelegatedCliProvider, DelegatedProviderKind, LoginFlow},
 };
+use clap::{Parser, Subcommand};
+
+#[derive(Parser, Debug)]
+#[command(name = "everything")]
+struct ProviderSurface {
+    #[arg(long, global = true, value_name = "PATH")]
+    workspace: Option<PathBuf>,
+
+    #[command(subcommand)]
+    command: ProviderTopLevel,
+}
+
+#[derive(Subcommand, Debug)]
+enum ProviderTopLevel {
+    /// Inspect all supported local provider transports.
+    Providers {
+        #[arg(long)]
+        json: bool,
+    },
+    /// Connect, inspect or exercise one model provider.
+    Provider {
+        #[command(subcommand)]
+        command: ProviderCommand,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum ProviderCommand {
+    /// Show provider installation and delegated-auth state.
+    Status {
+        provider: Option<String>,
+        #[arg(long)]
+        json: bool,
+    },
+    /// Start the vendor-owned OAuth/authentication flow.
+    Login {
+        provider: String,
+        /// Use a device-code flow when the vendor supports it (currently Codex).
+        #[arg(long)]
+        device: bool,
+    },
+    /// Clear the vendor-owned local authentication session when supported.
+    Logout { provider: String },
+    /// Make one real, read-only model call with the bounded architecture capsule.
+    Smoke {
+        provider: String,
+        #[arg(long)]
+        model: Option<String>,
+        #[arg(long, default_value = "State the product name and one architecture rule you were given.")]
+        prompt: String,
+        #[arg(long)]
+        json: bool,
+        #[arg(long)]
+        show_input: bool,
+    },
+}
+
+/// Intercepts only provider-specific commands so the ordinary CLI path remains
+/// lazy and provider discovery never becomes startup work.
+pub(crate) fn try_run_provider_surface() -> Result<bool, Box<dyn Error>> {
+    let args = env::args_os().collect::<Vec<_>>();
+    if !contains_provider_command(&args) {
+        return Ok(false);
+    }
+    let cli = ProviderSurface::try_parse_from(args)?;
+    let cwd = env::current_dir()?;
+    let workspace = cli
+        .workspace
+        .map_or(cwd.clone(), |path| if path.is_absolute() { path } else { cwd.join(path) });
+
+    match cli.command {
+        ProviderTopLevel::Providers { json } => print_providers(&workspace, json)?,
+        ProviderTopLevel::Provider { command } => match command {
+            ProviderCommand::Status { provider, json } => match provider {
+                Some(provider) => provider_status(&workspace, &provider, json)?,
+                None => print_providers(&workspace, json)?,
+            },
+            ProviderCommand::Login { provider, device } => {
+                provider_login(&workspace, &provider, device)?;
+            }
+            ProviderCommand::Logout { provider } => provider_logout(&workspace, &provider)?,
+            ProviderCommand::Smoke {
+                provider,
+                model,
+                prompt,
+                json,
+                show_input,
+            } => provider_smoke(&workspace, &provider, model, &prompt, json, show_input)?,
+        },
+    }
+    Ok(true)
+}
+
+fn contains_provider_command(args: &[OsString]) -> bool {
+    args.iter().skip(1).any(|arg| {
+        let value = arg.to_string_lossy();
+        value == "provider" || value == "providers"
+    })
+}
 
 pub(crate) fn print_providers(path: &Path, json: bool) -> Result<(), Box<dyn Error>> {
     let statuses = DelegatedProviderKind::ALL
@@ -36,7 +135,7 @@ pub(crate) fn print_providers(path: &Path, json: bool) -> Result<(), Box<dyn Err
     println!("everything providers");
     for status in statuses {
         println!(
-            "  {:<7} {:<13} {}{}",
+            "  {:<7} {:<15} {}{}",
             status.provider.id(),
             status.authentication.as_str(),
             status.version.as_deref().unwrap_or("not installed"),
@@ -51,7 +150,7 @@ pub(crate) fn print_providers(path: &Path, json: bool) -> Result<(), Box<dyn Err
         }
     }
     println!("\nconnect  everything provider login <codex|claude|gemini>");
-    println!("verify   everything provider smoke <provider> --prompt <text>");
+    println!("verify   everything provider smoke <provider> --show-input --prompt <text>");
     Ok(())
 }
 
@@ -107,21 +206,24 @@ pub(crate) fn provider_login(
         LoginFlow::Browser
     };
     match provider {
-        DelegatedProviderKind::Codex => {
-            println!("Opening the official Codex {} login flow…", if device { "device-code" } else { "ChatGPT OAuth" });
-        }
+        DelegatedProviderKind::Codex => println!(
+            "Opening the official Codex {} login flow…",
+            if device { "device-code" } else { "ChatGPT OAuth" }
+        ),
         DelegatedProviderKind::Claude => {
             println!("Opening the official Claude Code browser authentication flow…");
         }
-        DelegatedProviderKind::Gemini => {
-            println!("Opening Gemini CLI authentication. Choose ‘Sign in with Google’, finish the browser flow, then exit Gemini with /quit.");
-        }
+        DelegatedProviderKind::Gemini => println!(
+            "Opening Gemini CLI authentication. Choose ‘Sign in with Google’, finish the browser flow, then exit Gemini with /quit."
+        ),
     }
     DelegatedCliProvider::login(provider, path, flow)?;
     let status = DelegatedCliProvider::status(provider, path);
     println!("auth       {}", status.authentication.as_str());
     if matches!(provider, DelegatedProviderKind::Gemini) {
-        println!("verify     run `everything provider smoke gemini --prompt \"Reply with AER-OK\"`");
+        println!(
+            "verify     run `everything provider smoke gemini --prompt \"Reply with AER-OK\"`"
+        );
     }
     Ok(())
 }
@@ -142,7 +244,11 @@ pub(crate) fn provider_smoke(
     show_input: bool,
 ) -> Result<(), Box<dyn Error>> {
     if prompt.trim().is_empty() {
-        return Err(io::Error::new(io::ErrorKind::InvalidInput, "provider smoke prompt cannot be empty").into());
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "provider smoke prompt cannot be empty",
+        )
+        .into());
     }
     let provider = parse_provider(provider)?;
     let capsule = ArchitectureContextCapsule::compile(path)?;
@@ -228,4 +334,25 @@ fn parse_provider(value: &str) -> Result<DelegatedProviderKind, Box<dyn Error>> 
 
 fn short_id(value: &str) -> &str {
     value.get(..12).unwrap_or(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::OsString;
+
+    use super::contains_provider_command;
+
+    #[test]
+    fn provider_surface_is_lazy_for_ordinary_commands() {
+        assert!(!contains_provider_command(&[
+            OsString::from("everything"),
+            OsString::from("status"),
+        ]));
+        assert!(contains_provider_command(&[
+            OsString::from("everything"),
+            OsString::from("provider"),
+            OsString::from("status"),
+            OsString::from("codex"),
+        ]));
+    }
 }
