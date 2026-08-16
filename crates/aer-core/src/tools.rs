@@ -1,8 +1,7 @@
 use std::{
     error::Error,
     ffi::OsString,
-    fmt,
-    fs,
+    fmt, fs,
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
     time::Duration,
@@ -13,9 +12,7 @@ use aer_exec::{
 };
 use sha2::{Digest, Sha256};
 
-use crate::permissions::{
-    PermissionController, PermissionDecision, PermissionRequest,
-};
+use crate::permissions::{PermissionController, PermissionDecision, PermissionRequest};
 
 const MAX_READ_LINES: usize = 400;
 const MAX_READ_BYTES: usize = 256 * 1024;
@@ -104,12 +101,9 @@ impl ToolCall {
 
     fn permission_request(&self) -> PermissionRequest {
         match self {
-            Self::FileRead { path, .. } => PermissionRequest::new(
-                SideEffectClass::PureRead,
-                path,
-                "read workspace file",
-                true,
-            ),
+            Self::FileRead { path, .. } => {
+                PermissionRequest::new(SideEffectClass::PureRead, path, "read workspace file", true)
+            }
             Self::FileList { path, .. } => PermissionRequest::new(
                 SideEffectClass::PureRead,
                 path.as_deref().unwrap_or("."),
@@ -298,9 +292,8 @@ impl ToolBroker {
                 end: requested_end,
             });
         }
-        let hard_end = start.saturating_add(
-            u32::try_from(MAX_READ_LINES - 1).expect("read bound fits u32"),
-        );
+        let hard_end =
+            start.saturating_add(u32::try_from(MAX_READ_LINES - 1).expect("read bound fits u32"));
         let end = requested_end.min(hard_end);
         let file = fs::File::open(&path).map_err(ToolError::Io)?;
         let mut content = String::new();
@@ -389,9 +382,7 @@ impl ToolBroker {
             None => self.workspace_root.clone(),
         };
         if !cwd.is_dir() {
-            return Err(ToolError::NotDirectory(
-                cwd.to_string_lossy().into_owned(),
-            ));
+            return Err(ToolError::NotDirectory(cwd.to_string_lossy().into_owned()));
         }
         let policy = ExecutionPolicy::trusted_workspace(
             &self.workspace_root,
@@ -551,7 +542,10 @@ impl From<ExecutionError> for ToolError {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, time::{SystemTime, UNIX_EPOCH}};
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     use aer_exec::SideEffectClass;
 
