@@ -36,9 +36,10 @@ impl RepositoryIndex {
                 |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
             )
             .optional()?;
-        if project_producer.as_ref().is_none_or(|(id, version)| {
-            id != CARGO_PRODUCER || version != CARGO_PRODUCER_VERSION
-        }) {
+        if project_producer
+            .as_ref()
+            .is_none_or(|(id, version)| id != CARGO_PRODUCER || version != CARGO_PRODUCER_VERSION)
+        {
             return Ok(true);
         }
 
@@ -46,10 +47,7 @@ impl RepositoryIndex {
             "SELECT path,parser_key FROM snapshot_files WHERE snapshot_id=? AND file_kind='text' ORDER BY path",
         )?;
         let rows = statement.query_map([snapshot_id], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, Option<String>>(1)?,
-            ))
+            Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
         })?;
         for row in rows {
             let (path, parser_key) = row?;

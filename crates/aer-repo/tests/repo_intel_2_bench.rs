@@ -473,3 +473,56 @@ fn repo_intel_bench_tracks_incremental_reuse_continuity_and_dependency_invalidat
     assert!(frontier.invalidated_entity_ids.contains(&auth_entity));
     assert!(frontier.invalidated_entity_ids.len() >= changes.invalidated_entity_ids.len());
 }
+
+#[test]
+fn repo_intel_bench_rebuilds_derived_views_when_producer_identity_drifts_without_repo_change() {
+    let fixture = Fixture::new();
+    let mut index =
+        RepositoryIndex::open(&fixture.index, IndexPolicy::default()).expect("open RI2 index");
+    let first = index.refresh(&fixture.repo).expect("first refresh");
+    let snapshot = first.snapshot.snapshot_id.clone();
+    assert!(
+        index
+            .refresh(&fixture.repo)
+            .expect("stable refresh")
+            .already_current
+    );
+    drop(index);
+
+    let connection =
+        rusqlite::Connection::open(&fixture.index).expect("open benchmark index directly");
+    connection
+        .execute(
+            "UPDATE ri2_view_state SET producer_version='stale-v0' WHERE snapshot_id=? AND view_name='graph'",
+            [&snapshot],
+        )
+        .expect("simulate graph producer drift");
+    connection
+        .execute(
+            "UPDATE snapshot_files SET parser_key='stale-parser-v0' WHERE snapshot_id=? AND path='src/auth.rs'",
+            [&snapshot],
+        )
+        .expect("simulate parser/query drift");
+    drop(connection);
+
+    let mut index =
+        RepositoryIndex::open(&fixture.index, IndexPolicy::default()).expect("reopen RI2 index");
+    let rebuilt = index.refresh(&fixture.repo).expect("freshness rebuild");
+    assert_eq!(rebuilt.snapshot.snapshot_id, snapshot);
+    assert!(
+        !rebuilt.already_current,
+        "producer drift must rebuild even when repository bytes are unchanged"
+    );
+    let auth = index
+        .file(&snapshot, "src/auth.rs")
+        .expect("auth lookup")
+        .expect("auth file");
+    assert_ne!(auth.parser_key.as_deref(), Some("stale-parser-v0"));
+    assert!(
+        index
+            .ri2_view_states(&snapshot)
+            .expect("view states")
+            .iter()
+            .any(|view| { view.view_name == "graph" && view.producer_version == "1" })
+    );
+}

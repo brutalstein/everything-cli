@@ -56,9 +56,15 @@ impl RepositoryIndex {
             WorkspaceSnapshot::capture(workspace_root.as_ref(), &SnapshotPolicy::default())?;
         let snapshot = snapshot_identity(&before)?;
         let previous_snapshot = self.current_snapshot_id(&snapshot.repo_id)?;
-        if previous_snapshot.as_deref() == Some(&snapshot.snapshot_id) {
+        let snapshot_unchanged = previous_snapshot.as_deref() == Some(&snapshot.snapshot_id);
+        if snapshot_unchanged && !self.ri2_snapshot_requires_rebuild(&snapshot.snapshot_id)? {
             return self.report_existing(snapshot, true);
         }
+        let continuity_snapshot = if snapshot_unchanged {
+            None
+        } else {
+            previous_snapshot.as_deref()
+        };
 
         let paths = list_repository_files(&before.identity.repo_root, &self.policy)?;
         if paths.len() > self.policy.max_files {
@@ -181,6 +187,7 @@ impl RepositoryIndex {
 
         let git_view = collect_git_view(&before.identity.repo_root, &self.policy)?;
         let transaction = self.connection.transaction()?;
+        clear_snapshot_materialized_views(&transaction, &snapshot.snapshot_id, snapshot_unchanged)?;
         insert_snapshot(&transaction, &snapshot)?;
         let mut parsed_artifacts = 0_usize;
         let mut reused_artifacts = 0_usize;
@@ -228,7 +235,7 @@ impl RepositoryIndex {
         ri2::rebuild_snapshot_views(
             &transaction,
             &snapshot,
-            previous_snapshot.as_deref(),
+            continuity_snapshot,
             &prepared,
             &build_topology,
         )?;
@@ -964,6 +971,34 @@ fn initialize_schema(connection: &Connection) -> Result<(), RepoError> {
         ri2::migrate_v1_to_v2(connection)?;
     } else if version != INDEX_SCHEMA_VERSION {
         return Err(RepoError::UnsupportedIndexVersion(version));
+    }
+    Ok(())
+}
+
+fn clear_snapshot_materialized_views(
+    transaction: &Transaction<'_>,
+    snapshot_id: &str,
+    producer_rebuild: bool,
+) -> Result<(), RepoError> {
+    for table in [
+        "runtime_links",
+        "semantic_links",
+        "test_links",
+        "cochanges",
+        "git_changes",
+        "git_commits",
+        "snapshot_files",
+    ] {
+        transaction.execute(
+            &format!("DELETE FROM {table} WHERE snapshot_id=?"),
+            [snapshot_id],
+        )?;
+    }
+    if producer_rebuild {
+        transaction.execute(
+            "DELETE FROM ri2_symbol_continuity WHERE from_snapshot=? OR to_snapshot=?",
+            params![snapshot_id, snapshot_id],
+        )?;
     }
     Ok(())
 }

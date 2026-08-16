@@ -9,8 +9,8 @@ use super::{
     stable_id,
 };
 
-const GRAPH_PRODUCER: &str = "aer-ri2-graph";
-const GRAPH_PRODUCER_VERSION: &str = "1";
+pub(crate) const GRAPH_PRODUCER: &str = "aer-ri2-graph";
+pub(crate) const GRAPH_PRODUCER_VERSION: &str = "1";
 
 pub(crate) fn rebuild_snapshot_views(
     tx: &Transaction<'_>,
