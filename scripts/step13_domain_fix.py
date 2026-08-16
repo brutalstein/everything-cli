@@ -1,3 +1,4 @@
+# One-shot source repair; removed before Step 13 merge.
 from pathlib import Path
 
 p = Path("crates/aer-domain/src/scheduling.rs")
