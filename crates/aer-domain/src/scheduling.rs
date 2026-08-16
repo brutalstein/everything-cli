@@ -990,7 +990,6 @@ mod tests {
     fn actual_write_expansion_is_reported_before_integration() {
         let a = task("a", "run", "src/a");
         let b = task("b", "run", "src/b");
-        let graph = TaskGraph::new(vec![a.clone(), b.clone()]).expect("graph");
         let policy = SchedulerPolicy::new(2, 4).expect("policy");
         let mut scheduler = BoundedScheduler::new(policy);
         scheduler.record_admission(&a).expect("a active");
