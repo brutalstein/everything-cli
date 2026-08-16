@@ -1,4 +1,4 @@
-# One-shot provider productization repair. Removed before merge.
+# One-shot provider productization repair and manifest refresh. Removed before merge.
 from pathlib import Path
 import hashlib
 
