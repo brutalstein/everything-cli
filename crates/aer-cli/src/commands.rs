@@ -127,7 +127,11 @@ pub(crate) fn print_status(path: &Path, json: bool) -> Result<(), Box<dyn Error>
     println!("{PRODUCT} · {}", workspace_name(&workspace.repo_root));
     println!(
         "workspace  {}",
-        if workspace.is_clean() { "clean" } else { "dirty" }
+        if workspace.is_clean() {
+            "clean"
+        } else {
+            "dirty"
+        }
     );
     println!(
         "branch     {}",
@@ -186,7 +190,11 @@ pub(crate) fn print_workspace(path: &Path, json: bool) -> Result<(), Box<dyn Err
         );
         println!(
             "state      {}",
-            if workspace.is_clean() { "clean" } else { "dirty" }
+            if workspace.is_clean() {
+                "clean"
+            } else {
+                "dirty"
+            }
         );
     }
     Ok(())
@@ -484,7 +492,10 @@ mod tests {
     #[test]
     fn relative_workspace_is_resolved_without_discovery() {
         let cwd = Path::new("base");
-        assert_eq!(resolve_workspace(cwd, Some(Path::new("repo"))), cwd.join("repo"));
+        assert_eq!(
+            resolve_workspace(cwd, Some(Path::new("repo"))),
+            cwd.join("repo")
+        );
     }
 
     #[test]

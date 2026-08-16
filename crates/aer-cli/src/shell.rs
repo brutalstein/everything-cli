@@ -11,8 +11,8 @@ use aer_core::{
 };
 
 use crate::commands::{
-    print_doctor, print_intent, print_ir, print_providers, print_research, print_runs, print_status,
-    print_workspace,
+    print_doctor, print_intent, print_ir, print_providers, print_research, print_runs,
+    print_status, print_workspace,
 };
 
 const HELP: &str = "commands\n  /status                  workspace + spec + runtime summary\n  /workspace               authoritative repository identity\n  /intent                  intent, decisions and open unknowns\n  /ir                      current Engineering IR summary\n  /research                recorded source-backed research evidence\n  /runs                    durable single-agent runtime runs\n  /providers               implemented provider gateway/profile state\n  /doctor                  explicit heavier environment diagnostic\n\nwrite semantics\n  <text>                    record natural-language user intent\n  /goal <text>             record a user-authoritative goal\n  /non-goal <text>         record a user-authoritative non-goal\n  /constraint <text>       record a user-authoritative constraint\n  /accept <text>           record an observable acceptance criterion\n  /assumption <text>       record a user-authoritative assumption\n  /quality <text>          record a quality attribute\n  /decision <text>         record a user-authoritative decision\n  /research-import <file>  ingest a validated ResearchArtifact JSON file\n\n  /help                    show this list\n  /quit                    exit\n";
@@ -79,18 +79,24 @@ fn dispatch(workspace_root: &Path, input: &str) -> Result<Control, Box<dyn Error
         "/non-goal" => {
             record_semantic(workspace_root, UserSemanticKind::NonGoal, command, argument)?
         }
-        "/constraint" => {
-            record_semantic(workspace_root, UserSemanticKind::Constraint, command, argument)?
-        }
+        "/constraint" => record_semantic(
+            workspace_root,
+            UserSemanticKind::Constraint,
+            command,
+            argument,
+        )?,
         "/accept" => record_semantic(
             workspace_root,
             UserSemanticKind::AcceptanceCriterion,
             command,
             argument,
         )?,
-        "/assumption" => {
-            record_semantic(workspace_root, UserSemanticKind::Assumption, command, argument)?
-        }
+        "/assumption" => record_semantic(
+            workspace_root,
+            UserSemanticKind::Assumption,
+            command,
+            argument,
+        )?,
         "/quality" => record_semantic(
             workspace_root,
             UserSemanticKind::QualityAttribute,
@@ -225,7 +231,10 @@ mod tests {
     #[test]
     fn research_path_is_workspace_relative_and_supports_spaces() {
         assert_eq!(
-            resolve_input_file(Path::new("repo"), strip_quotes("\"docs/evidence one.json\"")),
+            resolve_input_file(
+                Path::new("repo"),
+                strip_quotes("\"docs/evidence one.json\"")
+            ),
             Path::new("repo").join("docs/evidence one.json")
         );
     }
@@ -233,10 +242,23 @@ mod tests {
     #[test]
     fn help_does_not_advertise_removed_ui_only_surfaces() {
         for removed in ["/home", "/settings", "/activity", "/environment", "/clear"] {
-            assert!(!HELP.contains(removed), "removed surface leaked into help: {removed}");
+            assert!(
+                !HELP.contains(removed),
+                "removed surface leaked into help: {removed}"
+            );
         }
-        for live in ["/status", "/workspace", "/intent", "/ir", "/runs", "/doctor"] {
-            assert!(HELP.contains(live), "live capability missing from help: {live}");
+        for live in [
+            "/status",
+            "/workspace",
+            "/intent",
+            "/ir",
+            "/runs",
+            "/doctor",
+        ] {
+            assert!(
+                HELP.contains(live),
+                "live capability missing from help: {live}"
+            );
         }
     }
 }
