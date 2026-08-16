@@ -156,7 +156,9 @@ pub enum IntegrityError {
 impl fmt::Display for IntegrityError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::MissingEntry { path } => write!(formatter, "required docs entry missing: {}", path.display()),
+            Self::MissingEntry { path } => {
+                write!(formatter, "required docs entry missing: {}", path.display())
+            }
             Self::InvalidJson { path, source } => {
                 write!(formatter, "invalid JSON {}: {source}", path.display())
             }
