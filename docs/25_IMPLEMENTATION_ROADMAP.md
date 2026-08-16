@@ -8,6 +8,8 @@ Routing requires outcome data. Self-evolution requires trustworthy evals. Multi-
 
 Cross-cutting docs `35`–`44` are part of this roadmap, not optional polish.
 
+Repository Intelligence 2.0 (`06`) is a **planned uplift of the completed Phase-3/Step-08 baseline**, not a new numbered phase. It is deliberately staged when long-horizon state needs temporal repository knowledge, primarily in Phase 6. This preserves the causal sequence and avoids building a second competing index.
+
 ---
 
 # Phase 0 — Repository Constitution, Executable Contracts, and Eval Skeleton
@@ -108,6 +110,8 @@ Greenfield prompts produce stable versioned specs; omitted/distorted critical co
 
 ContextBench demonstrates better relevant-context yield/token than naive whole-map and single-retriever baselines, and Context Pack references remain valid for the declared repo/spec snapshot.
 
+This phase establishes the executable baseline. It does not claim universal semantic language support; the richer capability ladder, temporal graph and repository-memory integration are the RI2 uplift specified in `06` and scheduled below.
+
 ---
 
 # Phase 4 — Verification, Reproducibility, and Proof System
@@ -153,21 +157,53 @@ Provider fault-injection tests prove bounded retry/failover without duplicate ex
 
 ---
 
-# Phase 6 — Recovery and Long-Horizon Engineering State
+# Phase 6 — Repository Intelligence 2.0, Recovery, and Long-Horizon Engineering State
 
 ## Build
 
+### Repository Intelligence 2.0 uplift of the existing index
+
+- versioned language capability registry instead of one binary supported/unsupported flag;
+- universal Tier-0 lexical fallback for safely readable source/text;
+- pinned Tree-sitter grammar adapter/pack architecture for broad Tier-1 syntax coverage;
+- package/build/test topology adapters for Tier-2 project resolution;
+- compiler/LSP/SCIP ingestion adapters for Tier-3 precise semantics where reproducibly available;
+- provenance classes on graph relations (`extracted`, `semantic_resolved`, `observed`, `inferred`);
+- stable snapshot identity plus evidence-bearing logical symbol continuity across rename/move;
+- content-addressed incremental parsing and dependency-aware invalidation frontier;
+- per-view freshness/capability state;
+- build/package/generated-source nodes and cross-language links;
+- graph backlinks, bounded traversal and impact queries;
+- lazy role-aware retrieval representations and optional embeddings;
+- transactional migration of the current `aer-repo` index rather than a parallel second index.
+
+### Long-horizon engineering state
+
 - facts/hypotheses/failure fingerprints;
+- repository-entity-linked verified memory;
+- bidirectional memory backlinks and temporal validity;
 - trajectory compaction;
 - negative memory;
 - stagnation detector;
 - fresh-context takeover;
 - recovery ladder;
-- invalidation triggered by spec/repo/dependency/environment changes.
+- invalidation triggered by spec/repo/dependency/build/environment/parser/semantic-adapter changes;
+- optional read-only Markdown/Obsidian-compatible knowledge-notebook export for human inspection, never as canonical state.
 
 ## Exit gate
 
-HandoffBench demonstrates lower rediscovery/token cost after forced context interruption with no material success degradation; stale environment/dependency facts are invalidated correctly.
+RepoIntelBench demonstrates that RI2 improves relevant source/symbol/line retrieval and/or engineering outcomes over the existing AER baseline and lexical-only/graph-only/embedding-only alternatives while staying within explicit latency/RAM/disk/token budgets.
+
+The gate MUST additionally show:
+
+- capability coverage reported by tier rather than a misleading raw language count;
+- correct fallback when precise semantics are unavailable;
+- no inferred edge presented as compiler-resolved truth;
+- stale graph/memory relations invalidated under mutation tests;
+- unchanged content reuses indexed artifacts;
+- mixed-language/build-topology fixtures resolve representative imports/dependencies/tests;
+- HandoffBench demonstrates lower rediscovery/token cost after forced context interruption with no material success degradation;
+- stale environment/dependency/repository facts are invalidated correctly.
 
 ---
 
@@ -196,15 +232,15 @@ Selected parallelizable tasks improve wall-clock or success without unacceptable
 
 ## Build
 
-- language-specific metric adapters;
-- structural erosion/time-series tracking;
+- language-specific metric adapters that reuse the RI2 language capability registry;
+- structural erosion/time-series tracking over the temporal repository graph;
 - dependency-boundary rules;
 - health delta gate;
 - debt records/refactor triggers.
 
 ## Exit gate
 
-EvolutionBench demonstrates reduced long-horizon deterioration versus the same runtime without health control.
+EvolutionBench demonstrates reduced long-horizon deterioration versus the same runtime without health control. Architecture-health conclusions preserve the same provenance/capability distinctions as Repository Intelligence rather than treating heuristic graph structure as compiler truth.
 
 ---
 
@@ -275,6 +311,7 @@ Every phase MUST additionally preserve:
 - executable contract/schema discipline (`44`);
 - compatibility with already released durable contracts (`40`);
 - security threat model (`19`);
+- Repository Intelligence provenance/freshness/capability invariants (`06`) once RI2 contracts exist;
 - architecture health when enough implementation exists to measure it.
 
 A phase is not complete merely because its happy-path demo works.
@@ -284,7 +321,7 @@ A phase is not complete merely because its happy-path demo works.
 ### `0.1` — reliable local single-agent runtime + executable contracts/resource safety  
 ### `0.2` — Engineering IR + research + context engine  
 ### `0.3` — reproducible proof verification + resilient provider/cost router  
-### `0.4` — long-horizon recovery + bounded parallel worktrees  
+### `0.4` — Repository Intelligence 2.0 + long-horizon recovery + bounded parallel worktrees  
 ### `0.5` — architecture health + protocol/supply-chain ecosystem  
 ### `0.8` — migration/release/update hardening on supported platforms  
 ### `1.0` — validated adaptive runtime with policy lab and stable compatibility promise
