@@ -1,0 +1,48 @@
+name: step08-repair-once
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+
+      - name: Apply deterministic activation
+        run: python scripts/step08_activate.py
+
+      - name: Canonical formatting
+        run: cargo +1.97.1 fmt --all
+
+      - name: Resolve dependency graph
+        run: cargo +1.97.1 check --workspace --all-targets
+
+      - name: Deny warnings
+        run: cargo +1.97.1 clippy --workspace --all-targets -- -D warnings
+
+      - name: Repository intelligence tests
+        run: cargo +1.97.1 test -p aer-repo -p aer-core --all-targets
+
+      - name: Full workspace tests
+        run: cargo +1.97.1 test --workspace --all-targets
+
+      - name: Commit verified activation
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml Cargo.lock crates/aer-core/Cargo.toml crates/aer-core/src/root.rs crates/aer-core/src/repository.rs crates/aer-repo
+          git commit -m "Activate Step 08 repository intelligence"
+          git push origin HEAD:main
