@@ -20,30 +20,47 @@ jobs:
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
 
-      - name: Fail closed on source-materialization integrity errors
+      - name: Apply fail-closed and checked-accounting repairs
         shell: python
         run: |
           from pathlib import Path
           path = Path('crates/aer-context/src/lib.rs')
           text = path.read_text(encoding='utf-8')
-          old = (
-              "            if let Ok(value) = self.materialize(workspace_root, index, snapshot_id, candidate) {\n"
-              "                materialized.push(value);\n"
-              "            } else if mandatory_paths.contains(&candidate.path) {\n"
-              "                self.materialize(workspace_root, index, snapshot_id, candidate)?;\n"
-              "            }\n"
-          )
-          new = (
-              "            match self.materialize(workspace_root, index, snapshot_id, candidate) {\n"
-              "                Ok(value) => materialized.push(value),\n"
-              "                Err(ContextError::SourceTooLarge { .. } | ContextError::SourceNotRetrievable(_))\n"
-              "                    if !mandatory_paths.contains(&candidate.path) => {}\n"
-              "                Err(error) => return Err(error),\n"
-              "            }\n"
-          )
-          if old not in text:
-              raise SystemExit('expected materialization block not found')
-          path.write_text(text.replace(old, new), encoding='utf-8')
+          replacements = [
+              (
+                  "            if let Ok(value) = self.materialize(workspace_root, index, snapshot_id, candidate) {\n"
+                  "                materialized.push(value);\n"
+                  "            } else if mandatory_paths.contains(&candidate.path) {\n"
+                  "                self.materialize(workspace_root, index, snapshot_id, candidate)?;\n"
+                  "            }\n",
+                  "            match self.materialize(workspace_root, index, snapshot_id, candidate) {\n"
+                  "                Ok(value) => materialized.push(value),\n"
+                  "                Err(ContextError::SourceTooLarge { .. } | ContextError::SourceNotRetrievable(_))\n"
+                  "                    if !mandatory_paths.contains(&candidate.path) => {}\n"
+                  "                Err(error) => return Err(error),\n"
+                  "            }\n",
+              ),
+              (
+                  "    let recall_milli = if relevant_total == 0 {\n"
+                  "        1000\n"
+                  "    } else {\n"
+                  "        u16::try_from(relevant_selected.saturating_mul(1000) / relevant_total).unwrap_or(1000)\n"
+                  "    };\n",
+                  "    let recall_milli = relevant_selected\n"
+                  "        .saturating_mul(1000)\n"
+                  "        .checked_div(relevant_total)\n"
+                  "        .map_or(1000, |value| u16::try_from(value).unwrap_or(1000));\n",
+              ),
+              (
+                  "        assert!(end - start + 1 <= 80);\n",
+                  "        assert!(end - start < 80);\n",
+              ),
+          ]
+          for old, new in replacements:
+              if old not in text:
+                  raise SystemExit(f'expected repair target not found: {old[:80]!r}')
+              text = text.replace(old, new)
+          path.write_text(text, encoding='utf-8')
 
       - name: Canonical formatting
         run: cargo +1.97.1 fmt --all
