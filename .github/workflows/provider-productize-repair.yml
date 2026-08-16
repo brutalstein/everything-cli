@@ -21,11 +21,11 @@ jobs:
       - name: Refresh lockfile without changing dependency policy
         run: cargo +1.97.1 metadata --format-version 1 > /dev/null
       - run: cargo +1.97.1 fmt --all
-      - name: Commit repair, lockfile and formatting
+      - name: Commit repair, fixtures and docs manifest
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Cargo.lock crates/aer-provider/src crates/aer-core/src crates/aer-cli/src
+          git add Cargo.lock docs/MANIFEST.sha256 crates/aer-provider/src crates/aer-core/src crates/aer-cli/src
           git diff --cached --quiet && exit 0
-          git commit -m "Refresh and format provider productization source"
+          git commit -m "Harden provider productization fixtures and docs inventory"
           git push origin HEAD:agent/provider-runtime-productization
