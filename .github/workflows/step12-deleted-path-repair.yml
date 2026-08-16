@@ -1,0 +1,123 @@
+name: Step 12 tracked deletion repair
+
+on:
+  push:
+    branches:
+      - agent/step-12-ri2-long-horizon-recovery
+    paths:
+      - '.github/workflows/step12-deleted-path-repair.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: agent/step-12-ri2-long-horizon-recovery
+          fetch-depth: 0
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - name: Handle tracked deletions without weakening TOCTOU detection
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('crates/aer-repo/src/lib.rs')
+          text = path.read_text(encoding='utf-8')
+          old_prelude = '''        let mut prepared = Vec::with_capacity(paths.len());
+                  let mut total_text = 0_u64;
+                  for relative in paths {
+                      let full = before.identity.repo_root.join(&relative);
+                      let metadata = fs::symlink_metadata(&full)?;
+          '''
+          new_prelude = '''        let mut prepared = Vec::with_capacity(paths.len());
+                  let mut missing_paths = BTreeSet::new();
+                  let mut total_text = 0_u64;
+                  for relative in paths {
+                      let full = before.identity.repo_root.join(&relative);
+                      let metadata = match fs::symlink_metadata(&full) {
+                          Ok(metadata) => metadata,
+                          Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                              missing_paths.insert(relative);
+                              continue;
+                          }
+                          Err(error) => return Err(error.into()),
+                      };
+          '''
+          if old_prelude not in text:
+              raise SystemExit('refresh metadata prelude not found')
+          text = text.replace(old_prelude, new_prelude, 1)
+
+          old_budget_read = '''            total_text = total_text
+                          .checked_add(metadata.len())
+                          .ok_or(RepoError::TextBudgetExceeded(u64::MAX))?;
+                      if total_text > self.policy.max_total_text_bytes {
+                          return Err(RepoError::TextBudgetExceeded(total_text));
+                      }
+                      let bytes = match untracked.get(&relative) {
+                          Some(bytes) => bytes.clone(),
+                          None => fs::read(&full)?,
+                      };
+          '''
+          new_budget_read = '''            let bytes = match untracked.get(&relative) {
+                          Some(bytes) => bytes.clone(),
+                          None => match fs::read(&full) {
+                              Ok(bytes) => bytes,
+                              Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                                  missing_paths.insert(relative);
+                                  continue;
+                              }
+                              Err(error) => return Err(error.into()),
+                          },
+                      };
+                      total_text = total_text
+                          .checked_add(u64::try_from(bytes.len()).unwrap_or(u64::MAX))
+                          .ok_or(RepoError::TextBudgetExceeded(u64::MAX))?;
+                      if total_text > self.policy.max_total_text_bytes {
+                          return Err(RepoError::TextBudgetExceeded(total_text));
+                      }
+          '''
+          if old_budget_read not in text:
+              raise SystemExit('refresh budget/read target not found')
+          text = text.replace(old_budget_read, new_budget_read, 1)
+
+          old_after = '''        if snapshot_identity(&after)?.snapshot_id != snapshot.snapshot_id {
+                      return Err(RepoError::WorkspaceChangedDuringIndex);
+                  }
+
+                  let git_view = collect_git_view(&before.identity.repo_root, &self.policy)?;
+          '''
+          new_after = '''        if snapshot_identity(&after)?.snapshot_id != snapshot.snapshot_id {
+                      return Err(RepoError::WorkspaceChangedDuringIndex);
+                  }
+                  for relative in &missing_paths {
+                      match fs::symlink_metadata(before.identity.repo_root.join(relative)) {
+                          Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                          Ok(_) => return Err(RepoError::WorkspaceChangedDuringIndex),
+                          Err(error) => return Err(error.into()),
+                      }
+                  }
+
+                  let git_view = collect_git_view(&before.identity.repo_root, &self.policy)?;
+          '''
+          if old_after not in text:
+              raise SystemExit('refresh recapture target not found')
+          text = text.replace(old_after, new_after, 1)
+          path.write_text(text, encoding='utf-8')
+      - name: Format
+        run: cargo +1.97.1 fmt --all
+      - name: Lint repository intelligence
+        run: cargo +1.97.1 clippy --locked -p aer-repo --all-targets -- -D warnings
+      - name: Full aer-repo tests including RepoIntelBench
+        run: cargo +1.97.1 test --locked -p aer-repo --all-targets
+      - name: Commit verified repair
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/aer-repo/src/lib.rs
+          git diff --cached --quiet && exit 0
+          git commit -m "Handle tracked deletions in exact repository snapshots"
+          git push origin HEAD:agent/step-12-ri2-long-horizon-recovery
