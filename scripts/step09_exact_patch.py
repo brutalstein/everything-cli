@@ -1,0 +1,231 @@
+from pathlib import Path
+
+repo = Path("crates/aer-repo/src/lib.rs")
+text = repo.read_text(encoding="utf-8")
+marker = "    pub fn symbols(&self, snapshot_id: &str, name: &str) -> Result<Vec<SymbolRecord>, RepoError> {"
+method = r'''    pub fn file(
+        &self,
+        snapshot_id: &str,
+        path: &str,
+    ) -> Result<Option<IndexedFile>, RepoError> {
+        self.ensure_snapshot(snapshot_id)?;
+        validate_relative(path)?;
+        let row = self
+            .connection
+            .query_row(
+                "SELECT path,content_sha256,byte_len,line_count,language,file_kind,parser_key,is_test FROM snapshot_files WHERE snapshot_id=? AND path=?",
+                params![snapshot_id, path],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, u32>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
+                        row.get::<_, Option<String>>(6)?,
+                        row.get::<_, i64>(7)?,
+                    ))
+                },
+            )
+            .optional()?;
+        let Some((path, content_sha256, byte_len, line_count, language, kind, parser_key, is_test)) =
+            row
+        else {
+            return Ok(None);
+        };
+        let byte_len = u64::try_from(byte_len).map_err(|_| {
+            RepoError::Integrity(format!("negative or overflowing file byte length for {path}"))
+        })?;
+        Ok(Some(IndexedFile {
+            path,
+            content_sha256,
+            byte_len,
+            line_count,
+            language: parse_language(&language),
+            kind: parse_file_kind(&kind)?,
+            parser_key,
+            is_test: is_test != 0,
+        }))
+    }
+
+'''
+if "pub fn file(" not in text:
+    if marker not in text:
+        raise SystemExit("RepositoryIndex symbol marker not found")
+    text = text.replace(marker, method + marker, 1)
+
+parser_marker = "fn parse_language(value: &str) -> LanguageKind {"
+parser = r'''fn parse_file_kind(value: &str) -> Result<FileKind, RepoError> {
+    match value {
+        "text" => Ok(FileKind::Text),
+        "binary" => Ok(FileKind::Binary),
+        "oversized" => Ok(FileKind::Oversized),
+        "symlink" => Ok(FileKind::Symlink),
+        _ => Err(RepoError::Integrity(format!(
+            "unknown indexed file kind: {value}"
+        ))),
+    }
+}
+
+'''
+if "fn parse_file_kind(" not in text:
+    if parser_marker not in text:
+        raise SystemExit("parse_language marker not found")
+    text = text.replace(parser_marker, parser + parser_marker, 1)
+repo.write_text(text, encoding="utf-8")
+
+ctx = Path("crates/aer-context/src/lib.rs")
+text = ctx.read_text(encoding="utf-8")
+text = text.replace(
+    "use aer_repo::{RepositoryIndex, SearchHit, SearchQuery};",
+    "use aer_repo::{FileKind, RepositoryIndex, SearchHit, SearchQuery};",
+)
+
+replacements = [
+    (
+        r'''                let Some(hit) = resolve_path_hit(index, &snapshot_id, &link.target_path)? else {
+                    continue;
+                };
+                resolved = true;
+                let candidate = candidates
+                    .entry(hit.path.clone())
+                    .or_insert_with(|| Candidate::from_hit(&hit));
+                candidate.merge_hit(&hit);
+''',
+        r'''                let Some(resolved_candidate) =
+                    resolve_path_candidate(index, &snapshot_id, &link.target_path)?
+                else {
+                    continue;
+                };
+                resolved = true;
+                let path = resolved_candidate.path.clone();
+                let candidate = candidates.entry(path).or_insert(resolved_candidate);
+''',
+    ),
+    (
+        r'''            let Some(hit) = resolve_path_hit(index, &snapshot_id, &hint.path)? else {
+                continue;
+            };
+            let candidate = candidates
+                .entry(hit.path.clone())
+                .or_insert_with(|| Candidate::from_hit(&hit));
+            candidate.merge_hit(&hit);
+''',
+        r'''            let Some(resolved_candidate) =
+                resolve_path_candidate(index, &snapshot_id, &hint.path)?
+            else {
+                continue;
+            };
+            let path = resolved_candidate.path.clone();
+            let candidate = candidates.entry(path).or_insert(resolved_candidate);
+''',
+    ),
+    (
+        r'''                let Some(hit) = resolve_path_hit(index, &snapshot_id, &impact.path)? else {
+                    continue;
+                };
+                let candidate = candidates
+                    .entry(hit.path.clone())
+                    .or_insert_with(|| Candidate::from_hit(&hit));
+                candidate.merge_hit(&hit);
+''',
+        r'''                let Some(resolved_candidate) =
+                    resolve_path_candidate(index, &snapshot_id, &impact.path)?
+                else {
+                    continue;
+                };
+                let path = resolved_candidate.path.clone();
+                let candidate = candidates.entry(path).or_insert(resolved_candidate);
+''',
+    ),
+]
+for old, new in replacements:
+    if old not in text:
+        raise SystemExit(f"context exact-path target not found: {old[:100]!r}")
+    text = text.replace(old, new, 1)
+
+old_helper = r'''fn resolve_path_hit(
+    index: &RepositoryIndex,
+    snapshot_id: &str,
+    path: &str,
+) -> Result<Option<SearchHit>, ContextError> {
+    let query = SearchQuery {
+        text: path.to_owned(),
+        limit: 12,
+        min_score_micros: 0,
+    };
+    Ok(index
+        .search(snapshot_id, &query)?
+        .hits
+        .into_iter()
+        .find(|hit| hit.path == path))
+}
+'''
+new_helper = r'''fn resolve_path_candidate(
+    index: &RepositoryIndex,
+    snapshot_id: &str,
+    path: &str,
+) -> Result<Option<Candidate>, ContextError> {
+    let Some(file) = index.file(snapshot_id, path)? else {
+        return Ok(None);
+    };
+    if file.kind != FileKind::Text {
+        return Ok(None);
+    }
+    let Some(content_hash) = file.content_sha256 else {
+        return Ok(None);
+    };
+    Ok(Some(Candidate::from_source(file.path, content_hash)))
+}
+'''
+if old_helper not in text:
+    raise SystemExit("old resolve_path_hit helper not found")
+text = text.replace(old_helper, new_helper, 1)
+
+candidate_marker = "impl Candidate {\n    fn from_hit(hit: &SearchHit) -> Self {"
+source_ctor = r'''impl Candidate {
+    fn from_source(path: String, content_hash: String) -> Self {
+        Self {
+            path,
+            content_hash,
+            anchor_line: None,
+            matched_terms: BTreeSet::new(),
+            matched_symbols: BTreeSet::new(),
+            required_semantic_ids: BTreeSet::new(),
+            reasons: BTreeSet::new(),
+            lexical_rank: None,
+            semantic_rank: None,
+            structural_rank: None,
+            runtime_rank: None,
+            utility_micros: 0,
+        }
+    }
+
+    fn from_hit(hit: &SearchHit) -> Self {
+'''
+if candidate_marker not in text:
+    raise SystemExit("Candidate impl marker not found")
+text = text.replace(candidate_marker, source_ctor, 1)
+ctx.write_text(text, encoding="utf-8")
+
+hardening = Path("crates/aer-repo/tests/hardening.rs")
+text = hardening.read_text(encoding="utf-8")
+if "exact_file_lookup_is_not_a_lexical_search" not in text:
+    text += r'''
+
+#[test]
+fn exact_file_lookup_is_not_a_lexical_search() {
+    let fixture = Fixture::new();
+    let mut index = RepositoryIndex::open(&fixture.index, IndexPolicy::default()).expect("index");
+    let report = index.refresh(&fixture.repo).expect("refresh");
+    let file = index
+        .file(&report.snapshot.snapshot_id, "src/lib.rs")
+        .expect("lookup")
+        .expect("indexed file");
+    assert_eq!(file.path, "src/lib.rs");
+    assert_eq!(file.kind, aer_repo::FileKind::Text);
+    assert!(file.content_sha256.is_some());
+}
+'''
+hardening.write_text(text, encoding="utf-8")
