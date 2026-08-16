@@ -419,8 +419,6 @@ impl DelegatedCliProvider {
                     OsString::from(""),
                     OsString::from("--disable-slash-commands"),
                     OsString::from("--no-session-persistence"),
-                    OsString::from("--max-turns"),
-                    OsString::from("1"),
                 ];
                 if let Some(model) = &self.model {
                     args.push(OsString::from("--model"));
