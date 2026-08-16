@@ -1,0 +1,52 @@
+name: step10-compile-repair
+
+on:
+  push:
+    branches:
+      - agent/step-10-verification-proof-system
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: agent/step-10-verification-proof-system
+
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+
+      - name: Apply exact compile repair
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path("crates/aer-core/src/verification.rs")
+          text = path.read_text(encoding="utf-8")
+          old = "fn string_set(root: &Value, key: &str) -> Result<BTreeSet<String>, VerificationError> {"
+          new = "fn string_set(root: &Value, key: &'static str) -> Result<BTreeSet<String>, VerificationError> {"
+          if text.count(old) != 1:
+              raise SystemExit("expected exactly one string_set signature to repair")
+          path.write_text(text.replace(old, new), encoding="utf-8")
+
+      - name: Format
+        run: cargo +1.97.1 fmt --all
+
+      - name: Clippy aer-core
+        run: cargo +1.97.1 clippy --locked -p aer-core --all-targets -- -D warnings
+
+      - name: Focused Step 10 tests
+        run: cargo +1.97.1 test --locked -p aer-core --all-targets verification
+
+      - name: Commit verified repair
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "everything-ci"
+          git config user.email "everything-ci@users.noreply.github.com"
+          git add crates/aer-core/src/verification.rs
+          git commit -m "Fix Step 10 verifier field lifetime"
+          git push origin HEAD:agent/step-10-verification-proof-system
