@@ -574,6 +574,7 @@ impl From<ExecutionError> for ToolError {
 mod tests {
     use std::{
         fs,
+        sync::atomic::{AtomicU64, Ordering},
         time::{SystemTime, UNIX_EPOCH},
     };
 
@@ -583,13 +584,18 @@ mod tests {
 
     use super::{ToolBroker, ToolCall, ToolOutcome, ToolResult};
 
+    static FIXTURE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
     fn fixture() -> std::path::PathBuf {
+        let sequence = FIXTURE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
         let root = std::env::temp_dir().join(format!(
-            "aer-tools-{}",
+            "aer-tools-{}-{}-{}",
+            std::process::id(),
             SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("clock")
-                .as_nanos()
+                .as_nanos(),
+            sequence
         ));
         fs::create_dir_all(root.join("src")).expect("fixture dirs");
         fs::write(root.join("src/lib.rs"), "one\ntwo\nthree\nfour\n").expect("fixture file");
@@ -633,6 +639,7 @@ mod tests {
             panic!("default exec must ask");
         };
         assert_eq!(request.side_effect, SideEffectClass::ProcessExecution);
+        drop(broker);
         fs::remove_dir_all(root).expect("cleanup");
     }
 
@@ -656,6 +663,7 @@ mod tests {
             error,
             super::ToolError::ProcessExecutionRequiresOwnedWorktree
         ));
+        drop(broker);
         fs::remove_dir_all(root).expect("cleanup");
     }
 
@@ -683,6 +691,7 @@ mod tests {
         assert_eq!(exec.argv.first().map(String::as_str), Some("git"));
         assert!(exec.stdout_preview.contains("git version"));
         assert!(!exec.stdout_sha256.is_empty());
+        drop(broker);
         fs::remove_dir_all(root).expect("cleanup");
     }
 
@@ -705,6 +714,7 @@ mod tests {
             panic!("expected tool description");
         };
         assert!(tool.schema.is_some());
+        drop(broker);
         fs::remove_dir_all(root).expect("cleanup");
     }
 
@@ -725,6 +735,7 @@ mod tests {
             )
             .expect("decision");
         assert!(matches!(result, ToolOutcome::Denied(_)));
+        drop(broker);
         fs::remove_dir_all(root).expect("cleanup");
     }
 }
