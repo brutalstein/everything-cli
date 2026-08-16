@@ -403,6 +403,50 @@ impl RepositoryIndex {
         self.search(&indexed, query)
     }
 
+    pub fn file(&self, snapshot_id: &str, path: &str) -> Result<Option<IndexedFile>, RepoError> {
+        self.ensure_snapshot(snapshot_id)?;
+        validate_relative(path)?;
+        let row = self
+            .connection
+            .query_row(
+                "SELECT path,content_sha256,byte_len,line_count,language,file_kind,parser_key,is_test FROM snapshot_files WHERE snapshot_id=? AND path=?",
+                params![snapshot_id, path],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, u32>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
+                        row.get::<_, Option<String>>(6)?,
+                        row.get::<_, i64>(7)?,
+                    ))
+                },
+            )
+            .optional()?;
+        let Some((path, content_sha256, byte_len, line_count, language, kind, parser_key, is_test)) =
+            row
+        else {
+            return Ok(None);
+        };
+        let byte_len = u64::try_from(byte_len).map_err(|_| {
+            RepoError::Integrity(format!(
+                "negative or overflowing file byte length for {path}"
+            ))
+        })?;
+        Ok(Some(IndexedFile {
+            path,
+            content_sha256,
+            byte_len,
+            line_count,
+            language: parse_language(&language),
+            kind: parse_file_kind(&kind)?,
+            parser_key,
+            is_test: is_test != 0,
+        }))
+    }
+
     pub fn symbols(&self, snapshot_id: &str, name: &str) -> Result<Vec<SymbolRecord>, RepoError> {
         self.ensure_snapshot(snapshot_id)?;
         let mut statement = self.connection.prepare(
@@ -1257,6 +1301,18 @@ fn resolve_symbol_id(
     let row:Option<(String,String,String)>=connection.query_row("SELECT f.path,f.content_sha256,s.local_id FROM snapshot_files f JOIN content_symbols s ON s.content_sha256=f.content_sha256 AND s.parser_key=f.parser_key WHERE f.snapshot_id=? AND lower(s.name)=lower(?) ORDER BY f.path,s.start_byte LIMIT 1",params![snapshot,name],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?))).optional()?;
     Ok(row.map(|(path, hash, local)| symbol_id(&path, &hash, &local)))
 }
+fn parse_file_kind(value: &str) -> Result<FileKind, RepoError> {
+    match value {
+        "text" => Ok(FileKind::Text),
+        "binary" => Ok(FileKind::Binary),
+        "oversized" => Ok(FileKind::Oversized),
+        "symlink" => Ok(FileKind::Symlink),
+        _ => Err(RepoError::Integrity(format!(
+            "unknown indexed file kind: {value}"
+        ))),
+    }
+}
+
 fn parse_language(value: &str) -> LanguageKind {
     match value {
         "rust" => LanguageKind::Rust,

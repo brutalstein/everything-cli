@@ -16,7 +16,7 @@ use std::{
 
 use aer_contracts::embedded::EmbeddedContractRegistry;
 use aer_domain::contracts::CoreContract;
-use aer_repo::{RepositoryIndex, SearchHit, SearchQuery};
+use aer_repo::{FileKind, RepositoryIndex, SearchHit, SearchQuery};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
@@ -74,14 +74,14 @@ impl ContextEngine {
             }
             let mut resolved = false;
             for (rank, link) in links.into_iter().enumerate() {
-                let Some(hit) = resolve_path_hit(index, &snapshot_id, &link.target_path)? else {
+                let Some(resolved_candidate) =
+                    resolve_path_candidate(index, &snapshot_id, &link.target_path)?
+                else {
                     continue;
                 };
                 resolved = true;
-                let candidate = candidates
-                    .entry(hit.path.clone())
-                    .or_insert_with(|| Candidate::from_hit(&hit));
-                candidate.merge_hit(&hit);
+                let path = resolved_candidate.path.clone();
+                let candidate = candidates.entry(path).or_insert(resolved_candidate);
                 candidate.semantic_rank = min_rank(candidate.semantic_rank, rank + 1);
                 candidate.required_semantic_ids.insert(semantic_id.clone());
                 candidate
@@ -99,13 +99,12 @@ impl ContextEngine {
             if hint.score_milli == 0 {
                 continue;
             }
-            let Some(hit) = resolve_path_hit(index, &snapshot_id, &hint.path)? else {
+            let Some(resolved_candidate) = resolve_path_candidate(index, &snapshot_id, &hint.path)?
+            else {
                 continue;
             };
-            let candidate = candidates
-                .entry(hit.path.clone())
-                .or_insert_with(|| Candidate::from_hit(&hit));
-            candidate.merge_hit(&hit);
+            let path = resolved_candidate.path.clone();
+            let candidate = candidates.entry(path).or_insert(resolved_candidate);
             candidate.runtime_rank =
                 min_rank(candidate.runtime_rank, runtime_rank(hint.score_milli));
             candidate
@@ -122,13 +121,13 @@ impl ContextEngine {
                 {
                     break;
                 }
-                let Some(hit) = resolve_path_hit(index, &snapshot_id, &impact.path)? else {
+                let Some(resolved_candidate) =
+                    resolve_path_candidate(index, &snapshot_id, &impact.path)?
+                else {
                     continue;
                 };
-                let candidate = candidates
-                    .entry(hit.path.clone())
-                    .or_insert_with(|| Candidate::from_hit(&hit));
-                candidate.merge_hit(&hit);
+                let path = resolved_candidate.path.clone();
+                let candidate = candidates.entry(path).or_insert(resolved_candidate);
                 candidate.structural_rank = min_rank(candidate.structural_rank, structural_rank);
                 candidate
                     .reasons
@@ -490,6 +489,23 @@ struct Candidate {
 }
 
 impl Candidate {
+    fn from_source(path: String, content_hash: String) -> Self {
+        Self {
+            path,
+            content_hash,
+            anchor_line: None,
+            matched_terms: BTreeSet::new(),
+            matched_symbols: BTreeSet::new(),
+            required_semantic_ids: BTreeSet::new(),
+            reasons: BTreeSet::new(),
+            lexical_rank: None,
+            semantic_rank: None,
+            structural_rank: None,
+            runtime_rank: None,
+            utility_micros: 0,
+        }
+    }
+
     fn from_hit(hit: &SearchHit) -> Self {
         let mut candidate = Self {
             path: hit.path.clone(),
@@ -700,21 +716,21 @@ fn validate_request(request: &ContextRequest, policy: &ContextPolicy) -> Result<
     Ok(())
 }
 
-fn resolve_path_hit(
+fn resolve_path_candidate(
     index: &RepositoryIndex,
     snapshot_id: &str,
     path: &str,
-) -> Result<Option<SearchHit>, ContextError> {
-    let query = SearchQuery {
-        text: path.to_owned(),
-        limit: 12,
-        min_score_micros: 0,
+) -> Result<Option<Candidate>, ContextError> {
+    let Some(file) = index.file(snapshot_id, path)? else {
+        return Ok(None);
     };
-    Ok(index
-        .search(snapshot_id, &query)?
-        .hits
-        .into_iter()
-        .find(|hit| hit.path == path))
+    if file.kind != FileKind::Text {
+        return Ok(None);
+    }
+    let Some(content_hash) = file.content_sha256 else {
+        return Ok(None);
+    };
+    Ok(Some(Candidate::from_source(file.path, content_hash)))
 }
 
 fn ranked_seed_paths(candidates: &BTreeMap<String, Candidate>, limit: usize) -> Vec<String> {

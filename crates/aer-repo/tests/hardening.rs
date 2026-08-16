@@ -139,3 +139,17 @@ fn snapshot_retention_never_deletes_current_snapshot_pointer() {
         .expect("current search");
     assert_eq!(result.snapshot_id, third.snapshot.snapshot_id);
 }
+
+#[test]
+fn exact_file_lookup_is_not_a_lexical_search() {
+    let fixture = Fixture::new();
+    let mut index = RepositoryIndex::open(&fixture.index, IndexPolicy::default()).expect("index");
+    let report = index.refresh(&fixture.repo).expect("refresh");
+    let file = index
+        .file(&report.snapshot.snapshot_id, "src/lib.rs")
+        .expect("lookup")
+        .expect("indexed file");
+    assert_eq!(file.path, "src/lib.rs");
+    assert_eq!(file.kind, aer_repo::FileKind::Text);
+    assert!(file.content_sha256.is_some());
+}
