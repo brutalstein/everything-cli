@@ -238,7 +238,8 @@ impl DelegatedCliProvider {
         workspace: &Path,
         flow: LoginFlow,
     ) -> Result<(), DelegatedProviderError> {
-        let mut command = Command::new(kind.executable());
+        let executable = resolve_executable(kind.executable())?;
+        let mut command = Command::new(&executable);
         command.current_dir(workspace);
         match (kind, flow) {
             (DelegatedProviderKind::Codex, LoginFlow::Browser) => {
@@ -299,7 +300,8 @@ impl DelegatedCliProvider {
                 });
             }
         };
-        let status = Command::new(kind.executable())
+        let executable = resolve_executable(kind.executable())?;
+        let status = Command::new(&executable)
             .args(args)
             .current_dir(workspace)
             .status()
@@ -803,7 +805,8 @@ fn run_bounded(
     timeout: Duration,
     max_output_bytes: usize,
 ) -> Result<BoundedProcessResult, DelegatedProviderError> {
-    let mut command = Command::new(executable);
+    let resolved_executable = resolve_executable(executable)?;
+    let mut command = Command::new(&resolved_executable);
     command
         .args(args)
         .current_dir(cwd)
@@ -918,6 +921,62 @@ fn join_capture(
     }
 }
 
+fn resolve_executable(executable: &str) -> Result<PathBuf, DelegatedProviderError> {
+    let direct = Path::new(executable);
+    if direct.components().count() > 1 && direct.is_file() {
+        return Ok(direct.to_path_buf());
+    }
+    let path = env::var_os("PATH").ok_or_else(|| DelegatedProviderError::Spawn {
+        executable: executable.to_owned(),
+        error: io::Error::new(io::ErrorKind::NotFound, "PATH is not set"),
+    })?;
+
+    #[cfg(windows)]
+    let suffixes = windows_executable_suffixes(executable);
+    #[cfg(not(windows))]
+    let suffixes = vec![String::new()];
+
+    for directory in env::split_paths(&path) {
+        for suffix in &suffixes {
+            let candidate = directory.join(format!("{executable}{suffix}"));
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+        }
+    }
+    Err(DelegatedProviderError::Spawn {
+        executable: executable.to_owned(),
+        error: io::Error::new(
+            io::ErrorKind::NotFound,
+            "provider executable not found on PATH",
+        ),
+    })
+}
+
+#[cfg(windows)]
+fn windows_executable_suffixes(executable: &str) -> Vec<String> {
+    if Path::new(executable).extension().is_some() {
+        return vec![String::new()];
+    }
+    let mut suffixes = vec![String::new()];
+    let pathext = env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_owned());
+    for suffix in pathext.split(';').filter(|value| !value.trim().is_empty()) {
+        let suffix = suffix.trim();
+        let normalized = if suffix.starts_with('.') {
+            suffix.to_owned()
+        } else {
+            format!(".{suffix}")
+        };
+        if !suffixes
+            .iter()
+            .any(|existing| existing.eq_ignore_ascii_case(&normalized))
+        {
+            suffixes.push(normalized);
+        }
+    }
+    suffixes
+}
+
 fn inherit_safe_provider_environment(command: &mut Command) {
     for name in [
         "PATH",
@@ -935,6 +994,7 @@ fn inherit_safe_provider_environment(command: &mut Command) {
         "XDG_DATA_HOME",
         "CODEX_HOME",
         "CLAUDE_CONFIG_DIR",
+        "CLAUDE_CODE_GIT_BASH_PATH",
         "LANG",
         "LC_ALL",
         "TERM",
@@ -1084,6 +1144,24 @@ mod tests {
             super::capture_bounded(std::io::Cursor::new(b"abcde"), 4).expect("overflow capture");
         assert_eq!(overflow.bytes, b"abcd");
         assert!(overflow.truncated);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_executable_suffixes_include_cmd_without_duplicates() {
+        let suffixes = super::windows_executable_suffixes("claude");
+        assert!(
+            suffixes
+                .iter()
+                .any(|suffix| suffix.eq_ignore_ascii_case(".cmd"))
+        );
+        assert_eq!(
+            suffixes
+                .iter()
+                .filter(|suffix| suffix.eq_ignore_ascii_case(".cmd"))
+                .count(),
+            1
+        );
     }
 
     #[test]
