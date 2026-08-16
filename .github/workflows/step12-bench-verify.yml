@@ -1,0 +1,33 @@
+name: Step 12 benchmark verifier
+
+on:
+  push:
+    branches:
+      - agent/step-12-ri2-long-horizon-recovery
+    paths:
+      - '.github/workflows/step12-bench-verify.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: agent/step-12-ri2-long-horizon-recovery
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - name: Format
+        run: cargo +1.97.1 fmt --all --check
+      - name: Repository Intelligence 2.0 lint
+        run: cargo +1.97.1 clippy --locked -p aer-repo --all-targets -- -D warnings
+      - name: Repository Intelligence 2.0 full tests
+        run: cargo +1.97.1 test --locked -p aer-repo --all-targets
+      - name: Long-horizon state lint
+        run: cargo +1.97.1 clippy --locked -p aer-core --all-targets -- -D warnings
+      - name: RepoIntelBench
+        run: cargo +1.97.1 test --locked -p aer-repo --test repo_intel_2_bench
+      - name: HandoffBench
+        run: cargo +1.97.1 test --locked -p aer-core --test handoff_bench
