@@ -1159,7 +1159,10 @@ mod tests {
             .map(|arg| arg.to_string_lossy().into_owned())
             .collect::<Vec<_>>();
         assert_eq!(stdin, b"prompt");
-        assert!(args.windows(2).any(|pair| pair == ["--setting-sources", ""]));
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["--setting-sources", ""])
+        );
         assert!(args.iter().any(|arg| arg == "--strict-mcp-config"));
         assert!(
             args.windows(2)
