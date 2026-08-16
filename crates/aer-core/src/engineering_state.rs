@@ -245,13 +245,31 @@ impl EngineeringMemoryRecord {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InvalidationReason {
-    RepositoryChange { from_snapshot: String, to_snapshot: String, entity_ids: Vec<String> },
-    SpecChanged { previous: String, current: String },
-    EnvironmentChanged { previous: String, current: String },
-    ProducerChanged { producer: String },
-    DependencyChanged { dependency: String },
-    ContradictoryEvidence { evidence_ref: String },
-    Superseded { by_record_id: String },
+    RepositoryChange {
+        from_snapshot: String,
+        to_snapshot: String,
+        entity_ids: Vec<String>,
+    },
+    SpecChanged {
+        previous: String,
+        current: String,
+    },
+    EnvironmentChanged {
+        previous: String,
+        current: String,
+    },
+    ProducerChanged {
+        producer: String,
+    },
+    DependencyChanged {
+        dependency: String,
+    },
+    ContradictoryEvidence {
+        evidence_ref: String,
+    },
+    Superseded {
+        by_record_id: String,
+    },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -262,13 +280,20 @@ pub struct EngineeringStateProjection {
 
 impl EngineeringStateProjection {
     pub fn current_records(&self) -> impl Iterator<Item = &EngineeringMemoryRecord> {
-        self.records.iter().filter(|record| record.validity == MemoryValidity::Current)
+        self.records
+            .iter()
+            .filter(|record| record.validity == MemoryValidity::Current)
     }
 
     pub fn backlinks(&self, entity_id: &str) -> Vec<&EngineeringMemoryRecord> {
         self.records
             .iter()
-            .filter(|record| record.repository_entities.iter().any(|entity| entity.entity_id == entity_id))
+            .filter(|record| {
+                record
+                    .repository_entities
+                    .iter()
+                    .any(|entity| entity.entity_id == entity_id)
+            })
             .collect()
     }
 }
@@ -279,17 +304,32 @@ pub struct EngineeringStateStore {
 }
 
 impl EngineeringStateStore {
-    pub fn open(state_root: impl AsRef<Path>, project_id: impl Into<String>) -> Result<Self, EngineeringStateError> {
+    pub fn open(
+        state_root: impl AsRef<Path>,
+        project_id: impl Into<String>,
+    ) -> Result<Self, EngineeringStateError> {
         let project_id = project_id.into();
         require_nonempty("project_id", &project_id)?;
-        Ok(Self { state: DurableState::open(state_root)?, project_id })
+        Ok(Self {
+            state: DurableState::open(state_root)?,
+            project_id,
+        })
     }
 
-    pub fn record(&mut self, record: &EngineeringMemoryRecord) -> Result<(), EngineeringStateError> {
+    pub fn record(
+        &mut self,
+        record: &EngineeringMemoryRecord,
+    ) -> Result<(), EngineeringStateError> {
         record.validate()?;
         let projection = self.projection()?;
-        if projection.records.iter().any(|existing| existing.record_id == record.record_id) {
-            return Err(EngineeringStateError::DuplicateRecord(record.record_id.clone()));
+        if projection
+            .records
+            .iter()
+            .any(|existing| existing.record_id == record.record_id)
+        {
+            return Err(EngineeringStateError::DuplicateRecord(
+                record.record_id.clone(),
+            ));
         }
         let mut event = NewEvent::new(&self.project_id, MEMORY_RECORDED);
         event.payload = EventPayload::Inline(record_to_json(record));
@@ -297,12 +337,22 @@ impl EngineeringStateStore {
         Ok(())
     }
 
-    pub fn invalidate(&mut self, record_id: &str, reason: InvalidationReason) -> Result<(), EngineeringStateError> {
+    pub fn invalidate(
+        &mut self,
+        record_id: &str,
+        reason: InvalidationReason,
+    ) -> Result<(), EngineeringStateError> {
         require_nonempty("record_id", record_id)?;
         let projection = self.projection()?;
-        let record = projection.records.iter().find(|record| record.record_id == record_id)
+        let record = projection
+            .records
+            .iter()
+            .find(|record| record.record_id == record_id)
             .ok_or_else(|| EngineeringStateError::UnknownRecord(record_id.to_owned()))?;
-        if matches!(record.validity, MemoryValidity::Invalidated | MemoryValidity::Superseded) {
+        if matches!(
+            record.validity,
+            MemoryValidity::Invalidated | MemoryValidity::Superseded
+        ) {
             return Ok(());
         }
         let validity = if matches!(reason, InvalidationReason::Superseded { .. }) {
@@ -320,12 +370,23 @@ impl EngineeringStateStore {
         Ok(())
     }
 
-    pub fn invalidate_repository_changes(&mut self, changes: &RepositoryChangeSet) -> Result<Vec<String>, EngineeringStateError> {
+    pub fn invalidate_repository_changes(
+        &mut self,
+        changes: &RepositoryChangeSet,
+    ) -> Result<Vec<String>, EngineeringStateError> {
         let projection = self.projection()?;
-        let changed = changes.invalidated_entity_ids.iter().collect::<std::collections::BTreeSet<_>>();
+        let changed = changes
+            .invalidated_entity_ids
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>();
         let mut invalidated = Vec::new();
         for record in projection.current_records() {
-            if record.invalidation_scope.repository_entity_ids.iter().any(|entity| changed.contains(entity)) {
+            if record
+                .invalidation_scope
+                .repository_entity_ids
+                .iter()
+                .any(|entity| changed.contains(entity))
+            {
                 self.invalidate(
                     &record.record_id,
                     InvalidationReason::RepositoryChange {
@@ -346,7 +407,7 @@ impl EngineeringStateStore {
             match event.event_type.as_str() {
                 MEMORY_RECORDED => {
                     let payload = parse_payload(&event.payload_json)?;
-                    let record = record_from_json(payload)?;
+                    let record = record_from_json(&payload)?;
                     if records.insert(record.record_id.clone(), record).is_some() {
                         return Err(EngineeringStateError::InvalidStoredRecord(
                             "duplicate record_id in event journal".to_owned(),
@@ -355,8 +416,8 @@ impl EngineeringStateStore {
                 }
                 MEMORY_INVALIDATED => {
                     let payload = parse_payload(&event.payload_json)?;
-                    let record_id = json_str(payload, "record_id")?;
-                    let validity = MemoryValidity::parse(json_str(payload, "validity")?)?;
+                    let record_id = json_str(&payload, "record_id")?;
+                    let validity = MemoryValidity::parse(json_str(&payload, "validity")?)?;
                     let record = records.get_mut(record_id).ok_or_else(|| {
                         EngineeringStateError::InvalidStoredRecord(format!(
                             "invalidation references unknown record {record_id}"
@@ -367,17 +428,30 @@ impl EngineeringStateStore {
                 _ => {}
             }
         }
-        Ok(EngineeringStateProjection { project_id: self.project_id.clone(), records: records.into_values().collect() })
+        Ok(EngineeringStateProjection {
+            project_id: self.project_id.clone(),
+            records: records.into_values().collect(),
+        })
     }
 
-    pub fn compact_handoff(&self, request: &HandoffRequest, policy: HandoffPolicy) -> Result<HandoffProjection, EngineeringStateError> {
+    pub fn compact_handoff(
+        &self,
+        request: &HandoffRequest,
+        policy: HandoffPolicy,
+    ) -> Result<HandoffProjection, EngineeringStateError> {
         request.validate()?;
         policy.validate()?;
         let projection = self.projection()?;
-        let mut candidates = projection.records.into_iter()
+        let mut candidates = projection
+            .records
+            .into_iter()
             .filter(|record| record.validity == MemoryValidity::Current)
             .collect::<Vec<_>>();
-        candidates.sort_by(|left, right| memory_priority(left).cmp(&memory_priority(right)).then_with(|| left.record_id.cmp(&right.record_id)));
+        candidates.sort_by(|left, right| {
+            memory_priority(left)
+                .cmp(&memory_priority(right))
+                .then_with(|| left.record_id.cmp(&right.record_id))
+        });
         let mut selected = Vec::new();
         let mut used_bytes = base_handoff_bytes(request);
         let mut truncated = false;
@@ -388,7 +462,11 @@ impl EngineeringStateStore {
             }
             let record_bytes = record.statement.len()
                 + record.evidence_refs.iter().map(String::len).sum::<usize>()
-                + record.repository_entities.iter().map(|entity| entity.entity_id.len() + entity.repo_snapshot.len()).sum::<usize>();
+                + record
+                    .repository_entities
+                    .iter()
+                    .map(|entity| entity.entity_id.len() + entity.repo_snapshot.len())
+                    .sum::<usize>();
             if used_bytes.saturating_add(record_bytes) > policy.max_bytes {
                 truncated = true;
                 continue;
@@ -413,7 +491,12 @@ impl EngineeringStateStore {
         })
     }
 
-    pub fn record_recovery_escalation(&mut self, task_id: &str, action: RecoveryAction, failure: FailureClass) -> Result<(), EngineeringStateError> {
+    pub fn record_recovery_escalation(
+        &mut self,
+        task_id: &str,
+        action: RecoveryAction,
+        failure: FailureClass,
+    ) -> Result<(), EngineeringStateError> {
         require_nonempty("task_id", task_id)?;
         let mut event = NewEvent::new(&self.project_id, RECOVERY_ESCALATED);
         event.task_id = Some(task_id.to_owned());
@@ -479,7 +562,10 @@ impl HandoffPolicy {
 
 impl Default for HandoffPolicy {
     fn default() -> Self {
-        Self { max_records: 64, max_bytes: 32 * 1024 }
+        Self {
+            max_records: 64,
+            max_bytes: 32 * 1024,
+        }
     }
 }
 
@@ -537,16 +623,21 @@ pub struct StagnationAssessment {
     pub verification_flat: bool,
 }
 
-pub fn assess_stagnation(window: ProgressWindow, policy: StagnationPolicy) -> Result<StagnationAssessment, EngineeringStateError> {
+pub fn assess_stagnation(
+    window: ProgressWindow,
+    policy: StagnationPolicy,
+) -> Result<StagnationAssessment, EngineeringStateError> {
     let policy = policy.validate()?;
-    let repetition_score = window.repeated_commands
+    let repetition_score = window
+        .repeated_commands
         .saturating_add(window.repeated_file_reads)
         .saturating_add(window.edit_reverts);
     let repetition_high = repetition_score >= policy.repetition_threshold;
     let evidence_low = window.new_evidence <= policy.max_new_evidence
         && window.new_relevant_entities <= policy.max_new_entities
         && window.accepted_subgoals == 0;
-    let verification_flat = window.verifier_improvement_milli.abs() <= policy.flat_verifier_delta_milli;
+    let verification_flat =
+        window.verifier_improvement_milli.abs() <= policy.flat_verifier_delta_milli;
     Ok(StagnationAssessment {
         stagnant: repetition_high && evidence_low && verification_flat,
         repetition_score,
@@ -608,12 +699,16 @@ impl RecoveryState {
         if self.escalations_used >= budget.maximum_escalations {
             return None;
         }
-        RecoveryAction::LADDER.get(usize::from(self.escalations_used)).copied()
+        RecoveryAction::LADDER
+            .get(usize::from(self.escalations_used))
+            .copied()
     }
 
     pub fn advance(self, budget: RecoveryBudget) -> Option<Self> {
         self.next(budget)?;
-        Some(Self { escalations_used: self.escalations_used.saturating_add(1) })
+        Some(Self {
+            escalations_used: self.escalations_used.saturating_add(1),
+        })
     }
 }
 
@@ -630,10 +725,18 @@ impl std::fmt::Display for EngineeringStateError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Storage(error) => write!(formatter, "engineering state storage failed: {error}"),
-            Self::InvalidInput(error) => write!(formatter, "invalid engineering state input: {error}"),
-            Self::InvalidStoredRecord(error) => write!(formatter, "invalid stored engineering state: {error}"),
-            Self::DuplicateRecord(id) => write!(formatter, "engineering memory record already exists: {id}"),
-            Self::UnknownRecord(id) => write!(formatter, "engineering memory record does not exist: {id}"),
+            Self::InvalidInput(error) => {
+                write!(formatter, "invalid engineering state input: {error}")
+            }
+            Self::InvalidStoredRecord(error) => {
+                write!(formatter, "invalid stored engineering state: {error}")
+            }
+            Self::DuplicateRecord(id) => {
+                write!(formatter, "engineering memory record already exists: {id}")
+            }
+            Self::UnknownRecord(id) => {
+                write!(formatter, "engineering memory record does not exist: {id}")
+            }
         }
     }
 }
@@ -641,7 +744,9 @@ impl std::fmt::Display for EngineeringStateError {
 impl std::error::Error for EngineeringStateError {}
 
 impl From<StorageError> for EngineeringStateError {
-    fn from(value: StorageError) -> Self { Self::Storage(value) }
+    fn from(value: StorageError) -> Self {
+        Self::Storage(value)
+    }
 }
 
 fn memory_priority(record: &EngineeringMemoryRecord) -> u8 {
@@ -669,8 +774,11 @@ fn handoff_digest(request: &HandoffRequest, records: &[EngineeringMemoryRecord])
     let mut digest = Sha256::new();
     digest.update(b"aer-handoff-compaction-v1\0");
     for value in [
-        request.task_id.as_str(), request.objective.as_str(), request.spec_version.as_str(),
-        request.repo_snapshot.as_str(), request.requested_action.as_str(),
+        request.task_id.as_str(),
+        request.objective.as_str(),
+        request.spec_version.as_str(),
+        request.repo_snapshot.as_str(),
+        request.requested_action.as_str(),
     ] {
         digest.update(value.as_bytes());
         digest.update(b"\0");
@@ -719,19 +827,26 @@ fn record_to_json(record: &EngineeringMemoryRecord) -> Value {
 }
 
 fn record_from_json(value: &Value) -> Result<EngineeringMemoryRecord, EngineeringStateError> {
-    let entities = json_array(value, "repository_entities")?.iter().map(|entity| {
-        Ok(RepositoryEntityRef {
-            entity_id: json_str(entity, "entity_id")?.to_owned(),
-            repo_snapshot: json_str(entity, "repo_snapshot")?.to_owned(),
+    let entities = json_array(value, "repository_entities")?
+        .iter()
+        .map(|entity| {
+            Ok(RepositoryEntityRef {
+                entity_id: json_str(entity, "entity_id")?.to_owned(),
+                repo_snapshot: json_str(entity, "repo_snapshot")?.to_owned(),
+            })
         })
-    }).collect::<Result<Vec<_>, EngineeringStateError>>()?;
-    let scope = value.get("invalidation_scope").ok_or_else(|| EngineeringStateError::InvalidStoredRecord("missing invalidation_scope".to_owned()))?;
+        .collect::<Result<Vec<_>, EngineeringStateError>>()?;
+    let scope = value.get("invalidation_scope").ok_or_else(|| {
+        EngineeringStateError::InvalidStoredRecord("missing invalidation_scope".to_owned())
+    })?;
     let record = EngineeringMemoryRecord {
         record_id: json_str(value, "record_id")?.to_owned(),
         kind: MemoryKind::parse(json_str(value, "kind")?)?,
         statement: json_str(value, "statement")?.to_owned(),
         validity: MemoryValidity::parse(json_str(value, "validity")?)?,
-        confidence_milli: u16::try_from(json_u64(value, "confidence_milli")?).map_err(|_| EngineeringStateError::InvalidStoredRecord("confidence overflow".to_owned()))?,
+        confidence_milli: u16::try_from(json_u64(value, "confidence_milli")?).map_err(|_| {
+            EngineeringStateError::InvalidStoredRecord("confidence overflow".to_owned())
+        })?,
         repo_snapshot: json_optional_str(value, "repo_snapshot")?.map(str::to_owned),
         spec_version: json_optional_str(value, "spec_version")?.map(str::to_owned),
         evidence_refs: json_string_array(value, "evidence_refs")?,
@@ -743,8 +858,12 @@ fn record_from_json(value: &Value) -> Result<EngineeringMemoryRecord, Engineerin
             producer_identities: json_string_array(scope, "producer_identities")?,
             dependency_identities: json_string_array(scope, "dependency_identities")?,
         },
-        hypothesis_state: json_optional_str(value, "hypothesis_state")?.map(HypothesisState::parse).transpose()?,
-        failure_class: json_optional_str(value, "failure_class")?.map(FailureClass::parse).transpose()?,
+        hypothesis_state: json_optional_str(value, "hypothesis_state")?
+            .map(HypothesisState::parse)
+            .transpose()?,
+        failure_class: json_optional_str(value, "failure_class")?
+            .map(FailureClass::parse)
+            .transpose()?,
         supersedes: json_optional_str(value, "supersedes")?.map(str::to_owned),
     };
     record.validate()?;
@@ -753,48 +872,100 @@ fn record_from_json(value: &Value) -> Result<EngineeringMemoryRecord, Engineerin
 
 fn invalidation_reason_json(reason: &InvalidationReason) -> Value {
     match reason {
-        InvalidationReason::RepositoryChange { from_snapshot, to_snapshot, entity_ids } => json!({"kind":"repository_change","from_snapshot":from_snapshot,"to_snapshot":to_snapshot,"entity_ids":entity_ids}),
-        InvalidationReason::SpecChanged { previous, current } => json!({"kind":"spec_changed","previous":previous,"current":current}),
-        InvalidationReason::EnvironmentChanged { previous, current } => json!({"kind":"environment_changed","previous":previous,"current":current}),
-        InvalidationReason::ProducerChanged { producer } => json!({"kind":"producer_changed","producer":producer}),
-        InvalidationReason::DependencyChanged { dependency } => json!({"kind":"dependency_changed","dependency":dependency}),
-        InvalidationReason::ContradictoryEvidence { evidence_ref } => json!({"kind":"contradictory_evidence","evidence_ref":evidence_ref}),
-        InvalidationReason::Superseded { by_record_id } => json!({"kind":"superseded","by_record_id":by_record_id}),
+        InvalidationReason::RepositoryChange {
+            from_snapshot,
+            to_snapshot,
+            entity_ids,
+        } => {
+            json!({"kind":"repository_change","from_snapshot":from_snapshot,"to_snapshot":to_snapshot,"entity_ids":entity_ids})
+        }
+        InvalidationReason::SpecChanged { previous, current } => {
+            json!({"kind":"spec_changed","previous":previous,"current":current})
+        }
+        InvalidationReason::EnvironmentChanged { previous, current } => {
+            json!({"kind":"environment_changed","previous":previous,"current":current})
+        }
+        InvalidationReason::ProducerChanged { producer } => {
+            json!({"kind":"producer_changed","producer":producer})
+        }
+        InvalidationReason::DependencyChanged { dependency } => {
+            json!({"kind":"dependency_changed","dependency":dependency})
+        }
+        InvalidationReason::ContradictoryEvidence { evidence_ref } => {
+            json!({"kind":"contradictory_evidence","evidence_ref":evidence_ref})
+        }
+        InvalidationReason::Superseded { by_record_id } => {
+            json!({"kind":"superseded","by_record_id":by_record_id})
+        }
     }
 }
 
-fn parse_payload(value: &Option<String>) -> Result<&Value, EngineeringStateError> {
-    let _ = value;
-    Err(EngineeringStateError::InvalidStoredRecord(
-        "internal payload parser placeholder must be replaced before validation".to_owned(),
-    ))
+fn parse_payload(value: &Option<String>) -> Result<Value, EngineeringStateError> {
+    let raw = value.as_deref().ok_or_else(|| {
+        EngineeringStateError::InvalidStoredRecord(
+            "engineering event requires inline JSON payload".to_owned(),
+        )
+    })?;
+    serde_json::from_str(raw).map_err(|error| {
+        EngineeringStateError::InvalidStoredRecord(format!(
+            "engineering event payload is not valid JSON: {error}"
+        ))
+    })
 }
 
 fn json_str<'a>(value: &'a Value, key: &str) -> Result<&'a str, EngineeringStateError> {
-    value.get(key).and_then(Value::as_str).ok_or_else(|| EngineeringStateError::InvalidStoredRecord(format!("missing string field {key}")))
+    value.get(key).and_then(Value::as_str).ok_or_else(|| {
+        EngineeringStateError::InvalidStoredRecord(format!("missing string field {key}"))
+    })
 }
 
-fn json_optional_str<'a>(value: &'a Value, key: &str) -> Result<Option<&'a str>, EngineeringStateError> {
+fn json_optional_str<'a>(
+    value: &'a Value,
+    key: &str,
+) -> Result<Option<&'a str>, EngineeringStateError> {
     match value.get(key) {
         None | Some(Value::Null) => Ok(None),
-        Some(value) => value.as_str().map(Some).ok_or_else(|| EngineeringStateError::InvalidStoredRecord(format!("field {key} must be string or null"))),
+        Some(value) => value.as_str().map(Some).ok_or_else(|| {
+            EngineeringStateError::InvalidStoredRecord(format!(
+                "field {key} must be string or null"
+            ))
+        }),
     }
 }
 
 fn json_u64(value: &Value, key: &str) -> Result<u64, EngineeringStateError> {
-    value.get(key).and_then(Value::as_u64).ok_or_else(|| EngineeringStateError::InvalidStoredRecord(format!("missing integer field {key}")))
+    value.get(key).and_then(Value::as_u64).ok_or_else(|| {
+        EngineeringStateError::InvalidStoredRecord(format!("missing integer field {key}"))
+    })
 }
 
 fn json_array<'a>(value: &'a Value, key: &str) -> Result<&'a Vec<Value>, EngineeringStateError> {
-    value.get(key).and_then(Value::as_array).ok_or_else(|| EngineeringStateError::InvalidStoredRecord(format!("missing array field {key}")))
+    value.get(key).and_then(Value::as_array).ok_or_else(|| {
+        EngineeringStateError::InvalidStoredRecord(format!("missing array field {key}"))
+    })
 }
 
 fn json_string_array(value: &Value, key: &str) -> Result<Vec<String>, EngineeringStateError> {
-    json_array(value, key)?.iter().map(|item| item.as_str().map(str::to_owned).ok_or_else(|| EngineeringStateError::InvalidStoredRecord(format!("array {key} contains non-string")))).collect()
+    json_array(value, key)?
+        .iter()
+        .map(|item| {
+            item.as_str().map(str::to_owned).ok_or_else(|| {
+                EngineeringStateError::InvalidStoredRecord(format!(
+                    "array {key} contains non-string"
+                ))
+            })
+        })
+        .collect()
 }
 
 fn require_nonempty(field: &str, value: &str) -> Result<(), EngineeringStateError> {
-    if value.trim().is_empty() { Err(EngineeringStateError::InvalidInput(format!("{field} cannot be empty"))) } else { Ok(()) }
+    if value.trim().is_empty() {
+        Err(EngineeringStateError::InvalidInput(format!(
+            "{field} cannot be empty"
+        )))
+    } else {
+        Ok(())
+    }
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -813,23 +984,53 @@ mod tests {
 
     #[test]
     fn stagnation_requires_all_three_documented_signals() {
-        let policy = StagnationPolicy { repetition_threshold: 5, max_new_evidence: 1, max_new_entities: 1, flat_verifier_delta_milli: 10 };
-        let stagnant = assess_stagnation(ProgressWindow {
-            repeated_commands: 3, repeated_file_reads: 2, edit_reverts: 1,
-            new_evidence: 0, new_relevant_entities: 0, verifier_improvement_milli: 0, accepted_subgoals: 0,
-        }, policy).expect("assessment");
+        let policy = StagnationPolicy {
+            repetition_threshold: 5,
+            max_new_evidence: 1,
+            max_new_entities: 1,
+            flat_verifier_delta_milli: 10,
+        };
+        let stagnant = assess_stagnation(
+            ProgressWindow {
+                repeated_commands: 3,
+                repeated_file_reads: 2,
+                edit_reverts: 1,
+                new_evidence: 0,
+                new_relevant_entities: 0,
+                verifier_improvement_milli: 0,
+                accepted_subgoals: 0,
+            },
+            policy,
+        )
+        .expect("assessment");
         assert!(stagnant.stagnant);
-        let progressing = assess_stagnation(ProgressWindow { new_evidence: 2, ..ProgressWindow {
-            repeated_commands: 3, repeated_file_reads: 2, edit_reverts: 1,
-            new_evidence: 0, new_relevant_entities: 0, verifier_improvement_milli: 0, accepted_subgoals: 0,
-        } }, policy).expect("assessment");
+        let progressing = assess_stagnation(
+            ProgressWindow {
+                new_evidence: 2,
+                ..ProgressWindow {
+                    repeated_commands: 3,
+                    repeated_file_reads: 2,
+                    edit_reverts: 1,
+                    new_evidence: 0,
+                    new_relevant_entities: 0,
+                    verifier_improvement_milli: 0,
+                    accepted_subgoals: 0,
+                }
+            },
+            policy,
+        )
+        .expect("assessment");
         assert!(!progressing.stagnant);
     }
 
     #[test]
     fn recovery_ladder_is_bounded_and_ordered() {
-        let budget = RecoveryBudget { maximum_escalations: 3 };
-        let mut state = RecoveryState { escalations_used: 0 };
+        let budget = RecoveryBudget {
+            maximum_escalations: 3,
+        };
+        let mut state = RecoveryState {
+            escalations_used: 0,
+        };
         assert_eq!(state.next(budget), Some(RecoveryAction::ToolRetry));
         state = state.advance(budget).expect("advance");
         assert_eq!(state.next(budget), Some(RecoveryAction::ContextRefresh));

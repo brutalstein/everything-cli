@@ -1,9 +1,13 @@
-use std::{fs, path::PathBuf, sync::atomic::{AtomicU64, Ordering}};
+use std::{
+    fs,
+    path::PathBuf,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use aer_core::engineering_state::{
-    assess_stagnation, EngineeringMemoryRecord, EngineeringStateStore, FailureClass, HandoffPolicy,
-    HandoffRequest, HypothesisState, InvalidationScope, MemoryKind, MemoryValidity, ProgressWindow,
-    RecoveryAction, RecoveryBudget, RecoveryState, RepositoryEntityRef, StagnationPolicy,
+    EngineeringMemoryRecord, EngineeringStateStore, FailureClass, HandoffPolicy, HandoffRequest,
+    HypothesisState, InvalidationScope, MemoryKind, MemoryValidity, ProgressWindow, RecoveryAction,
+    RecoveryBudget, RecoveryState, RepositoryEntityRef, StagnationPolicy, assess_stagnation,
 };
 use aer_repo::RepositoryChangeSet;
 
@@ -109,9 +113,15 @@ fn handoff_bench_compacts_verified_state_without_transcript_bloat() {
         )
         .expect("compact handoff");
 
-    let raw_trajectory = "read auth.rs; rerun test; inspect trace; reconsider Redis; rediscover expiry behavior; "
-        .repeat(120);
-    assert!(handoff.records.iter().any(|record| record.record_id == "fact-auth"));
+    let raw_trajectory =
+        "read auth.rs; rerun test; inspect trace; reconsider Redis; rediscover expiry behavior; "
+            .repeat(120);
+    assert!(
+        handoff
+            .records
+            .iter()
+            .any(|record| record.record_id == "fact-auth")
+    );
     assert!(handoff.records.iter().any(|record| {
         record.record_id == "hyp-redis"
             && record.hypothesis_state == Some(HypothesisState::Disproven)
@@ -177,8 +187,18 @@ fn handoff_bench_repository_change_invalidates_only_linked_current_memory() {
     let handoff = store
         .compact_handoff(&handoff_request(), HandoffPolicy::default())
         .expect("handoff");
-    assert!(!handoff.records.iter().any(|record| record.record_id == "fact-auth"));
-    assert!(handoff.records.iter().any(|record| record.record_id == "user-decision"));
+    assert!(
+        !handoff
+            .records
+            .iter()
+            .any(|record| record.record_id == "fact-auth")
+    );
+    assert!(
+        handoff
+            .records
+            .iter()
+            .any(|record| record.record_id == "user-decision")
+    );
     fs::remove_dir_all(root).expect("cleanup");
 }
 
