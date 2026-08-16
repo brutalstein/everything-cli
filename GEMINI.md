@@ -6,4 +6,4 @@ Read `AGENTS.md` first, then follow its required reading order (`STATUS.md`, `do
 
 Do not duplicate or reinterpret those rules here. If this file and `AGENTS.md` ever appear to conflict, `AGENTS.md` is authoritative for implementation temperament; repository architecture authority remains defined by `docs/00_READ_ME_FIRST.md`.
 
-This file is a provider-native compatibility bootstrap only. The everything runtime compiles a bounded, source-hashed Architecture Context Capsule for model calls; provider-native memory/context files are never a substitute for that control-plane context or for AER permission/tool authority.
+This file is a provider-native compatibility bootstrap only. The everything runtime compiles a bounded, source-hashed Architecture Context Capsule for model calls; provider-native memory/context files are never a substitute for that control-plane context or for AER permission/tool authority. When an AER-managed agent session exposes tools, the typed AER Tool ABI and its permission controller remain authoritative even if Gemini CLI has broader native capabilities.
