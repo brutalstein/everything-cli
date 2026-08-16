@@ -8,6 +8,7 @@ pub use model::*;
 
 use sha2::{Digest, Sha256};
 
+pub(crate) use crate::RepositoryIndex;
 pub(crate) use build::{BuildTopology, collect_project_topology};
 pub(crate) use graph_write::rebuild_snapshot_views;
 pub(crate) use schema::migrate_v1_to_v2;
