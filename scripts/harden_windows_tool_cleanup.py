@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# One-shot hardening trigger for transient target-Windows temp-directory locks.
 path = Path("crates/aer-core/src/tools.rs")
 text = path.read_text(encoding="utf-8")
 
