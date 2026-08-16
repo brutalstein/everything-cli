@@ -21,8 +21,8 @@ use aer_domain::{
     state_machines::TaskState,
 };
 use aer_workspace::{
-    parallel::{list_managed_worktrees, TaskChangeSet},
     SnapshotPolicy, WorkspaceSnapshot,
+    parallel::{TaskChangeSet, list_managed_worktrees},
 };
 
 fn demand() -> ResourceEstimate {
@@ -172,7 +172,9 @@ fn resource_bench_scheduler_is_bounded_fair_and_detects_runtime_overlap() {
     left.priority.unblock_value = 10;
     right.priority.unblock_value = 9;
     let mut overlap_runtime = coordinator(2);
-    overlap_runtime.register_task(&left, 1).expect("left register");
+    overlap_runtime
+        .register_task(&left, 1)
+        .expect("left register");
     overlap_runtime
         .register_task(&right, 1)
         .expect("right register");
@@ -182,13 +184,15 @@ fn resource_bench_scheduler_is_bounded_fair_and_detects_runtime_overlap() {
     overlap_runtime
         .admit_task(&right, "worker-right", 1)
         .expect("right admit");
-    assert!(overlap_runtime
-        .observe_actual_write_scope(
-            "left",
-            WriteScope::new(["src/shared"]).expect("actual left")
-        )
-        .expect("left observation")
-        .is_empty());
+    assert!(
+        overlap_runtime
+            .observe_actual_write_scope(
+                "left",
+                WriteScope::new(["src/shared"]).expect("actual left")
+            )
+            .expect("left observation")
+            .is_empty()
+    );
     let conflicts = overlap_runtime
         .observe_actual_write_scope(
             "right",
@@ -308,28 +312,34 @@ fn resource_bench_integration_rejects_semantic_conflict_and_requires_global_proo
     let clean_right = change_set("right", "src/server.rs");
     let plan = IntegrationPlan::build(vec![clean_left, clean_right], 4).expect("clean plan");
     let mut barrier = IntegrationBarrier::new(plan);
-    assert!(barrier
-        .finalize(IntegrationVerification {
-            passed: true,
-            integration_head: "not-merged".to_owned(),
-            proof_manifest_ids: BTreeSet::from(["proof".to_owned()]),
-            environment_fingerprint: "env".to_owned(),
-            repo_snapshot: "repo".to_owned(),
-        })
-        .is_err());
-    barrier.record_merge("left", "merge-left").expect("merge left");
+    assert!(
+        barrier
+            .finalize(IntegrationVerification {
+                passed: true,
+                integration_head: "not-merged".to_owned(),
+                proof_manifest_ids: BTreeSet::from(["proof".to_owned()]),
+                environment_fingerprint: "env".to_owned(),
+                repo_snapshot: "repo".to_owned(),
+            })
+            .is_err()
+    );
+    barrier
+        .record_merge("left", "merge-left")
+        .expect("merge left");
     barrier
         .record_merge("right", "merge-right")
         .expect("merge right");
-    assert!(barrier
-        .finalize(IntegrationVerification {
-            passed: false,
-            integration_head: "merge-right".to_owned(),
-            proof_manifest_ids: BTreeSet::from(["proof".to_owned()]),
-            environment_fingerprint: "env".to_owned(),
-            repo_snapshot: "repo".to_owned(),
-        })
-        .is_err());
+    assert!(
+        barrier
+            .finalize(IntegrationVerification {
+                passed: false,
+                integration_head: "merge-right".to_owned(),
+                proof_manifest_ids: BTreeSet::from(["proof".to_owned()]),
+                environment_fingerprint: "env".to_owned(),
+                repo_snapshot: "repo".to_owned(),
+            })
+            .is_err()
+    );
     let accepted = barrier
         .finalize(IntegrationVerification {
             passed: true,
@@ -345,28 +355,32 @@ fn resource_bench_integration_rejects_semantic_conflict_and_requires_global_proo
 #[test]
 fn resource_bench_measures_positive_parallel_utility_instead_of_assuming_it() {
     let policy = ParallelUtilityPolicy::new(100, 50).expect("utility policy");
-    assert!(ParallelUtilityMeasurement {
-        serial_wall_ms: 1_000,
-        parallel_wall_ms: 600,
-        coordination_ms: 100,
-        serial_verified_successes: 2,
-        parallel_verified_successes: 2,
-        serial_cost_microusd: 100,
-        parallel_cost_microusd: 130,
-    }
-    .positive(policy)
-    .expect("positive utility"));
-    assert!(!ParallelUtilityMeasurement {
-        serial_wall_ms: 1_000,
-        parallel_wall_ms: 700,
-        coordination_ms: 250,
-        serial_verified_successes: 2,
-        parallel_verified_successes: 2,
-        serial_cost_microusd: 100,
-        parallel_cost_microusd: 200,
-    }
-    .positive(policy)
-    .expect("negative utility"));
+    assert!(
+        ParallelUtilityMeasurement {
+            serial_wall_ms: 1_000,
+            parallel_wall_ms: 600,
+            coordination_ms: 100,
+            serial_verified_successes: 2,
+            parallel_verified_successes: 2,
+            serial_cost_microusd: 100,
+            parallel_cost_microusd: 130,
+        }
+        .positive(policy)
+        .expect("positive utility")
+    );
+    assert!(
+        !ParallelUtilityMeasurement {
+            serial_wall_ms: 1_000,
+            parallel_wall_ms: 700,
+            coordination_ms: 250,
+            serial_verified_successes: 2,
+            parallel_verified_successes: 2,
+            serial_cost_microusd: 100,
+            parallel_cost_microusd: 200,
+        }
+        .positive(policy)
+        .expect("negative utility")
+    );
 }
 
 fn temp_dir(label: &str) -> PathBuf {
@@ -460,8 +474,7 @@ fn resource_bench_real_worktrees_preserve_user_state_and_integrate_verified_bran
             LocalBranchEvidence {
                 task_id: "left".to_owned(),
                 changes: left_changes.clone(),
-                semantic_write_set: SemanticWriteSet::new(["module:left"])
-                    .expect("left semantics"),
+                semantic_write_set: SemanticWriteSet::new(["module:left"]).expect("left semantics"),
                 local_verification_passed: true,
                 evidence_ids: BTreeSet::from(["left-proof".to_owned()]),
             },
