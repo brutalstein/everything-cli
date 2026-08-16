@@ -153,9 +153,7 @@ impl ParallelRuntimeCoordinator {
         task_id: &str,
         actual: WriteScope,
     ) -> Result<Vec<RuntimeWriteConflict>, ParallelExecutionError> {
-        Ok(self
-            .scheduler
-            .observe_actual_write_scope(task_id, actual)?)
+        Ok(self.scheduler.observe_actual_write_scope(task_id, actual)?)
     }
 
     pub fn request_cancellation(
@@ -172,10 +170,7 @@ impl ParallelRuntimeCoordinator {
     /// Completes cancellation only after the caller confirms child/tool/process
     /// cleanup is drained. Runtime resource+lease release happens before
     /// scheduler ownership is removed.
-    pub fn complete_cancellation(
-        &mut self,
-        task_id: &str,
-    ) -> Result<(), ParallelExecutionError> {
+    pub fn complete_cancellation(&mut self, task_id: &str) -> Result<(), ParallelExecutionError> {
         self.runtime.begin_cancellation_cleanup(task_id)?;
         self.runtime.complete_cancellation(task_id)?;
         self.scheduler.complete(task_id).map_err(|_| {
@@ -197,11 +192,9 @@ impl ParallelRuntimeCoordinator {
         let Some(candidate) = self.scheduler.preemption_candidate(incoming).cloned() else {
             return Ok(None);
         };
-        let phase = self.runtime.request_cancellation(
-            &candidate.task_id,
-            now_ms,
-            cleanup_grace_ms,
-        )?;
+        let phase =
+            self.runtime
+                .request_cancellation(&candidate.task_id, now_ms, cleanup_grace_ms)?;
         Ok(Some(PreemptionRecord {
             preempted_task_id: candidate.task_id,
             incoming_task_id: incoming.task_id.clone(),
@@ -262,9 +255,7 @@ impl LocalBranchEvidence {
             ));
         }
         if self.evidence_ids.is_empty() {
-            return Err(IntegrationError::MissingLocalEvidence(
-                self.task_id.clone(),
-            ));
+            return Err(IntegrationError::MissingLocalEvidence(self.task_id.clone()));
         }
         for path in &self.changes.changed_paths {
             validate_repo_relative_path(path)?;
@@ -326,10 +317,7 @@ impl IntegrationPlan {
             } else {
                 base_commit = Some(candidate.changes.base_commit.clone());
             }
-            if by_id
-                .insert(candidate.task_id.clone(), candidate)
-                .is_some()
-            {
+            if by_id.insert(candidate.task_id.clone(), candidate).is_some() {
                 return Err(IntegrationError::DuplicateTaskEvidence);
             }
         }
@@ -525,10 +513,7 @@ pub struct ParallelUtilityMeasurement {
 }
 
 impl ParallelUtilityMeasurement {
-    pub fn positive(
-        self,
-        policy: ParallelUtilityPolicy,
-    ) -> Result<bool, ParallelUtilityError> {
+    pub fn positive(self, policy: ParallelUtilityPolicy) -> Result<bool, ParallelUtilityError> {
         if self.serial_wall_ms == 0 {
             return Err(ParallelUtilityError::InvalidMeasurement);
         }
@@ -590,10 +575,7 @@ pub struct OrphanRegistry {
 }
 
 impl OrphanRegistry {
-    pub fn new(
-        max_records: usize,
-        max_cleanup_per_sweep: usize,
-    ) -> Result<Self, OrphanError> {
+    pub fn new(max_records: usize, max_cleanup_per_sweep: usize) -> Result<Self, OrphanError> {
         if max_records == 0 || max_cleanup_per_sweep == 0 || max_cleanup_per_sweep > max_records {
             return Err(OrphanError::InvalidPolicy);
         }
@@ -706,10 +688,7 @@ fn normalized_path(path: &Path) -> String {
 pub enum ParallelExecutionError {
     Runtime(RuntimeSafetyError),
     Scheduling(aer_domain::scheduling::SchedulingError),
-    UnsupportedRegistrationState {
-        task_id: String,
-        state: TaskState,
-    },
+    UnsupportedRegistrationState { task_id: String, state: TaskState },
     CoordinatorInvariant(&'static str),
 }
 

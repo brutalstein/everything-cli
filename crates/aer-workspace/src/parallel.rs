@@ -9,8 +9,7 @@
 use std::{
     error::Error,
     ffi::OsString,
-    fmt,
-    fs,
+    fmt, fs,
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -246,10 +245,7 @@ impl TaskWorktree {
                 OsString::from("diff"),
                 OsString::from("--name-only"),
                 OsString::from("-z"),
-                OsString::from(format!(
-                    "{}..{}",
-                    self.integration_base_commit, head_commit
-                )),
+                OsString::from(format!("{}..{}", self.integration_base_commit, head_commit)),
                 OsString::from("--"),
             ],
             SideEffectClass::PureRead,
@@ -531,11 +527,8 @@ fn run_git_with_env<I>(
 where
     I: IntoIterator<Item = OsString>,
 {
-    let policy = ExecutionPolicy::trusted_workspace(
-        cwd,
-        Duration::from_secs(30),
-        INSPECTION_OUTPUT_LIMIT,
-    )?;
+    let policy =
+        ExecutionPolicy::trusted_workspace(cwd, Duration::from_secs(30), INSPECTION_OUTPUT_LIMIT)?;
     let mut spec = CommandSpec::new("git", cwd, side_effect).args(args);
     for (name, value) in environment {
         spec = spec.env(*name, *value);
@@ -619,8 +612,12 @@ impl fmt::Display for ParallelWorkspaceError {
                 error.fmt(formatter)
             }
             Self::Io(error) => error.fmt(formatter),
-            Self::InvalidBranchName(branch) => write!(formatter, "invalid Git branch name: {branch}"),
-            Self::EmptyBranchPrefix => formatter.write_str("managed branch prefix must be non-empty"),
+            Self::InvalidBranchName(branch) => {
+                write!(formatter, "invalid Git branch name: {branch}")
+            }
+            Self::EmptyBranchPrefix => {
+                formatter.write_str("managed branch prefix must be non-empty")
+            }
             Self::DestinationNotEmpty(path) => write!(
                 formatter,
                 "parallel worktree destination is not empty: {}",
@@ -662,7 +659,9 @@ impl fmt::Display for ParallelWorkspaceError {
 impl Error for ParallelWorkspaceError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            Self::Workspace(error) | Self::Merge(error) | Self::MergeBaseCheck(error) => Some(error),
+            Self::Workspace(error) | Self::Merge(error) | Self::MergeBaseCheck(error) => {
+                Some(error)
+            }
             Self::Io(error) => Some(error),
             _ => None,
         }

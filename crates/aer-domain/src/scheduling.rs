@@ -166,8 +166,7 @@ impl PrioritySignals {
             + i64::from(self.information_gain_value)
             + i64::from(self.user_waiting_value)
             + i64::from(self.age_value);
-        let negative = i64::from(self.expected_cost_penalty)
-            + i64::from(self.merge_conflict_risk);
+        let negative = i64::from(self.expected_cost_penalty) + i64::from(self.merge_conflict_risk);
         positive - negative
     }
 }
@@ -286,11 +285,7 @@ impl TaskGraph {
             .map(|task| task.task_id.clone())
             .collect::<Vec<_>>();
         for task_id in &ready {
-            self.transition_task(
-                task_id,
-                TaskState::Ready,
-                TaskTransitionContext::default(),
-            )?;
+            self.transition_task(task_id, TaskState::Ready, TaskTransitionContext::default())?;
         }
         Ok(ready)
     }
@@ -637,7 +632,10 @@ impl BoundedScheduler {
         }
 
         for other in self.active.values().chain(selected.iter()) {
-            if task.expected_write_scope.overlaps(&other.expected_write_scope) {
+            if task
+                .expected_write_scope
+                .overlaps(&other.expected_write_scope)
+            {
                 return Some(ScheduleBlockReason::PredictedWriteOverlap {
                     with_task: other.task_id.clone(),
                 });
@@ -731,7 +729,10 @@ fn normalize_repo_path(raw: &str) -> Result<String, SchedulingError> {
     if raw.is_empty()
         || raw.starts_with('/')
         || raw.starts_with("//")
-        || raw.split('/').next().is_some_and(|first| first.ends_with(':'))
+        || raw
+            .split('/')
+            .next()
+            .is_some_and(|first| first.ends_with(':'))
     {
         return Err(SchedulingError::UnsafeWritePath(raw));
     }
@@ -796,14 +797,18 @@ impl fmt::Display for SchedulingError {
             Self::UnknownDependency {
                 task_id,
                 dependency,
-            } => write!(formatter, "task {task_id} has unknown dependency {dependency}"),
+            } => write!(
+                formatter,
+                "task {task_id} has unknown dependency {dependency}"
+            ),
             Self::DependencyCycle => formatter.write_str("task dependency graph contains a cycle"),
             Self::UnknownTask(task) => write!(formatter, "unknown task: {task}"),
-            Self::UnsafeWritePath(path) => write!(formatter, "unsafe repository write path: {path}"),
+            Self::UnsafeWritePath(path) => {
+                write!(formatter, "unsafe repository write path: {path}")
+            }
             Self::EmptySemanticKey => formatter.write_str("semantic write key must be non-empty"),
-            Self::InvalidSchedulerPolicy => formatter.write_str(
-                "scheduler policy requires 0 < max_parallel_tasks <= max_ready_tasks",
-            ),
+            Self::InvalidSchedulerPolicy => formatter
+                .write_str("scheduler policy requires 0 < max_parallel_tasks <= max_ready_tasks"),
             Self::InvalidRunWeight => {
                 formatter.write_str("run fairness identity must be non-empty and weight nonzero")
             }
@@ -821,7 +826,10 @@ impl fmt::Display for SchedulingError {
             Self::TaskAlreadyActive(task) => write!(formatter, "task already active: {task}"),
             Self::TaskNotActive(task) => write!(formatter, "task is not active: {task}"),
             Self::AdmissionBlocked { task_id, reason } => {
-                write!(formatter, "task {task_id} is blocked from admission: {reason:?}")
+                write!(
+                    formatter,
+                    "task {task_id} is blocked from admission: {reason:?}"
+                )
             }
             Self::Transition(error) => error.fmt(formatter),
         }
@@ -954,8 +962,8 @@ mod tests {
         let a2 = task("a2", "run-a", "a/two");
         let b1 = task("b1", "run-b", "b/one");
         let b2 = task("b2", "run-b", "b/two");
-        let graph = TaskGraph::new(vec![a1.clone(), a2.clone(), b1.clone(), b2.clone()])
-            .expect("graph");
+        let graph =
+            TaskGraph::new(vec![a1.clone(), a2.clone(), b1.clone(), b2.clone()]).expect("graph");
         let policy = SchedulerPolicy::new(2, 8).expect("policy");
         let mut scheduler = BoundedScheduler::new(policy);
         let wave = scheduler.plan_wave(&graph).expect("wave");
@@ -988,7 +996,10 @@ mod tests {
             .observe_actual_write_scope("a", WriteScope::new(["src/shared"]).expect("scope"))
             .expect("first observation");
         let conflicts = scheduler
-            .observe_actual_write_scope("b", WriteScope::new(["src/shared/file.rs"]).expect("scope"))
+            .observe_actual_write_scope(
+                "b",
+                WriteScope::new(["src/shared/file.rs"]).expect("scope"),
+            )
             .expect("second observation");
         assert_eq!(conflicts.len(), 1);
         assert!(!conflicts[0].predicted_overlap);
