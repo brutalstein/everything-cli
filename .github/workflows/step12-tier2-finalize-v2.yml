@@ -1,0 +1,331 @@
+name: Step 12 Tier-2 final verification
+
+on:
+  push:
+    branches:
+      - agent/step-12-ri2-long-horizon-recovery
+    paths:
+      - '.github/workflows/step12-tier2-finalize-v2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: agent/step-12-ri2-long-horizon-recovery
+          fetch-depth: 0
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - name: Apply environment-bound Tier-2 view semantics
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          model = Path('crates/aer-repo/src/ri2/model.rs')
+          text = model.read_text(encoding='utf-8')
+          block = text.split('pub struct ViewState', 1)[1].split('}', 1)[0]
+          if 'environment_fingerprint' not in block:
+              text, count = re.subn(
+                  r'(pub struct ViewState \{.*?    pub producer_version: String,\n)',
+                  r'\1    pub environment_fingerprint: Option<String>,\n',
+                  text,
+                  count=1,
+                  flags=re.S,
+              )
+              if count != 1:
+                  raise SystemExit(f'ViewState patch count={count}')
+          model.write_text(text, encoding='utf-8')
+
+          graph = Path('crates/aer-repo/src/ri2/graph_write.rs')
+          text = graph.read_text(encoding='utf-8')
+          pattern = re.compile(
+              r'    insert_view_state\(\n\s*tx,\n\s*snapshot_id,\n\s*"project",\n\s*CARGO_PRODUCER,\n\s*CARGO_PRODUCER_VERSION,\n\s*topology\.state,\n\s*CapabilityTier::Tier2Project,\n\s*\)\?;',
+              re.S,
+          )
+          replacement = '''    insert_project_view_state(
+              tx,
+              snapshot_id,
+              CARGO_PRODUCER,
+              CARGO_PRODUCER_VERSION,
+              topology.environment_fingerprint.as_deref(),
+              topology.state,
+          )?;'''
+          text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'project view patch count={count}')
+          if 'fn insert_project_view_state(' not in text:
+              marker = '\nstruct GraphNodeWriter'
+              helper = '''
+
+          fn insert_project_view_state(
+              tx: &Transaction<'_>,
+              snapshot_id: &str,
+              producer_id: &str,
+              producer_version: &str,
+              environment_fingerprint: Option<&str>,
+              freshness: FreshnessState,
+          ) -> Result<(), RepoError> {
+              tx.execute(
+                  "INSERT INTO ri2_view_state(snapshot_id,view_name,producer_id,producer_version,environment_fingerprint,freshness,capability_tier) VALUES(?,?,?,?,?,?,?)",
+                  params![
+                      snapshot_id,
+                      "project",
+                      producer_id,
+                      producer_version,
+                      environment_fingerprint,
+                      freshness.as_str(),
+                      i64::from(CapabilityTier::Tier2Project.as_u8())
+                  ],
+              )?;
+              Ok(())
+          }
+          '''
+              if marker not in text:
+                  raise SystemExit('graph helper marker missing')
+              text = text.replace(marker, helper + marker, 1)
+          graph.write_text(text, encoding='utf-8')
+
+          query = Path('crates/aer-repo/src/ri2/graph_query.rs')
+          text = query.read_text(encoding='utf-8')
+          select_old = 'SELECT view_name,producer_id,producer_version,freshness,capability_tier FROM ri2_view_state WHERE snapshot_id=? ORDER BY view_name'
+          select_new = 'SELECT view_name,producer_id,producer_version,environment_fingerprint,freshness,capability_tier FROM ri2_view_state WHERE snapshot_id=? ORDER BY view_name'
+          if select_old not in text:
+              raise SystemExit('view state SELECT target missing')
+          text = text.replace(select_old, select_new, 1)
+          text, count = re.subn(
+              r'(row\.get::<_, String>\(0\)\?,\n\s*row\.get::<_, String>\(1\)\?,\n\s*row\.get::<_, String>\(2\)\?,\n)\s*row\.get::<_, String>\(3\)\?,\n\s*row\.get::<_, i64>\(4\)\?,',
+              r'\1                row.get::<_, Option<String>>(3)?,\n                row.get::<_, String>(4)?,\n                row.get::<_, i64>(5)?,',
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit(f'view row patch count={count}')
+          old = 'let (view_name, producer_id, producer_version, freshness, tier) = row?;'
+          new = 'let (view_name, producer_id, producer_version, environment_fingerprint, freshness, tier) = row?;'
+          if old not in text:
+              raise SystemExit('view unpack target missing')
+          text = text.replace(old, new, 1)
+          text, count = re.subn(
+              r'(\s+producer_version,\n)(\s+freshness: FreshnessState::parse\(&freshness\)\?,)',
+              r'\1                environment_fingerprint,\n\2',
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit(f'view model patch count={count}')
+          query.write_text(text, encoding='utf-8')
+
+          freshness = Path('crates/aer-repo/src/ri2/freshness.rs')
+          text = freshness.read_text(encoding='utf-8')
+          if 'use aer_environment::EnvironmentFingerprint;' not in text:
+              text = 'use aer_environment::EnvironmentFingerprint;\n' + text
+          start = text.find('        let project_producer = self')
+          end = text.find('        let mut statement = self.connection.prepare(', start)
+          if start < 0 or end < 0:
+              raise SystemExit(f'freshness bounds start={start} end={end}')
+          replacement = '''        let project_producer = self
+              .connection
+              .query_row(
+                  "SELECT producer_id,producer_version,environment_fingerprint FROM ri2_view_state WHERE snapshot_id=? AND view_name='project'",
+                  [snapshot_id],
+                  |row| {
+                      Ok((
+                          row.get::<_, String>(0)?,
+                          row.get::<_, String>(1)?,
+                          row.get::<_, Option<String>>(2)?,
+                      ))
+                  },
+              )
+              .optional()?;
+          if project_producer.as_ref().is_none_or(|(id, version, _)| {
+              id != CARGO_PRODUCER || version != CARGO_PRODUCER_VERSION
+          }) {
+              return Ok(true);
+          }
+          if let Some((_, _, Some(stored_environment))) = project_producer {
+              let repo_root: String = self.connection.query_row(
+                  "SELECT repo_root FROM snapshots WHERE snapshot_id=?",
+                  [snapshot_id],
+                  |row| row.get(0),
+              )?;
+              let current_environment = match EnvironmentFingerprint::discover(repo_root) {
+                  Ok(fingerprint) => fingerprint.digest,
+                  Err(_) => return Ok(true),
+              };
+              if current_environment != stored_environment {
+                  return Ok(true);
+              }
+          }
+
+          '''
+          freshness.write_text(text[:start] + replacement + text[end:], encoding='utf-8')
+
+          test = Path('crates/aer-repo/tests/repo_intel_2_tier2.rs')
+          test.write_text(r'''use std::{
+              fs,
+              path::{Path, PathBuf},
+              process::Command,
+              sync::atomic::{AtomicU64, Ordering},
+              time::{SystemTime, UNIX_EPOCH},
+          };
+
+          use aer_repo::{CapabilityTier, FreshnessState, IndexPolicy, RepositoryIndex};
+
+          static COUNTER: AtomicU64 = AtomicU64::new(0);
+
+          struct Fixture {
+              base: PathBuf,
+              repo: PathBuf,
+              index: PathBuf,
+          }
+
+          impl Fixture {
+              fn new() -> Self {
+                  let nonce = COUNTER.fetch_add(1, Ordering::Relaxed);
+                  let now = SystemTime::now()
+                      .duration_since(UNIX_EPOCH)
+                      .expect("system time")
+                      .as_nanos();
+                  let base = std::env::temp_dir().join(format!("aer-ri2-tier2-{now}-{nonce}"));
+                  let repo = base.join("repo");
+                  let index = base.join("index.sqlite");
+                  fs::create_dir_all(repo.join("src")).expect("root src");
+                  fs::create_dir_all(repo.join("helper/src")).expect("helper src");
+                  fs::write(
+                      repo.join("Cargo.toml"),
+                      r#"[workspace]
+          members = ["helper"]
+          resolver = "3"
+
+          [package]
+          name = "ri2-tier2-fixture"
+          version = "0.1.0"
+          edition = "2024"
+
+          [dependencies]
+          helper = { path = "helper" }
+          "#,
+                  )
+                  .expect("root manifest");
+                  fs::write(
+                      repo.join("src/lib.rs"),
+                      "pub fn root_marker() -> bool { helper::helper_marker() }\n",
+                  )
+                  .expect("root source");
+                  fs::write(
+                      repo.join("helper/Cargo.toml"),
+                      r#"[package]
+          name = "helper"
+          version = "0.1.0"
+          edition = "2024"
+          "#,
+                  )
+                  .expect("helper manifest");
+                  fs::write(
+                      repo.join("helper/src/lib.rs"),
+                      "pub fn helper_marker() -> bool { true }\n",
+                  )
+                  .expect("helper source");
+                  run(&repo, "cargo", &["generate-lockfile", "--offline"]);
+                  run(&repo, "git", &["init"]);
+                  run(&repo, "git", &["config", "user.email", "aer@example.invalid"]);
+                  run(&repo, "git", &["config", "user.name", "AER Test"]);
+                  run(&repo, "git", &["add", "."]);
+                  run(&repo, "git", &["commit", "-m", "initial"]);
+                  Self { base, repo, index }
+              }
+          }
+
+          impl Drop for Fixture {
+              fn drop(&mut self) {
+                  let _ = fs::remove_dir_all(&self.base);
+              }
+          }
+
+          fn run(repo: &Path, program: &str, args: &[&str]) {
+              let status = Command::new(program)
+                  .args(args)
+                  .current_dir(repo)
+                  .status()
+                  .expect("fixture command");
+              assert!(status.success(), "{program} {args:?} failed");
+          }
+
+          #[test]
+          fn tier2_project_view_resolves_local_dependency_and_is_environment_bound() {
+              let fixture = Fixture::new();
+              let mut index =
+                  RepositoryIndex::open(&fixture.index, IndexPolicy::default()).expect("open index");
+              let first = index.refresh(&fixture.repo).expect("first refresh");
+              let snapshot = first.snapshot.snapshot_id.clone();
+
+              let views = index.ri2_view_states(&snapshot).expect("view states");
+              let project = views
+                  .iter()
+                  .find(|view| view.view_name == "project")
+                  .expect("project view");
+              assert_eq!(project.freshness, FreshnessState::Current);
+              assert_eq!(project.capability_tier, CapabilityTier::Tier2Project);
+              assert!(project.environment_fingerprint.is_some());
+
+              let packages = index.build_packages(&snapshot).expect("packages");
+              assert_eq!(packages.len(), 2);
+              assert!(packages.iter().any(|package| package.name == "helper"));
+              assert!(packages.iter().any(|package| package.name == "ri2-tier2-fixture"));
+              let dependencies = index.project_dependencies(&snapshot).expect("dependencies");
+              assert!(dependencies.iter().any(|dependency| {
+                  dependency.target_name == "helper" && dependency.target_package_id.is_some()
+              }));
+
+              assert!(index.refresh(&fixture.repo).expect("stable refresh").already_current);
+              drop(index);
+
+              let connection = rusqlite::Connection::open(&fixture.index).expect("direct index open");
+              connection
+                  .execute(
+                      "UPDATE ri2_view_state SET environment_fingerprint='stale-env-v0' WHERE snapshot_id=? AND view_name='project'",
+                      [&snapshot],
+                  )
+                  .expect("simulate environment provenance drift");
+              drop(connection);
+
+              let mut index =
+                  RepositoryIndex::open(&fixture.index, IndexPolicy::default()).expect("reopen index");
+              let rebuilt = index.refresh(&fixture.repo).expect("environment rebuild");
+              assert_eq!(rebuilt.snapshot.snapshot_id, snapshot);
+              assert!(!rebuilt.already_current);
+              let project = index
+                  .ri2_view_states(&snapshot)
+                  .expect("rebuilt views")
+                  .into_iter()
+                  .find(|view| view.view_name == "project")
+                  .expect("rebuilt project view");
+              assert!(project.environment_fingerprint.is_some());
+              assert_ne!(project.environment_fingerprint.as_deref(), Some("stale-env-v0"));
+          }
+          ''', encoding='utf-8')
+      - name: Canonical format
+        run: cargo +1.97.1 fmt --all
+      - name: Refresh lockfile
+        run: cargo +1.97.1 check -p aer-repo
+      - name: Frozen-lock lint
+        run: cargo +1.97.1 clippy --locked -p aer-repo --all-targets -- -D warnings
+      - name: Existing RepoIntelBench
+        run: cargo +1.97.1 test --locked -p aer-repo --test repo_intel_2_bench
+      - name: Tier-2 RepoIntelBench
+        run: cargo +1.97.1 test --locked -p aer-repo --test repo_intel_2_tier2
+      - name: Full aer-repo regression
+        run: cargo +1.97.1 test --locked -p aer-repo --all-targets
+      - name: Commit verified Tier-2 finalization
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Cargo.lock crates/aer-repo
+          git diff --cached --quiet && exit 0
+          git commit -m "Finalize RI2 Tier-2 provenance and topology"
+          git push origin HEAD:agent/step-12-ri2-long-horizon-recovery
