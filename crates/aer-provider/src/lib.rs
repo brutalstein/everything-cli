@@ -384,7 +384,7 @@ impl ReferenceProvider {
     }
 
     #[must_use]
-    pub fn scripted<I>(steps: I)
+    pub fn scripted<I>(steps: I) -> Self
     where
         I: IntoIterator<Item = Result<String, ProviderError>>,
     {

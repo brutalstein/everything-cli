@@ -1,4 +1,10 @@
-use std::{env, error::Error, ffi::OsString, io, path::{Path, PathBuf}};
+use std::{
+    env,
+    error::Error,
+    ffi::OsString,
+    io,
+    path::{Path, PathBuf},
+};
 
 use aer_core::model_context::ArchitectureContextCapsule;
 use aer_provider::{
@@ -53,7 +59,10 @@ enum ProviderCommand {
         provider: String,
         #[arg(long)]
         model: Option<String>,
-        #[arg(long, default_value = "State the product name and one architecture rule you were given.")]
+        #[arg(
+            long,
+            default_value = "State the product name and one architecture rule you were given."
+        )]
         prompt: String,
         #[arg(long)]
         json: bool,
@@ -71,9 +80,13 @@ pub(crate) fn try_run_provider_surface() -> Result<bool, Box<dyn Error>> {
     }
     let cli = ProviderSurface::try_parse_from(args)?;
     let cwd = env::current_dir()?;
-    let workspace = cli
-        .workspace
-        .map_or(cwd.clone(), |path| if path.is_absolute() { path } else { cwd.join(path) });
+    let workspace = cli.workspace.map_or(cwd.clone(), |path| {
+        if path.is_absolute() {
+            path
+        } else {
+            cwd.join(path)
+        }
+    });
 
     match cli.command {
         ProviderTopLevel::Providers { json } => print_providers(&workspace, json)?,
@@ -208,7 +221,11 @@ pub(crate) fn provider_login(
     match provider {
         DelegatedProviderKind::Codex => println!(
             "Opening the official Codex {} login flow…",
-            if device { "device-code" } else { "ChatGPT OAuth" }
+            if device {
+                "device-code"
+            } else {
+                "ChatGPT OAuth"
+            }
         ),
         DelegatedProviderKind::Claude => {
             println!("Opening the official Claude Code browser authentication flow…");
@@ -231,7 +248,10 @@ pub(crate) fn provider_login(
 pub(crate) fn provider_logout(path: &Path, provider: &str) -> Result<(), Box<dyn Error>> {
     let provider = parse_provider(provider)?;
     DelegatedCliProvider::logout(provider, path)?;
-    println!("{} session cleared by the vendor CLI", provider.display_name());
+    println!(
+        "{} session cleared by the vendor CLI",
+        provider.display_name()
+    );
     Ok(())
 }
 
@@ -324,7 +344,10 @@ pub(crate) fn provider_smoke(
             .map_or_else(|| "unknown".to_owned(), |value| value.to_string())
     );
     println!("  events     {}", trace.raw_event_count);
-    println!("  context    {}", short_id(&trace.architecture_context_digest));
+    println!(
+        "  context    {}",
+        short_id(&trace.architecture_context_digest)
+    );
     Ok(())
 }
 

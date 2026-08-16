@@ -78,7 +78,10 @@ impl DelegatedProviderKind {
                 AuthenticationMethod::ApiKey,
             ],
             Self::Claude | Self::Gemini => {
-                vec![AuthenticationMethod::OAuthPkce, AuthenticationMethod::ApiKey]
+                vec![
+                    AuthenticationMethod::OAuthPkce,
+                    AuthenticationMethod::ApiKey,
+                ]
             }
         }
     }
@@ -661,7 +664,13 @@ fn merge_usage(usage: &mut ProviderUsage, value: &Value) {
     if usage.input_tokens.is_none() {
         usage.input_tokens = find_u64(
             value,
-            &["input_tokens", "inputTokens", "prompt_tokens", "promptTokens", "prompt"],
+            &[
+                "input_tokens",
+                "inputTokens",
+                "prompt_tokens",
+                "promptTokens",
+                "prompt",
+            ],
         );
     }
     if usage.output_tokens.is_none() {
@@ -693,7 +702,10 @@ fn find_u64(value: &Value, keys: &[&str]) -> Option<u64> {
     }
 }
 
-fn classify_failed_process(kind: DelegatedProviderKind, result: &BoundedProcessResult) -> ProviderError {
+fn classify_failed_process(
+    kind: DelegatedProviderKind,
+    result: &BoundedProcessResult,
+) -> ProviderError {
     let combined = format!(
         "{}\n{}",
         String::from_utf8_lossy(&result.stdout),
@@ -984,9 +996,15 @@ impl fmt::Display for DelegatedProviderError {
         match self {
             Self::UnknownProvider(provider) => write!(formatter, "unknown provider `{provider}`"),
             Self::UnsupportedLoginFlow { provider, flow } => {
-                write!(formatter, "{provider} does not support {flow:?} login through everything")
+                write!(
+                    formatter,
+                    "{provider} does not support {flow:?} login through everything"
+                )
             }
-            Self::UnsupportedOperation { provider, operation } => {
+            Self::UnsupportedOperation {
+                provider,
+                operation,
+            } => {
                 write!(formatter, "{provider}: unsupported operation: {operation}")
             }
             Self::Spawn { executable, error } => {
@@ -1000,10 +1018,15 @@ impl fmt::Display for DelegatedProviderError {
                 formatter,
                 "{provider} {operation} failed with exit code {exit_code:?}"
             ),
-            Self::TimedOut { executable, timeout } => {
+            Self::TimedOut {
+                executable,
+                timeout,
+            } => {
                 write!(formatter, "`{executable}` exceeded timeout {timeout:?}")
             }
-            Self::MissingPipe(stream) => write!(formatter, "provider process missing {stream} pipe"),
+            Self::MissingPipe(stream) => {
+                write!(formatter, "provider process missing {stream} pipe")
+            }
             Self::WorkerThreadPanicked(stream) => {
                 write!(formatter, "provider {stream} capture worker panicked")
             }
@@ -1026,14 +1049,14 @@ impl Error for DelegatedProviderError {
 mod tests {
     use serde_json::json;
 
-    use super::{
-        DelegatedProviderKind, AuthenticationState, parse_codex_jsonl, parse_single_json,
-    };
+    use super::{AuthenticationState, DelegatedProviderKind, parse_codex_jsonl, parse_single_json};
 
     #[test]
     fn provider_aliases_are_deterministic() {
         assert_eq!(
-            "openai".parse::<DelegatedProviderKind>().expect("openai alias"),
+            "openai"
+                .parse::<DelegatedProviderKind>()
+                .expect("openai alias"),
             DelegatedProviderKind::Codex
         );
         assert_eq!(
@@ -1043,7 +1066,9 @@ mod tests {
             DelegatedProviderKind::Claude
         );
         assert_eq!(
-            "google".parse::<DelegatedProviderKind>().expect("google alias"),
+            "google"
+                .parse::<DelegatedProviderKind>()
+                .expect("google alias"),
             DelegatedProviderKind::Gemini
         );
         assert_eq!(AuthenticationState::Authenticated.as_str(), "authenticated");

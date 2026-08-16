@@ -31,7 +31,9 @@ impl PermissionMode {
         match self {
             Self::Plan => "read-only planning; mutating/process/network actions are denied",
             Self::Default => "reads run automatically; every other eligible action asks",
-            Self::Auto => "reads, isolated-worktree edits and local commands run automatically; higher-impact actions ask",
+            Self::Auto => {
+                "reads, isolated-worktree edits and local commands run automatically; higher-impact actions ask"
+            }
             Self::Full => "all actions already inside the run capability ceiling run automatically",
         }
     }
@@ -164,12 +166,16 @@ impl PermissionController {
         I: IntoIterator<Item = SideEffectClass>,
     {
         let allowed = allowed.into_iter().collect::<BTreeSet<_>>();
-        self.capability_ceiling.retain(|value| allowed.contains(value));
+        self.capability_ceiling
+            .retain(|value| allowed.contains(value));
         self.session_allow
             .retain(|value| self.capability_ceiling.contains(value));
     }
 
-    pub fn allow_for_session(&mut self, side_effect: SideEffectClass) -> Result<(), PermissionError> {
+    pub fn allow_for_session(
+        &mut self,
+        side_effect: SideEffectClass,
+    ) -> Result<(), PermissionError> {
         if !self.capability_ceiling.contains(&side_effect) {
             return Err(PermissionError::OutsideCapabilityCeiling(side_effect));
         }
@@ -241,7 +247,9 @@ impl fmt::Display for PermissionError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnknownMode(mode) => write!(formatter, "unknown permission mode `{mode}`"),
-            Self::UnknownSideEffect(value) => write!(formatter, "unknown side-effect class `{value}`"),
+            Self::UnknownSideEffect(value) => {
+                write!(formatter, "unknown side-effect class `{value}`")
+            }
             Self::OutsideCapabilityCeiling(effect) => write!(
                 formatter,
                 "{effect:?} is outside the current runtime capability ceiling"

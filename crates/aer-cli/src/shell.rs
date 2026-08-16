@@ -183,7 +183,9 @@ fn print_permission(permissions: &PermissionController) {
             .collect::<Vec<_>>()
             .join(", ")
     );
-    println!("  `full` removes prompts inside this ceiling; it does not grant privileged host authority");
+    println!(
+        "  `full` removes prompts inside this ceiling; it does not grant privileged host authority"
+    );
 }
 
 fn handle_provider(workspace_root: &Path, argument: &str) -> Result<(), Box<dyn Error>> {

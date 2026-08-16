@@ -1,4 +1,7 @@
-use std::{fmt, fs, path::{Path, PathBuf}};
+use std::{
+    fmt, fs,
+    path::{Path, PathBuf},
+};
 
 use sha2::{Digest, Sha256};
 
@@ -133,7 +136,10 @@ impl fmt::Display for ArchitectureContextError {
         match self {
             Self::Io(error) => error.fmt(formatter),
             Self::RequiredSourceMissing(path) => {
-                write!(formatter, "required architecture context source missing: {path}")
+                write!(
+                    formatter,
+                    "required architecture context source missing: {path}"
+                )
             }
             Self::SourceOutsideWorkspace(path) => write!(
                 formatter,
@@ -155,7 +161,10 @@ impl std::error::Error for ArchitectureContextError {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, time::{SystemTime, UNIX_EPOCH}};
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     use super::{ArchitectureContextCapsule, MAX_CAPSULE_BYTES};
 
