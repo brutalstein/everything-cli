@@ -8,6 +8,7 @@ rust-version.workspace = true
 path = "src/root.rs"
 
 [dependencies]
+aer-context = { path = "../aer-context" }
 aer-contracts = { path = "../aer-contracts" }
 aer-domain = { path = "../aer-domain" }
 aer-environment = { path = "../aer-environment" }
