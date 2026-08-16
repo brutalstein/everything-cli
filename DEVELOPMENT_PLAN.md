@@ -25,12 +25,13 @@ After Step 13 and before Step 14, complete one **non-numbered productization gat
 The gate must provide an architecture-complete first real-model vertical slice:
 
 - vendor-owned delegated authentication for Codex, Claude Code and Gemini CLI without scraping/copying consumer OAuth secrets;
-- one provider-neutral, source-hashed, bounded Architecture Context Capsule so every model receives the same stable product/architecture identity before task-specific context;
-- a live read-only provider smoke call with inspectable input/output/usage/context identity;
+- one provider-neutral, source-hashed, bounded architecture bootstrap so every model receives the same stable product/architecture identity before task-specific context; after live validation, this MUST converge from large static document slices to a compact invariant/constitutional core plus task-relevant RI2/Context Economy retrieval;
+- a live read-only provider smoke call with inspectable input/output/usage/context identity; provider authentication may be inherited, but provider-local hooks, skills, memory or behavioral configuration MUST NOT silently become AER control-plane policy;
 - AER-owned `plan | default | auto | full` permission policy where modes change prompting but cannot widen the run/sandbox capability ceiling;
 - a small native Tool ABI hot path (`fs.read`, `fs.list`, structured `exec.run`, `tool.search`, `tool.describe`) with bounded outputs and progressive schema disclosure;
 - no provider-native tool or YOLO/bypass mode may become an alternate authority path around AER sandbox, permission, evidence, worktree or verification semantics;
-- deterministic CI remains free of live credentials and paid model calls; at least one target-machine delegated provider login + real model smoke must be reproduced before this gate closes.
+- usage telemetry must preserve provider-reported uncached input, cache creation/read, output, thinking/reasoning when available, resolved model, latency and cost without exposing secrets or hidden reasoning;
+- deterministic CI remains free of live credentials and paid model calls; at least one target-machine delegated provider login + real model smoke must be reproduced **with relevant AER-directed output and no provider-local policy contamination** before this gate closes.
 
 The normative semantics live in `docs/45_PROVIDER_AUTH_CONTEXT_PERMISSION_AND_TOOL_RUNTIME.md`. Step 14 remains blocked while this gate is open because architecture-health work should evaluate the real execution/tool/model substrate rather than a reference-only provider boundary.
 

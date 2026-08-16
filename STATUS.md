@@ -1,15 +1,16 @@
 # everything Implementation Status
 
-**Last updated:** 2026-08-16  
-**Architecture baseline:** `docs/` on original `main` commit `6c81fa1d0d18e9f279fe1bc59f56d21f2cbffd55` plus accepted architecture updates on `main`  
-**Public product / executable:** `everything`  
-**Internal architecture terminology:** AER remains valid where the architecture uses it  
-**Current phase:** Inter-step Provider Runtime Productization Gate  
-**Current step:** between 13 / 18 and 14 / 18  
-**Repository-side state:** IMPLEMENTED — authoritative Linux/Windows CI pending  
-**Provider branch:** `agent/provider-runtime-productization`  
-**Provider gate:** delegated Codex/Claude/Gemini auth transports + Architecture Context Capsule + permission controller + AER ToolBroker + real-model smoke surface  
-**Next step:** 14 — Architecture Health Controller — BLOCKED until provider productization target-machine live smoke closes
+**Last updated:** 2026-08-17
+**Architecture baseline:** `docs/` on original `main` commit `6c81fa1d0d18e9f279fe1bc59f56d21f2cbffd55` plus accepted architecture updates on `main`
+**Public product / executable:** `everything`
+**Internal architecture terminology:** AER remains valid where the architecture uses it
+**Current phase:** Inter-step Provider Runtime Productization Gate
+**Current step:** between 13 / 18 and 14 / 18
+**Repository-side state:** MERGED + CI GREEN — real Claude transport reproduced on target Windows; provider gate remains OPEN on isolation/context-economy/telemetry acceptance
+**Current main:** `1ba6206600d10a44aa6d5114a3510ad03806d205` before this documentation closeout; post-merge `foundation-ci` `31975867579` SUCCESS
+**Provider implementation:** PR #6 merged; Windows fixture repair PR #7 merged; Claude smoke turn-limit repair PR #8 merged
+**Provider gate:** delegated Codex/Claude/Gemini auth transports + Architecture Context Capsule + permission controller + AER ToolBroker + real-model smoke surface; live testing exposed provider-local hook contamination and excessive static context
+**Next step:** Provider isolation + compact contextual bootstrap + complete usage telemetry; Step 14 remains BLOCKED until these acceptance gaps close
 
 ## Agent engineering policy
 
@@ -584,7 +585,7 @@ Step 13 is closed. The final production tree passed authoritative Linux + canoni
 
 ## Inter-step Provider Runtime Productization Gate
 
-**State:** IMPLEMENTED — AUTHORITATIVE REPOSITORY CI + TARGET LIVE SMOKE PENDING
+**State:** IMPLEMENTED + MERGED + CI GREEN — TARGET CLAUDE TRANSPORT LIVE, PRODUCT ACCEPTANCE STILL OPEN
 
 This is a non-numbered gate between Step 13 and Step 14. It productizes capabilities deliberately left reference-only while the safety, proof and scheduling backbone was being established. It does not create a nineteenth roadmap step.
 
@@ -666,12 +667,19 @@ The interactive shell exposes `/providers`, `/provider ...`, and `/permission ..
 | Full workspace `-D warnings` Clippy | PASS | implementation CI before final permanent gates. |
 | Full workspace unit/regression tests | PASS except docs inventory before manifest refresh | runtime tests passed; manifest subsequently regenerated. |
 | Docs manifest covers provider runtime specification | PASS | regenerated `docs/MANIFEST.sha256`. |
-| Permanent Linux provider/permission/tool gate | PENDING | final authoritative PR CI. |
-| Canonical Windows provider/permission/tool gate | PENDING | final authoritative PR CI. |
-| Temporary provider repair/finalization workflows removed | PENDING | required before final PR acceptance. |
-| Target Windows canonical verifier after merge | PENDING | user reproduction required. |
-| Target-machine delegated OAuth + real model smoke | PENDING | at least one provider required to close this gate; all available requested providers should be exercised. |
+| Permanent Linux provider/permission/tool gate | PASS | PR #6 `foundation-ci` `31971591717`; post-merge main CI `31972088680`. |
+| Canonical Windows provider/permission/tool gate | PASS | PR #6 Windows CI; post-merge main CI `31972088680`. |
+| Windows ToolBroker fixture cleanup robustness | PASS | target reproduction exposed teardown locking; PR #7 fixed collision-safe fixture identity + bounded transient-lock cleanup; PR/main Windows CI passed. |
+| Claude delegated smoke `--max-turns 1` incompatibility | PASS | target live call exposed `terminal_reason=max_turns`; PR #8 removed the redundant cap; final `main` `1ba6206…` CI `31975867579` passed. |
+| Temporary provider repair/finalization workflows removed | PASS | permanent workflow tree remains `.github/workflows/ci.yml` only. |
+| Target Windows provider discovery | PARTIAL | Claude `2.1.233` authenticated on Claude.ai Pro; Codex PATH resolves to an invalid Win32 shim (`os error 193`); Gemini CLI unavailable. |
+| Target-machine real Claude model transport | PASS | authenticated Claude print-mode call returned machine JSON and normalized final output; latest trace duration `43321 ms`, output tokens reported `2576`, raw event count `1`. |
+| Architecture context reaches real model | PARTIAL | capsule digest/source list was transmitted and the response referenced AER/`AGENTS.md` constraints, but provider-local DeepWork behavior contaminated the answer. |
+| Provider-local behavioral isolation | FAIL / OPEN | global Claude Code hook/skill behavior reached the delegated subprocess and displaced the requested AER Q&A response; vendor auth may be inherited, vendor-local behavioral policy may not silently become AER authority. |
+| Context economy for provider bootstrap | FAIL / OPEN | prior raw Claude invocation reported `32563` cache-creation input tokens for the static architecture payload; production bootstrap must become compact invariant core + task-relevant RI2/context retrieval. |
+| Complete provider usage telemetry | FAIL / OPEN | normalized trace currently under-reports effective input because cache-creation/cache-read/thinking/cost dimensions are not preserved separately. |
+| Target-machine delegated OAuth + real model smoke acceptance | PARTIAL | OAuth + inference + parsing work for Claude, but relevance/isolation/context-economy/telemetry acceptance is not yet satisfied. |
 
 ## Provider productization exit condition
 
-Do **not** start Step 14 until the clean production tree passes authoritative Linux + canonical Windows CI, is merged to `main`, the target Windows checkout passes the canonical verifier, and at least one delegated provider completes a real authenticated model smoke showing the final input/output receipt and architecture-context identity. Provider-specific local unavailability should be recorded explicitly rather than fabricated.
+Do **not** start Step 14 until the clean production tree passes authoritative Linux + canonical Windows CI, is merged to `main`, the target Windows checkout remains reproducible, and at least one delegated provider completes a real authenticated model call that is **AER-controlled rather than provider-local-policy controlled**. Closure now additionally requires: (1) provider-local hooks/skills/config cannot silently redirect AER behavior; (2) the stable architecture bootstrap is compact and task-specific context is retrieved through RI2/Context Economy rather than repeatedly shipping a ~30k-token static payload; and (3) usage receipts preserve effective input, cache creation/read, output, thinking when reported, cost/model identity and latency. Provider-specific local unavailability is recorded explicitly rather than fabricated.
