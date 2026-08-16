@@ -52,34 +52,11 @@ new = '''    process::Command,
 if s.count(old) != 1:
     raise SystemExit(f"expected one ResourceBench import block, found {s.count(old)}")
 s = s.replace(old, new, 1)
-anchor = '''#[test]
-fn resource_bench_measures_positive_parallel_utility_instead_of_assuming_it() {
-    let policy = ParallelUtilityPolicy::new(100, 50).expect("utility policy");
-    assert!(ParallelUtilityMeasurement {
-        serial_wall_ms: 1_000,
-        parallel_wall_ms: 600,
-        coordination_ms: 100,
-        serial_verified_successes: 2,
-        parallel_verified_successes: 2,
-        serial_cost_microusd: 100,
-        parallel_cost_microusd: 130,
-    }
-    .positive(policy)
-    .expect("positive utility"));
-    assert!(!ParallelUtilityMeasurement {
-        serial_wall_ms: 1_000,
-        parallel_wall_ms: 700,
-        coordination_ms: 250,
-        serial_verified_successes: 2,
-        parallel_verified_successes: 2,
-        serial_cost_microusd: 100,
-        parallel_cost_microusd: 200,
-    }
-    .positive(policy)
-    .expect("negative utility"));
-}
+
+marker = '''
+fn temp_dir(label: &str) -> PathBuf {
 '''
-addition = anchor + '''
+measured = '''
 #[test]
 fn resource_bench_real_parallel_work_shows_measured_positive_utility() {
     const WORK: Duration = Duration::from_millis(200);
@@ -101,20 +78,22 @@ fn resource_bench_real_parallel_work_shows_measured_positive_utility() {
         "independent parallel work must beat its measured serial control: parallel={parallel_wall_ms}ms serial={serial_wall_ms}ms"
     );
     let policy = ParallelUtilityPolicy::new(200, 0).expect("measured utility policy");
-    assert!(ParallelUtilityMeasurement {
-        serial_wall_ms,
-        parallel_wall_ms,
-        coordination_ms: 0,
-        serial_verified_successes: 2,
-        parallel_verified_successes: 2,
-        serial_cost_microusd: 100,
-        parallel_cost_microusd: 100,
-    }
-    .positive(policy)
-    .expect("measured parallel utility"));
+    assert!(
+        ParallelUtilityMeasurement {
+            serial_wall_ms,
+            parallel_wall_ms,
+            coordination_ms: 0,
+            serial_verified_successes: 2,
+            parallel_verified_successes: 2,
+            serial_cost_microusd: 100,
+            parallel_cost_microusd: 100,
+        }
+        .positive(policy)
+        .expect("measured parallel utility")
+    );
 }
 '''
-if s.count(anchor) != 1:
-    raise SystemExit(f"expected one synthetic utility test anchor, found {s.count(anchor)}")
-s = s.replace(anchor, addition, 1)
+if s.count(marker) != 1:
+    raise SystemExit(f"expected one temp_dir marker, found {s.count(marker)}")
+s = s.replace(marker, measured + marker, 1)
 bench.write_text(s, encoding="utf-8")
