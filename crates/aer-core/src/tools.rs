@@ -607,6 +607,33 @@ mod tests {
     }
 
     #[test]
+    fn auto_mode_executes_structured_local_command_with_bounded_evidence() {
+        let root = fixture();
+        let broker = ToolBroker::new(&root).expect("broker");
+        let permissions = PermissionController::developer_workspace(PermissionMode::Auto);
+        let result = broker
+            .execute(
+                &permissions,
+                ToolCall::ExecRun {
+                    program: "git".to_owned(),
+                    args: vec!["--version".to_owned()],
+                    cwd: None,
+                    reason: "verify structured command transport".to_owned(),
+                },
+            )
+            .expect("exec");
+        let ToolOutcome::Completed(ToolResult::Exec(exec)) = result else {
+            panic!("auto mode should execute eligible structured command");
+        };
+        assert!(exec.success);
+        assert!(!exec.timed_out);
+        assert_eq!(exec.argv.first().map(String::as_str), Some("git"));
+        assert!(exec.stdout_preview.contains("git version"));
+        assert!(!exec.stdout_sha256.is_empty());
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    #[test]
     fn tool_catalog_is_progressively_disclosed() {
         let catalog = ToolBroker::core_catalog();
         assert!(catalog.iter().all(|tool| tool.schema.is_none()));
