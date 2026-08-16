@@ -155,7 +155,7 @@ impl IntegrationWorktree {
             });
         }
 
-        let merge = run_git(
+        let merge = run_git_with_env(
             &self.owned.path,
             [
                 OsString::from("merge"),
@@ -165,8 +165,14 @@ impl IntegrationWorktree {
                 OsString::from(&changes.branch_name),
             ],
             SideEffectClass::WorkspaceWrite,
-            None,
-            INSPECTION_OUTPUT_LIMIT,
+            &[
+                ("GIT_AUTHOR_NAME", INTERNAL_AUTHOR_NAME),
+                ("GIT_AUTHOR_EMAIL", INTERNAL_AUTHOR_EMAIL),
+                ("GIT_COMMITTER_NAME", INTERNAL_AUTHOR_NAME),
+                ("GIT_COMMITTER_EMAIL", INTERNAL_AUTHOR_EMAIL),
+                ("GIT_AUTHOR_DATE", INTERNAL_SNAPSHOT_DATE),
+                ("GIT_COMMITTER_DATE", INTERNAL_SNAPSHOT_DATE),
+            ],
         );
         if let Err(error) = merge {
             let _ = run_git_status(

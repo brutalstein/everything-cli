@@ -3,7 +3,8 @@ use std::{
     fs,
     path::{Path, PathBuf},
     process::Command,
-    time::SystemTime,
+    thread,
+    time::{Duration, Instant, SystemTime},
 };
 
 use aer_core::parallel::{
@@ -398,6 +399,42 @@ fn resource_bench_measures_positive_parallel_utility_instead_of_assuming_it() {
         }
         .positive(policy)
         .expect("negative utility")
+    );
+}
+
+#[test]
+fn resource_bench_real_parallel_work_shows_measured_positive_utility() {
+    const WORK: Duration = Duration::from_millis(200);
+
+    let serial_started = Instant::now();
+    thread::sleep(WORK);
+    thread::sleep(WORK);
+    let serial_wall_ms = serial_started.elapsed().as_millis() as u64;
+
+    let parallel_started = Instant::now();
+    thread::scope(|scope| {
+        scope.spawn(|| thread::sleep(WORK));
+        scope.spawn(|| thread::sleep(WORK));
+    });
+    let parallel_wall_ms = parallel_started.elapsed().as_millis() as u64;
+
+    assert!(
+        parallel_wall_ms < serial_wall_ms,
+        "independent parallel work must beat its measured serial control: parallel={parallel_wall_ms}ms serial={serial_wall_ms}ms"
+    );
+    let policy = ParallelUtilityPolicy::new(200, 0).expect("measured utility policy");
+    assert!(
+        ParallelUtilityMeasurement {
+            serial_wall_ms,
+            parallel_wall_ms,
+            coordination_ms: 0,
+            serial_verified_successes: 2,
+            parallel_verified_successes: 2,
+            serial_cost_microusd: 100,
+            parallel_cost_microusd: 100,
+        }
+        .positive(policy)
+        .expect("measured parallel utility")
     );
 }
 
