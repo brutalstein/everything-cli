@@ -17,6 +17,7 @@ pub use phase1_runtime::*;
 pub mod context;
 pub mod engineering_invalidation;
 pub mod engineering_state;
+pub mod parallel;
 pub mod repository;
 pub mod spec;
 pub mod verification;

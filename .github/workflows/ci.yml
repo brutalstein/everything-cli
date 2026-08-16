@@ -57,6 +57,10 @@ jobs:
         if: runner.os != 'Windows'
         run: cargo +1.97.1 test --locked -p aer-core --test handoff_bench
 
+      - name: Bounded parallel execution ResourceBench
+        if: runner.os != 'Windows'
+        run: cargo +1.97.1 test --locked -p aer-core --test resource_bench
+
       - name: Context economy
         if: runner.os != 'Windows'
         run: cargo +1.97.1 test --locked -p aer-context -p aer-repo -p aer-core --all-targets
