@@ -188,7 +188,12 @@ pub(crate) fn detect(path: &str) -> LanguageDetection {
     let filename = path.rsplit('/').next().unwrap_or(path);
     let exact = PROFILES
         .iter()
-        .filter(|profile| profile.filenames.iter().any(|candidate| candidate == &filename))
+        .filter(|profile| {
+            profile
+                .filenames
+                .iter()
+                .any(|candidate| candidate == &filename)
+        })
         .collect::<Vec<_>>();
     if exact.len() == 1 {
         return detection(exact[0], false);
@@ -197,13 +202,20 @@ pub(crate) fn detect(path: &str) -> LanguageDetection {
         return fallback(true);
     }
 
-    let extension = filename.rsplit_once('.').map(|(_, extension)| extension.to_ascii_lowercase());
+    let extension = filename
+        .rsplit_once('.')
+        .map(|(_, extension)| extension.to_ascii_lowercase());
     let Some(extension) = extension else {
         return fallback(false);
     };
     let matches = PROFILES
         .iter()
-        .filter(|profile| profile.extensions.iter().any(|candidate| *candidate == extension))
+        .filter(|profile| {
+            profile
+                .extensions
+                .iter()
+                .any(|candidate| *candidate == extension)
+        })
         .collect::<Vec<_>>();
     match matches.as_slice() {
         [profile] => detection(profile, false),

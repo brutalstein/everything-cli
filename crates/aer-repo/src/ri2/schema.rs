@@ -5,6 +5,7 @@ use crate::RepoError;
 pub(crate) const RI2_SCHEMA_VERSION: i64 = 2;
 
 pub(crate) fn migrate_v1_to_v2(connection: &Connection) -> Result<(), RepoError> {
+    debug_assert_eq!(RI2_SCHEMA_VERSION, 2);
     connection.execute_batch(
         "BEGIN IMMEDIATE;
          CREATE TABLE IF NOT EXISTS ri2_view_state(

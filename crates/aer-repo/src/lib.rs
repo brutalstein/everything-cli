@@ -3,10 +3,13 @@
 //! This crate never owns project authority. It indexes an exact workspace snapshot and refuses
 //! current-workspace retrieval when that snapshot no longer matches.
 
+mod language;
 mod model;
+mod ri2;
 mod syntax;
 
 pub use model::*;
+pub use ri2::*;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -21,7 +24,7 @@ use sha2::{Digest, Sha256};
 
 use crate::syntax::{detect_language, is_test_path, parse_text, parser_key, tokenize};
 
-const INDEX_SCHEMA_VERSION: i64 = 1;
+const INDEX_SCHEMA_VERSION: i64 = 2;
 
 pub struct RepositoryIndex {
     connection: Connection,
@@ -52,7 +55,8 @@ impl RepositoryIndex {
         let before =
             WorkspaceSnapshot::capture(workspace_root.as_ref(), &SnapshotPolicy::default())?;
         let snapshot = snapshot_identity(&before)?;
-        if self.current_snapshot_id(&snapshot.repo_id)?.as_deref() == Some(&snapshot.snapshot_id) {
+        let previous_snapshot = self.current_snapshot_id(&snapshot.repo_id)?;
+        if previous_snapshot.as_deref() == Some(&snapshot.snapshot_id) {
             return self.report_existing(snapshot, true);
         }
 
@@ -145,6 +149,8 @@ impl RepositoryIndex {
             });
         }
 
+        let build_topology =
+            ri2::collect_project_topology(&before.identity.repo_root, &self.policy);
         let after =
             WorkspaceSnapshot::capture(&before.identity.repo_root, &SnapshotPolicy::default())?;
         if snapshot_identity(&after)?.snapshot_id != snapshot.snapshot_id {
@@ -197,6 +203,13 @@ impl RepositoryIndex {
         }
         insert_git_view(&transaction, &snapshot.snapshot_id, &git_view)?;
         let test_associations = rebuild_test_links(&transaction, &snapshot.snapshot_id, 100)?;
+        ri2::rebuild_snapshot_views(
+            &transaction,
+            &snapshot,
+            previous_snapshot.as_deref(),
+            &prepared,
+            &build_topology,
+        )?;
         transaction.execute(
             "INSERT INTO current_snapshots(repo_id,snapshot_id) VALUES(?,?) ON CONFLICT(repo_id) DO UPDATE SET snapshot_id=excluded.snapshot_id",
             params![snapshot.repo_id, snapshot.snapshot_id],
@@ -923,6 +936,10 @@ fn initialize_schema(connection: &Connection) -> Result<(), RepoError> {
              PRAGMA user_version=1;
              COMMIT;"
         )?;
+    }
+    let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    if version == 1 {
+        ri2::migrate_v1_to_v2(connection)?;
     } else if version != INDEX_SCHEMA_VERSION {
         return Err(RepoError::UnsupportedIndexVersion(version));
     }

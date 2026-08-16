@@ -2,11 +2,12 @@ use rusqlite::{Connection, Transaction, params};
 
 use crate::{PreparedFile, RepoError, RepoSnapshotIdentity, symbol_id};
 
+use super::build::{CARGO_PRODUCER, CARGO_PRODUCER_VERSION};
 use super::{
     BuildTopology, CapabilityTier, EvidenceClass, FreshnessState, GraphEdgeKind, GraphNodeKind,
-    PreciseRelation, PreciseSemanticBatch, RepositoryIndex, file_node_id, package_node_id, stable_id,
+    PreciseRelation, PreciseSemanticBatch, RepositoryIndex, file_node_id, package_node_id,
+    stable_id,
 };
-use super::build::{CARGO_PRODUCER, CARGO_PRODUCER_VERSION};
 
 const GRAPH_PRODUCER: &str = "aer-ri2-graph";
 const GRAPH_PRODUCER_VERSION: &str = "1";
@@ -27,13 +28,48 @@ pub(crate) fn rebuild_snapshot_views(
         "ri2_build_packages",
         "ri2_view_state",
     ] {
-        tx.execute(&format!("DELETE FROM {table} WHERE snapshot_id=?"), [snapshot_id])?;
+        tx.execute(
+            &format!("DELETE FROM {table} WHERE snapshot_id=?"),
+            [snapshot_id],
+        )?;
     }
 
-    insert_view_state(tx, snapshot_id, "lexical", "aer-lexical", "2", FreshnessState::Current, CapabilityTier::Tier0Text)?;
-    insert_view_state(tx, snapshot_id, "syntax", GRAPH_PRODUCER, GRAPH_PRODUCER_VERSION, FreshnessState::Current, CapabilityTier::Tier1Syntax)?;
-    insert_view_state(tx, snapshot_id, "project", CARGO_PRODUCER, CARGO_PRODUCER_VERSION, topology.state, CapabilityTier::Tier2Project)?;
-    insert_view_state(tx, snapshot_id, "precise_semantic", "external-semantic-adapter", "1", FreshnessState::Unavailable, CapabilityTier::Tier3PreciseSemantic)?;
+    insert_view_state(
+        tx,
+        snapshot_id,
+        "lexical",
+        "aer-lexical",
+        "2",
+        FreshnessState::Current,
+        CapabilityTier::Tier0Text,
+    )?;
+    insert_view_state(
+        tx,
+        snapshot_id,
+        "syntax",
+        GRAPH_PRODUCER,
+        GRAPH_PRODUCER_VERSION,
+        FreshnessState::Current,
+        CapabilityTier::Tier1Syntax,
+    )?;
+    insert_view_state(
+        tx,
+        snapshot_id,
+        "project",
+        CARGO_PRODUCER,
+        CARGO_PRODUCER_VERSION,
+        topology.state,
+        CapabilityTier::Tier2Project,
+    )?;
+    insert_view_state(
+        tx,
+        snapshot_id,
+        "precise_semantic",
+        "external-semantic-adapter",
+        "1",
+        FreshnessState::Unavailable,
+        CapabilityTier::Tier3PreciseSemantic,
+    )?;
     let runtime_count: i64 = tx.query_row(
         "SELECT COUNT(*) FROM runtime_links WHERE snapshot_id=?",
         [snapshot_id],
@@ -45,17 +81,31 @@ pub(crate) fn rebuild_snapshot_views(
         "runtime",
         "runtime-observation",
         "1",
-        if runtime_count > 0 { FreshnessState::Current } else { FreshnessState::Unavailable },
+        if runtime_count > 0 {
+            FreshnessState::Current
+        } else {
+            FreshnessState::Unavailable
+        },
         CapabilityTier::Tier4DynamicEvidence,
     )?;
-    insert_view_state(tx, snapshot_id, "graph", GRAPH_PRODUCER, GRAPH_PRODUCER_VERSION, FreshnessState::Current, CapabilityTier::Tier1Syntax)?;
+    insert_view_state(
+        tx,
+        snapshot_id,
+        "graph",
+        GRAPH_PRODUCER,
+        GRAPH_PRODUCER_VERSION,
+        FreshnessState::Current,
+        CapabilityTier::Tier1Syntax,
+    )?;
 
     for file in prepared {
-        insert_node(
-            tx,
-            snapshot_id,
+        GraphNodeWriter::new(tx, snapshot_id).insert(
             &file_node_id(&file.path),
-            if file.is_test { GraphNodeKind::Test } else { GraphNodeKind::File },
+            if file.is_test {
+                GraphNodeKind::Test
+            } else {
+                GraphNodeKind::File
+            },
             &file.path,
             Some(&file.path),
             None,
@@ -89,21 +139,31 @@ pub(crate) fn insert_view_state(
     Ok(())
 }
 
-pub(crate) fn insert_node(
-    tx: &Transaction<'_>,
-    snapshot_id: &str,
-    node_id: &str,
-    kind: GraphNodeKind,
-    label: &str,
-    path: Option<&str>,
-    source_line: Option<u32>,
-    content_sha256: Option<&str>,
-) -> Result<(), RepoError> {
-    tx.execute(
-        "INSERT OR IGNORE INTO ri2_graph_nodes(snapshot_id,node_id,node_kind,label,path,source_line,content_sha256) VALUES(?,?,?,?,?,?,?)",
-        params![snapshot_id, node_id, kind.as_str(), label, path, source_line, content_sha256],
-    )?;
-    Ok(())
+struct GraphNodeWriter<'tx, 'conn> {
+    tx: &'tx Transaction<'conn>,
+    snapshot_id: &'tx str,
+}
+
+impl<'tx, 'conn> GraphNodeWriter<'tx, 'conn> {
+    fn new(tx: &'tx Transaction<'conn>, snapshot_id: &'tx str) -> Self {
+        Self { tx, snapshot_id }
+    }
+
+    fn insert(
+        &self,
+        node_id: &str,
+        kind: GraphNodeKind,
+        label: &str,
+        path: Option<&str>,
+        source_line: Option<u32>,
+        content_sha256: Option<&str>,
+    ) -> Result<(), RepoError> {
+        self.tx.execute(
+            "INSERT OR IGNORE INTO ri2_graph_nodes(snapshot_id,node_id,node_kind,label,path,source_line,content_sha256) VALUES(?,?,?,?,?,?,?)",
+            params![self.snapshot_id, node_id, kind.as_str(), label, path, source_line, content_sha256],
+        )?;
+        Ok(())
+    }
 }
 
 pub(crate) struct NewGraphEdge<'a> {
@@ -124,7 +184,9 @@ pub(crate) fn insert_edge(
     snapshot_id: &str,
     edge: NewGraphEdge<'_>,
 ) -> Result<(), RepoError> {
-    let line = edge.source_line.map_or_else(String::new, |value| value.to_string());
+    let line = edge
+        .source_line
+        .map_or_else(String::new, |value| value.to_string());
     let edge_id = stable_id(
         "graph-edge",
         &[
@@ -164,21 +226,38 @@ fn rebuild_symbol_graph(tx: &Transaction<'_>, snapshot_id: &str) -> Result<(), R
     )?;
     for row in symbols.query_map([snapshot_id], |row| {
         Ok((
-            row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
-            row.get::<_, String>(3)?, row.get::<_, String>(4)?, row.get::<_, u32>(5)?,
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+            row.get::<_, String>(4)?,
+            row.get::<_, u32>(5)?,
         ))
     })? {
         let (path, hash, parser, local, name, line) = row?;
         let id = symbol_id(&path, &hash, &local);
-        insert_node(tx, snapshot_id, &id, GraphNodeKind::Symbol, &name, Some(&path), Some(line), Some(&hash))?;
+        GraphNodeWriter::new(tx, snapshot_id).insert(
+            &id,
+            GraphNodeKind::Symbol,
+            &name,
+            Some(&path),
+            Some(line),
+            Some(&hash),
+        )?;
         insert_edge(
             tx,
             snapshot_id,
             NewGraphEdge {
-                source: &file_node_id(&path), target: &id, kind: GraphEdgeKind::Defines,
-                evidence_class: EvidenceClass::Extracted, confidence_milli: 1000,
-                producer_id: &parser, producer_version: "content-artifact", source_path: Some(&path),
-                source_line: Some(line), environment_fingerprint: None,
+                source: &file_node_id(&path),
+                target: &id,
+                kind: GraphEdgeKind::Defines,
+                evidence_class: EvidenceClass::Extracted,
+                confidence_milli: 1000,
+                producer_id: &parser,
+                producer_version: "content-artifact",
+                source_path: Some(&path),
+                source_line: Some(line),
+                environment_fingerprint: None,
             },
         )?;
     }
@@ -188,15 +267,29 @@ fn rebuild_symbol_graph(tx: &Transaction<'_>, snapshot_id: &str) -> Result<(), R
     )?;
     for row in links.query_map([snapshot_id], |row| {
         Ok((
-            row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
-            row.get::<_, Option<String>>(3)?, row.get::<_, String>(4)?, row.get::<_, String>(5)?,
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, Option<String>>(3)?,
+            row.get::<_, String>(4)?,
+            row.get::<_, String>(5)?,
             row.get::<_, u32>(6)?,
         ))
     })? {
         let (path, hash, parser, source_local, kind, target_name, line) = row?;
-        let source = source_local.as_deref().map(|local| symbol_id(&path, &hash, local)).unwrap_or_else(|| file_node_id(&path));
+        let source = source_local
+            .as_deref()
+            .map(|local| symbol_id(&path, &hash, local))
+            .unwrap_or_else(|| file_node_id(&path));
         let target = stable_id("symbol-candidate", &[&target_name]);
-        insert_node(tx, snapshot_id, &target, GraphNodeKind::SymbolCandidate, &target_name, None, None, None)?;
+        GraphNodeWriter::new(tx, snapshot_id).insert(
+            &target,
+            GraphNodeKind::SymbolCandidate,
+            &target_name,
+            None,
+            None,
+            None,
+        )?;
         let edge_kind = match kind.as_str() {
             "imports" => GraphEdgeKind::Imports,
             "calls" => GraphEdgeKind::Calls,
@@ -206,10 +299,16 @@ fn rebuild_symbol_graph(tx: &Transaction<'_>, snapshot_id: &str) -> Result<(), R
             tx,
             snapshot_id,
             NewGraphEdge {
-                source: &source, target: &target, kind: edge_kind,
-                evidence_class: EvidenceClass::Extracted, confidence_milli: 1000,
-                producer_id: &parser, producer_version: "content-artifact", source_path: Some(&path),
-                source_line: Some(line), environment_fingerprint: None,
+                source: &source,
+                target: &target,
+                kind: edge_kind,
+                evidence_class: EvidenceClass::Extracted,
+                confidence_milli: 1000,
+                producer_id: &parser,
+                producer_version: "content-artifact",
+                source_path: Some(&path),
+                source_line: Some(line),
+                environment_fingerprint: None,
             },
         )?;
     }
@@ -221,7 +320,12 @@ fn rebuild_test_graph(tx: &Transaction<'_>, snapshot_id: &str) -> Result<(), Rep
         "SELECT test_path,target_path,target_symbol_id,confidence_milli FROM test_links WHERE snapshot_id=? ORDER BY test_path,target_path",
     )?;
     for row in links.query_map([snapshot_id], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, Option<String>>(2)?, row.get::<_, u16>(3)?))
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, Option<String>>(2)?,
+            row.get::<_, u16>(3)?,
+        ))
     })? {
         let (test_path, target_path, target_symbol, confidence) = row?;
         insert_edge(
@@ -249,20 +353,38 @@ fn rebuild_semantic_anchor_graph(tx: &Transaction<'_>, snapshot_id: &str) -> Res
         "SELECT semantic_kind,semantic_id,target_path,score_micros FROM semantic_links WHERE snapshot_id=? ORDER BY semantic_id,target_path",
     )?;
     for row in links.query_map([snapshot_id], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, i64>(3)?))
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, i64>(3)?,
+        ))
     })? {
         let (kind, id, path, score) = row?;
         let semantic_node = stable_id("semantic", &[&kind, &id]);
-        insert_node(tx, snapshot_id, &semantic_node, GraphNodeKind::SemanticAnchor, &id, None, None, None)?;
+        GraphNodeWriter::new(tx, snapshot_id).insert(
+            &semantic_node,
+            GraphNodeKind::SemanticAnchor,
+            &id,
+            None,
+            None,
+            None,
+        )?;
         let confidence = u16::try_from((score / 1_000_000).clamp(0, 1000)).unwrap_or(0);
         insert_edge(
             tx,
             snapshot_id,
             NewGraphEdge {
-                source: &semantic_node, target: &file_node_id(&path), kind: GraphEdgeKind::Supports,
-                evidence_class: EvidenceClass::Inferred, confidence_milli: confidence,
-                producer_id: "aer-semantic-link", producer_version: "1", source_path: Some(&path),
-                source_line: None, environment_fingerprint: None,
+                source: &semantic_node,
+                target: &file_node_id(&path),
+                kind: GraphEdgeKind::Supports,
+                evidence_class: EvidenceClass::Inferred,
+                confidence_milli: confidence,
+                producer_id: "aer-semantic-link",
+                producer_version: "1",
+                source_path: Some(&path),
+                source_line: None,
+                environment_fingerprint: None,
             },
         )?;
     }
@@ -274,41 +396,76 @@ fn rebuild_runtime_graph(tx: &Transaction<'_>, snapshot_id: &str) -> Result<(), 
         "SELECT observation_id,path,line,summary FROM runtime_links WHERE snapshot_id=? ORDER BY observation_id",
     )?;
     for row in links.query_map([snapshot_id], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, Option<u32>>(2)?, row.get::<_, String>(3)?))
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, Option<u32>>(2)?,
+            row.get::<_, String>(3)?,
+        ))
     })? {
         let (observation, path, line, summary) = row?;
         let observation_node = stable_id("runtime", &[&observation]);
-        insert_node(tx, snapshot_id, &observation_node, GraphNodeKind::RuntimeObservation, &summary, Some(&path), line, None)?;
+        GraphNodeWriter::new(tx, snapshot_id).insert(
+            &observation_node,
+            GraphNodeKind::RuntimeObservation,
+            &summary,
+            Some(&path),
+            line,
+            None,
+        )?;
         insert_edge(
             tx,
             snapshot_id,
             NewGraphEdge {
-                source: &observation_node, target: &file_node_id(&path), kind: GraphEdgeKind::ObservedIn,
-                evidence_class: EvidenceClass::Observed, confidence_milli: 1000,
-                producer_id: "runtime-observation", producer_version: "1", source_path: Some(&path),
-                source_line: line, environment_fingerprint: None,
+                source: &observation_node,
+                target: &file_node_id(&path),
+                kind: GraphEdgeKind::ObservedIn,
+                evidence_class: EvidenceClass::Observed,
+                confidence_milli: 1000,
+                producer_id: "runtime-observation",
+                producer_version: "1",
+                source_path: Some(&path),
+                source_line: line,
+                environment_fingerprint: None,
             },
         )?;
     }
     Ok(())
 }
 
-fn insert_build_topology(tx: &Transaction<'_>, snapshot_id: &str, topology: &BuildTopology) -> Result<(), RepoError> {
+fn insert_build_topology(
+    tx: &Transaction<'_>,
+    snapshot_id: &str,
+    topology: &BuildTopology,
+) -> Result<(), RepoError> {
     for package in &topology.packages {
         tx.execute(
             "INSERT INTO ri2_build_packages(snapshot_id,package_id,manager,name,version,manifest_path,workspace_member) VALUES(?,?,?,?,?,?,?)",
             params![snapshot_id, package.package_id, package.manager, package.name, package.version, package.manifest_path, if package.workspace_member { 1 } else { 0 }],
         )?;
         let package_node = package_node_id(&package.package_id);
-        insert_node(tx, snapshot_id, &package_node, GraphNodeKind::Package, &package.name, Some(&package.manifest_path), None, None)?;
+        GraphNodeWriter::new(tx, snapshot_id).insert(
+            &package_node,
+            GraphNodeKind::Package,
+            &package.name,
+            Some(&package.manifest_path),
+            None,
+            None,
+        )?;
         insert_edge(
             tx,
             snapshot_id,
             NewGraphEdge {
-                source: &file_node_id(&package.manifest_path), target: &package_node, kind: GraphEdgeKind::Defines,
-                evidence_class: EvidenceClass::Extracted, confidence_milli: 1000,
-                producer_id: CARGO_PRODUCER, producer_version: CARGO_PRODUCER_VERSION,
-                source_path: Some(&package.manifest_path), source_line: None, environment_fingerprint: None,
+                source: &file_node_id(&package.manifest_path),
+                target: &package_node,
+                kind: GraphEdgeKind::Defines,
+                evidence_class: EvidenceClass::Extracted,
+                confidence_milli: 1000,
+                producer_id: CARGO_PRODUCER,
+                producer_version: CARGO_PRODUCER_VERSION,
+                source_path: Some(&package.manifest_path),
+                source_line: None,
+                environment_fingerprint: None,
             },
         )?;
     }
@@ -318,15 +475,28 @@ fn insert_build_topology(tx: &Transaction<'_>, snapshot_id: &str, topology: &Bui
             params![snapshot_id, target.target_id, target.package_id, target.name, target.kind, target.source_path],
         )?;
         let node = stable_id("build-target-node", &[&target.target_id]);
-        insert_node(tx, snapshot_id, &node, GraphNodeKind::BuildTarget, &target.name, target.source_path.as_deref(), None, None)?;
+        GraphNodeWriter::new(tx, snapshot_id).insert(
+            &node,
+            GraphNodeKind::BuildTarget,
+            &target.name,
+            target.source_path.as_deref(),
+            None,
+            None,
+        )?;
         insert_edge(
             tx,
             snapshot_id,
             NewGraphEdge {
-                source: &package_node_id(&target.package_id), target: &node, kind: GraphEdgeKind::Builds,
-                evidence_class: EvidenceClass::Extracted, confidence_milli: 1000,
-                producer_id: CARGO_PRODUCER, producer_version: CARGO_PRODUCER_VERSION,
-                source_path: target.source_path.as_deref(), source_line: None, environment_fingerprint: None,
+                source: &package_node_id(&target.package_id),
+                target: &node,
+                kind: GraphEdgeKind::Builds,
+                evidence_class: EvidenceClass::Extracted,
+                confidence_milli: 1000,
+                producer_id: CARGO_PRODUCER,
+                producer_version: CARGO_PRODUCER_VERSION,
+                source_path: target.source_path.as_deref(),
+                source_line: None,
+                environment_fingerprint: None,
             },
         )?;
         if let Some(path) = target.source_path.as_deref() {
@@ -334,10 +504,16 @@ fn insert_build_topology(tx: &Transaction<'_>, snapshot_id: &str, topology: &Bui
                 tx,
                 snapshot_id,
                 NewGraphEdge {
-                    source: &node, target: &file_node_id(path), kind: GraphEdgeKind::Builds,
-                    evidence_class: EvidenceClass::Extracted, confidence_milli: 1000,
-                    producer_id: CARGO_PRODUCER, producer_version: CARGO_PRODUCER_VERSION,
-                    source_path: Some(path), source_line: None, environment_fingerprint: None,
+                    source: &node,
+                    target: &file_node_id(path),
+                    kind: GraphEdgeKind::Builds,
+                    evidence_class: EvidenceClass::Extracted,
+                    confidence_milli: 1000,
+                    producer_id: CARGO_PRODUCER,
+                    producer_version: CARGO_PRODUCER_VERSION,
+                    source_path: Some(path),
+                    source_line: None,
+                    environment_fingerprint: None,
                 },
             )?;
         }
@@ -352,23 +528,40 @@ fn insert_build_topology(tx: &Transaction<'_>, snapshot_id: &str, topology: &Bui
             package_node_id,
         );
         if dependency.target_package_id.is_none() {
-            insert_node(tx, snapshot_id, &target_node, GraphNodeKind::ExternalPackage, &dependency.target_name, None, None, None)?;
+            GraphNodeWriter::new(tx, snapshot_id).insert(
+                &target_node,
+                GraphNodeKind::ExternalPackage,
+                &dependency.target_name,
+                None,
+                None,
+                None,
+            )?;
         }
         insert_edge(
             tx,
             snapshot_id,
             NewGraphEdge {
-                source: &package_node_id(&dependency.source_package_id), target: &target_node, kind: GraphEdgeKind::DependsOn,
-                evidence_class: EvidenceClass::Extracted, confidence_milli: 1000,
-                producer_id: CARGO_PRODUCER, producer_version: CARGO_PRODUCER_VERSION,
-                source_path: Some(&dependency.manifest_path), source_line: None, environment_fingerprint: None,
+                source: &package_node_id(&dependency.source_package_id),
+                target: &target_node,
+                kind: GraphEdgeKind::DependsOn,
+                evidence_class: EvidenceClass::Extracted,
+                confidence_milli: 1000,
+                producer_id: CARGO_PRODUCER,
+                producer_version: CARGO_PRODUCER_VERSION,
+                source_path: Some(&dependency.manifest_path),
+                source_line: None,
+                environment_fingerprint: None,
             },
         )?;
     }
     Ok(())
 }
 
-fn rebuild_exact_continuity(tx: &Transaction<'_>, snapshot: &RepoSnapshotIdentity, previous_snapshot: &str) -> Result<(), RepoError> {
+fn rebuild_exact_continuity(
+    tx: &Transaction<'_>,
+    snapshot: &RepoSnapshotIdentity,
+    previous_snapshot: &str,
+) -> Result<(), RepoError> {
     let mut rows = tx.prepare(
         "SELECT old.path,old.content_sha256,new.path,new.content_sha256,os.local_id,ns.local_id
          FROM snapshot_files old
@@ -379,7 +572,14 @@ fn rebuild_exact_continuity(tx: &Transaction<'_>, snapshot: &RepoSnapshotIdentit
          ORDER BY old.path,new.path,os.local_id",
     )?;
     for row in rows.query_map(params![snapshot.snapshot_id, previous_snapshot], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, String>(3)?, row.get::<_, String>(4)?, row.get::<_, String>(5)?))
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, String>(3)?,
+            row.get::<_, String>(4)?,
+            row.get::<_, String>(5)?,
+        ))
     })? {
         let (old_path, old_hash, new_path, new_hash, old_local, new_local) = row?;
         let old_symbol = symbol_id(&old_path, &old_hash, &old_local);
@@ -391,15 +591,28 @@ fn rebuild_exact_continuity(tx: &Transaction<'_>, snapshot: &RepoSnapshotIdentit
         )?;
         if old_path != new_path {
             let historical = stable_id("historical-file", &[previous_snapshot, &old_path]);
-            insert_node(tx, &snapshot.snapshot_id, &historical, GraphNodeKind::File, &old_path, None, None, Some(&old_hash))?;
+            GraphNodeWriter::new(tx, &snapshot.snapshot_id).insert(
+                &historical,
+                GraphNodeKind::File,
+                &old_path,
+                None,
+                None,
+                Some(&old_hash),
+            )?;
             insert_edge(
                 tx,
                 &snapshot.snapshot_id,
                 NewGraphEdge {
-                    source: &file_node_id(&new_path), target: &historical, kind: GraphEdgeKind::RenamedFrom,
-                    evidence_class: EvidenceClass::Extracted, confidence_milli: 1000,
-                    producer_id: "content-identity", producer_version: "1", source_path: Some(&new_path),
-                    source_line: None, environment_fingerprint: None,
+                    source: &file_node_id(&new_path),
+                    target: &historical,
+                    kind: GraphEdgeKind::RenamedFrom,
+                    evidence_class: EvidenceClass::Extracted,
+                    confidence_milli: 1000,
+                    producer_id: "content-identity",
+                    producer_version: "1",
+                    source_path: Some(&new_path),
+                    source_line: None,
+                    environment_fingerprint: None,
                 },
             )?;
         }
@@ -408,10 +621,18 @@ fn rebuild_exact_continuity(tx: &Transaction<'_>, snapshot: &RepoSnapshotIdentit
 }
 
 impl RepositoryIndex {
-    pub fn ingest_precise_semantics(&mut self, batch: &PreciseSemanticBatch) -> Result<Vec<super::GraphEdge>, RepoError> {
+    pub fn ingest_precise_semantics(
+        &mut self,
+        batch: &PreciseSemanticBatch,
+    ) -> Result<Vec<super::GraphEdge>, RepoError> {
         self.ensure_snapshot(&batch.snapshot_id)?;
-        if batch.producer_id.trim().is_empty() || batch.producer_version.trim().is_empty() || batch.environment_fingerprint.trim().is_empty() {
-            return Err(RepoError::Integrity("precise semantic ingestion requires producer and environment identity".to_owned()));
+        if batch.producer_id.trim().is_empty()
+            || batch.producer_version.trim().is_empty()
+            || batch.environment_fingerprint.trim().is_empty()
+        {
+            return Err(RepoError::Integrity(
+                "precise semantic ingestion requires producer and environment identity".to_owned(),
+            ));
         }
         let tx = self.connection.transaction()?;
         let mut output = Vec::new();
@@ -422,12 +643,22 @@ impl RepositoryIndex {
                 crate::validate_relative(target_path)?;
                 require_snapshot_path(&tx, &batch.snapshot_id, target_path)?;
             }
-            let source = record.source_symbol_id.clone().unwrap_or_else(|| file_node_id(&record.source_path));
+            let source = record
+                .source_symbol_id
+                .clone()
+                .unwrap_or_else(|| file_node_id(&record.source_path));
             if record.source_symbol_id.is_some() {
                 require_graph_node(&tx, &batch.snapshot_id, &source)?;
             }
             let target = stable_id("precise-symbol", &[&record.target_symbol]);
-            insert_node(&tx, &batch.snapshot_id, &target, GraphNodeKind::Symbol, &record.target_symbol, record.target_path.as_deref(), None, None)?;
+            GraphNodeWriter::new(&tx, &batch.snapshot_id).insert(
+                &target,
+                GraphNodeKind::Symbol,
+                &record.target_symbol,
+                record.target_path.as_deref(),
+                None,
+                None,
+            )?;
             let kind = match record.relation {
                 PreciseRelation::Definition => GraphEdgeKind::ResolvesTo,
                 PreciseRelation::Reference => GraphEdgeKind::References,
@@ -439,14 +670,27 @@ impl RepositoryIndex {
                 &tx,
                 &batch.snapshot_id,
                 NewGraphEdge {
-                    source: &source, target: &target, kind,
-                    evidence_class: EvidenceClass::SemanticResolved, confidence_milli: 1000,
-                    producer_id: &batch.producer_id, producer_version: &batch.producer_version,
-                    source_path: Some(&record.source_path), source_line: record.source_line,
+                    source: &source,
+                    target: &target,
+                    kind,
+                    evidence_class: EvidenceClass::SemanticResolved,
+                    confidence_milli: 1000,
+                    producer_id: &batch.producer_id,
+                    producer_version: &batch.producer_version,
+                    source_path: Some(&record.source_path),
+                    source_line: record.source_line,
                     environment_fingerprint: Some(&batch.environment_fingerprint),
                 },
             )?;
-            output.push(super::graph_query::load_edge(&tx, &batch.snapshot_id, &source, &target, kind, EvidenceClass::SemanticResolved, &batch.producer_id)?);
+            output.push(super::graph_query::load_edge(
+                &tx,
+                &batch.snapshot_id,
+                &source,
+                &target,
+                kind,
+                EvidenceClass::SemanticResolved,
+                &batch.producer_id,
+            )?);
         }
         tx.execute(
             "UPDATE ri2_view_state SET producer_id=?,producer_version=?,freshness='current' WHERE snapshot_id=? AND view_name='precise_semantic'",
@@ -457,20 +701,40 @@ impl RepositoryIndex {
     }
 }
 
-fn require_snapshot_path(connection: &Connection, snapshot_id: &str, path: &str) -> Result<(), RepoError> {
+fn require_snapshot_path(
+    connection: &Connection,
+    snapshot_id: &str,
+    path: &str,
+) -> Result<(), RepoError> {
     let exists: bool = connection.query_row(
         "SELECT EXISTS(SELECT 1 FROM snapshot_files WHERE snapshot_id=? AND path=?)",
         params![snapshot_id, path],
         |row| row.get(0),
     )?;
-    if exists { Ok(()) } else { Err(RepoError::Integrity(format!("semantic adapter referenced path outside exact snapshot: {path}"))) }
+    if exists {
+        Ok(())
+    } else {
+        Err(RepoError::Integrity(format!(
+            "semantic adapter referenced path outside exact snapshot: {path}"
+        )))
+    }
 }
 
-fn require_graph_node(connection: &Connection, snapshot_id: &str, node_id: &str) -> Result<(), RepoError> {
+fn require_graph_node(
+    connection: &Connection,
+    snapshot_id: &str,
+    node_id: &str,
+) -> Result<(), RepoError> {
     let exists: bool = connection.query_row(
         "SELECT EXISTS(SELECT 1 FROM ri2_graph_nodes WHERE snapshot_id=? AND node_id=?)",
         params![snapshot_id, node_id],
         |row| row.get(0),
     )?;
-    if exists { Ok(()) } else { Err(RepoError::Integrity(format!("RI2 graph node does not exist in snapshot: {node_id}"))) }
+    if exists {
+        Ok(())
+    } else {
+        Err(RepoError::Integrity(format!(
+            "RI2 graph node does not exist in snapshot: {node_id}"
+        )))
+    }
 }

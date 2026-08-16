@@ -93,6 +93,7 @@ dependencies = [
  "aer-exec",
  "aer-workspace",
  "rusqlite",
+ "serde_json",
  "sha2",
  "tree-sitter",
  "tree-sitter-javascript",

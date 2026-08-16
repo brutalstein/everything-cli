@@ -1,4 +1,7 @@
-use std::{collections::{BTreeMap, BTreeSet}, path::{Path, PathBuf}};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    path::{Path, PathBuf},
+};
 
 use aer_exec::{CommandSpec, ExecutionPolicy, LocalProcessExecutor, SideEffectClass};
 use serde_json::Value;
@@ -34,11 +37,9 @@ pub(crate) fn collect_project_topology(repo: &Path, policy: &IndexPolicy) -> Bui
     if !repo.join("Cargo.toml").is_file() {
         return BuildTopology::unavailable();
     }
-    let Ok(execution) = ExecutionPolicy::trusted_workspace(
-        repo,
-        policy.git_timeout,
-        policy.max_git_output_bytes,
-    ) else {
+    let Ok(execution) =
+        ExecutionPolicy::trusted_workspace(repo, policy.git_timeout, policy.max_git_output_bytes)
+    else {
         return BuildTopology::unavailable();
     };
     let Ok(result) = LocalProcessExecutor.execute(
@@ -48,6 +49,7 @@ pub(crate) fn collect_project_topology(repo: &Path, policy: &IndexPolicy) -> Bui
             "--format-version",
             "1",
             "--no-deps",
+            "--locked",
         ]),
     ) else {
         return BuildTopology::unavailable();
@@ -162,7 +164,9 @@ fn relative_metadata_path(repo: &Path, raw: &str) -> Result<String, RepoError> {
     let path = PathBuf::from(raw);
     let relative = if path.is_absolute() {
         path.strip_prefix(repo).map_err(|_| {
-            RepoError::Integrity(format!("project metadata path escaped repository root: {raw}"))
+            RepoError::Integrity(format!(
+                "project metadata path escaped repository root: {raw}"
+            ))
         })?
     } else {
         &path

@@ -27,7 +27,9 @@ impl CapabilityTier {
             2 => Ok(Self::Tier2Project),
             3 => Ok(Self::Tier3PreciseSemantic),
             4 => Ok(Self::Tier4DynamicEvidence),
-            _ => Err(RepoError::Integrity(format!("invalid RI2 capability tier: {value}"))),
+            _ => Err(RepoError::Integrity(format!(
+                "invalid RI2 capability tier: {value}"
+            ))),
         }
     }
 }
@@ -56,7 +58,9 @@ impl FreshnessState {
             "partially_current" => Ok(Self::PartiallyCurrent),
             "stale" => Ok(Self::Stale),
             "unavailable" => Ok(Self::Unavailable),
-            _ => Err(RepoError::Integrity(format!("invalid RI2 freshness state: {value}"))),
+            _ => Err(RepoError::Integrity(format!(
+                "invalid RI2 freshness state: {value}"
+            ))),
         }
     }
 }
@@ -85,7 +89,9 @@ impl EvidenceClass {
             "semantic_resolved" => Ok(Self::SemanticResolved),
             "observed" => Ok(Self::Observed),
             "inferred" => Ok(Self::Inferred),
-            _ => Err(RepoError::Integrity(format!("invalid RI2 evidence class: {value}"))),
+            _ => Err(RepoError::Integrity(format!(
+                "invalid RI2 evidence class: {value}"
+            ))),
         }
     }
 }
@@ -166,7 +172,9 @@ impl GraphNodeKind {
             "test" => Ok(Self::Test),
             "runtime_observation" => Ok(Self::RuntimeObservation),
             "semantic_anchor" => Ok(Self::SemanticAnchor),
-            _ => Err(RepoError::Integrity(format!("invalid RI2 node kind: {value}"))),
+            _ => Err(RepoError::Integrity(format!(
+                "invalid RI2 node kind: {value}"
+            ))),
         }
     }
 }
@@ -225,7 +233,9 @@ impl GraphEdgeKind {
             "supports" => Ok(Self::Supports),
             "implements" => Ok(Self::Implements),
             "inherits" => Ok(Self::Inherits),
-            _ => Err(RepoError::Integrity(format!("invalid RI2 edge kind: {value}"))),
+            _ => Err(RepoError::Integrity(format!(
+                "invalid RI2 edge kind: {value}"
+            ))),
         }
     }
 }
@@ -288,7 +298,11 @@ impl TraversalBudget {
 
 impl Default for TraversalBudget {
     fn default() -> Self {
-        Self { max_depth: 2, max_nodes: 128, max_edges: 512 }
+        Self {
+            max_depth: 2,
+            max_nodes: 128,
+            max_edges: 512,
+        }
     }
 }
 

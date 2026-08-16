@@ -18,10 +18,26 @@ pub fn language_profiles() -> Vec<LanguageProfileView> {
         .iter()
         .map(|profile| LanguageProfileView {
             language_id: profile.language_id.to_owned(),
-            aliases: profile.aliases.iter().map(|value| (*value).to_owned()).collect(),
-            extensions: profile.extensions.iter().map(|value| (*value).to_owned()).collect(),
-            filenames: profile.filenames.iter().map(|value| (*value).to_owned()).collect(),
-            shebangs: profile.shebangs.iter().map(|value| (*value).to_owned()).collect(),
+            aliases: profile
+                .aliases
+                .iter()
+                .map(|value| (*value).to_owned())
+                .collect(),
+            extensions: profile
+                .extensions
+                .iter()
+                .map(|value| (*value).to_owned())
+                .collect(),
+            filenames: profile
+                .filenames
+                .iter()
+                .map(|value| (*value).to_owned())
+                .collect(),
+            shebangs: profile
+                .shebangs
+                .iter()
+                .map(|value| (*value).to_owned())
+                .collect(),
             file_role: profile.role.as_str().to_owned(),
             grammar_adapter: profile.grammar_adapter.map(str::to_owned),
             grammar_version: profile.grammar_version.map(str::to_owned),
@@ -44,7 +60,10 @@ pub(crate) fn stable_id(namespace: &str, parts: &[&str]) -> String {
         digest.update(part.as_bytes());
         digest.update(b"\0");
     }
-    format!("{namespace}:{}", crate::sha256_digest(digest.finalize().as_ref()))
+    format!(
+        "{namespace}:{}",
+        crate::sha256_digest(digest.finalize().as_ref())
+    )
 }
 
 pub(crate) fn file_node_id(path: &str) -> String {
@@ -62,7 +81,15 @@ mod tests {
     #[test]
     fn language_registry_exposes_tiers_not_one_supported_boolean() {
         let profiles = language_profiles();
-        assert!(profiles.iter().any(|profile| profile.maximum_static_tier == CapabilityTier::Tier1Syntax));
-        assert!(profiles.iter().any(|profile| profile.maximum_static_tier == CapabilityTier::Tier0Text));
+        assert!(
+            profiles
+                .iter()
+                .any(|profile| profile.maximum_static_tier == CapabilityTier::Tier1Syntax)
+        );
+        assert!(
+            profiles
+                .iter()
+                .any(|profile| profile.maximum_static_tier == CapabilityTier::Tier0Text)
+        );
     }
 }
