@@ -26,19 +26,21 @@ jobs:
           from pathlib import Path
           path = Path('crates/aer-context/src/lib.rs')
           text = path.read_text(encoding='utf-8')
-          old = '''            if let Ok(value) = self.materialize(workspace_root, index, snapshot_id, candidate) {
-                materialized.push(value);
-            } else if mandatory_paths.contains(&candidate.path) {
-                self.materialize(workspace_root, index, snapshot_id, candidate)?;
-            }
-'''
-          new = '''            match self.materialize(workspace_root, index, snapshot_id, candidate) {
-                Ok(value) => materialized.push(value),
-                Err(ContextError::SourceTooLarge { .. } | ContextError::SourceNotRetrievable(_))
-                    if !mandatory_paths.contains(&candidate.path) => {}
-                Err(error) => return Err(error),
-            }
-'''
+          old = (
+              "            if let Ok(value) = self.materialize(workspace_root, index, snapshot_id, candidate) {\n"
+              "                materialized.push(value);\n"
+              "            } else if mandatory_paths.contains(&candidate.path) {\n"
+              "                self.materialize(workspace_root, index, snapshot_id, candidate)?;\n"
+              "            }\n"
+          )
+          new = (
+              "            match self.materialize(workspace_root, index, snapshot_id, candidate) {\n"
+              "                Ok(value) => materialized.push(value),\n"
+              "                Err(ContextError::SourceTooLarge { .. } | ContextError::SourceNotRetrievable(_))\n"
+              "                    if !mandatory_paths.contains(&candidate.path) => {}\n"
+              "                Err(error) => return Err(error),\n"
+              "            }\n"
+          )
           if old not in text:
               raise SystemExit('expected materialization block not found')
           path.write_text(text.replace(old, new), encoding='utf-8')
