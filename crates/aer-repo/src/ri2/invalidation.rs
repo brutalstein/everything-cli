@@ -2,9 +2,7 @@ use std::collections::BTreeSet;
 
 use crate::{RepoError, RepositoryIndex, validate_relative};
 
-use super::{
-    GraphDirection, RepositoryChangeSet, TraversalBudget, file_node_id,
-};
+use super::{GraphDirection, RepositoryChangeSet, TraversalBudget, file_node_id};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InvalidationFrontier {

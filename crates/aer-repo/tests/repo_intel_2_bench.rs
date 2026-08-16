@@ -103,8 +103,14 @@ fn repo_intel_bench_preserves_tier_provenance_and_bounded_graph_semantics() {
     let report = index
         .language_capability_report(snapshot)
         .expect("language capability report");
-    assert!(report.tier1_files >= 4, "Rust files should have Tier-1 syntax");
-    assert!(report.fallback_files >= 1, "unknown .h file must stay Tier-0 fallback");
+    assert!(
+        report.tier1_files >= 4,
+        "Rust files should have Tier-1 syntax"
+    );
+    assert!(
+        report.fallback_files >= 1,
+        "unknown .h file must stay Tier-0 fallback"
+    );
 
     let views = index.ri2_view_states(snapshot).expect("view states");
     assert!(views.iter().any(|view| {
@@ -113,8 +119,7 @@ fn repo_intel_bench_preserves_tier_provenance_and_bounded_graph_semantics() {
             && view.capability_tier == CapabilityTier::Tier2Project
     }));
     assert!(views.iter().any(|view| {
-        view.view_name == "precise_semantic"
-            && view.freshness == FreshnessState::Unavailable
+        view.view_name == "precise_semantic" && view.freshness == FreshnessState::Unavailable
     }));
     let packages = index.build_packages(snapshot).expect("build packages");
     assert_eq!(packages.len(), 1);
@@ -130,8 +135,7 @@ fn repo_intel_bench_preserves_tier_provenance_and_bounded_graph_semantics() {
         )
         .expect("test graph");
     assert!(test_graph.edges.iter().any(|edge| {
-        edge.kind == GraphEdgeKind::Tests
-            && edge.evidence.evidence_class == EvidenceClass::Inferred
+        edge.kind == GraphEdgeKind::Tests && edge.evidence.evidence_class == EvidenceClass::Inferred
     }));
     assert!(!test_graph.edges.iter().any(|edge| {
         edge.kind == GraphEdgeKind::Tests
@@ -155,14 +159,23 @@ fn repo_intel_bench_preserves_tier_provenance_and_bounded_graph_semantics() {
         })
         .expect("precise semantic ingestion");
     assert_eq!(precise.len(), 1);
-    assert_eq!(precise[0].evidence.evidence_class, EvidenceClass::SemanticResolved);
+    assert_eq!(
+        precise[0].evidence.evidence_class,
+        EvidenceClass::SemanticResolved
+    );
     assert_eq!(
         precise[0].evidence.environment_fingerprint.as_deref(),
         Some("env-fixture-v1")
     );
-    assert!(index.ri2_view_states(snapshot).expect("updated views").iter().any(|view| {
-        view.view_name == "precise_semantic" && view.freshness == FreshnessState::Current
-    }));
+    assert!(
+        index
+            .ri2_view_states(snapshot)
+            .expect("updated views")
+            .iter()
+            .any(|view| {
+                view.view_name == "precise_semantic" && view.freshness == FreshnessState::Current
+            })
+    );
 
     let auth_entity = repository_file_entity_id("src/auth.rs").expect("auth entity");
     let tiny = index
@@ -214,14 +227,15 @@ fn repo_intel_bench_tracks_exact_content_continuity_and_dependency_invalidation(
 
     let second = index.refresh(&fixture.repo).expect("second refresh");
     let changes = index
-        .diff_snapshots(
-            &first.snapshot.snapshot_id,
-            &second.snapshot.snapshot_id,
-        )
+        .diff_snapshots(&first.snapshot.snapshot_id, &second.snapshot.snapshot_id)
         .expect("snapshot diff");
     assert!(changes.changed_paths.contains(&"src/auth.rs".to_owned()));
     assert!(changes.deleted_paths.contains(&"src/session.rs".to_owned()));
-    assert!(changes.added_paths.contains(&"src/session_store.rs".to_owned()));
+    assert!(
+        changes
+            .added_paths
+            .contains(&"src/session_store.rs".to_owned())
+    );
 
     let continuity = index
         .symbol_continuity(
