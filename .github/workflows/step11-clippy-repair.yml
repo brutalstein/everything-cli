@@ -24,66 +24,61 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
+          import re
 
           path = Path('crates/aer-provider/src/routing.rs')
           text = path.read_text(encoding='utf-8')
 
-          text = text.replace(
-              '#[derive(Clone, Debug, Eq, PartialEq)]\npub struct RateLimitWindow {',
+          text, count = re.subn(
+              r'#\[derive\(Clone, Debug, Eq, PartialEq\)\]\npub struct RateLimitWindow \{',
               '#[derive(Clone, Debug, Default, Eq, PartialEq)]\npub struct RateLimitWindow {',
-              1,
+              text,
+              count=1,
           )
-          old_default = '''impl Default for RateLimitWindow {
-              fn default() -> Self {
-                  Self {
-                      remaining_requests: None,
-                      remaining_tokens: None,
-                      reset_at_ms: None,
-                  }
-              }
-          }
+          if count != 1:
+              raise SystemExit('RateLimitWindow derive target not found')
 
-          '''
-          if old_default not in text:
+          text, count = re.subn(
+              r'impl Default for RateLimitWindow \{.*?\n\}\n\n(?=impl RateLimitWindow)',
+              '',
+              text,
+              count=1,
+              flags=re.S,
+          )
+          if count != 1:
               raise SystemExit('RateLimitWindow Default target not found')
-          text = text.replace(old_default, '', 1)
 
-          old_region = '''    if let Some(required_region) = &request.requirements.required_region {
-              if candidate.region.as_ref() != Some(required_region)
-                  || (!candidate.privacy.allowed_regions.is_empty()
-                      && !candidate.privacy.allowed_regions.contains(required_region))
-              {
-                  return Err(RejectionReason::RegionPolicy);
-              }
-          }
-          '''
-          new_region = '''    if let Some(required_region) = &request.requirements.required_region
+          region_pattern = re.compile(
+              r'''    if let Some\(required_region\) = &request\.requirements\.required_region \{\n'''
+              r'''\s+if candidate\.region\.as_ref\(\) != Some\(required_region\)\n'''
+              r'''\s+\|\| \(!candidate\.privacy\.allowed_regions\.is_empty\(\)\n'''
+              r'''\s+&& !candidate\.privacy\.allowed_regions\.contains\(required_region\)\)\n'''
+              r'''\s+\{\n\s+return Err\(RejectionReason::RegionPolicy\);\n\s+\}\n    \}'''
+          )
+          region_replacement = '''    if let Some(required_region) = &request.requirements.required_region
               && (candidate.region.as_ref() != Some(required_region)
                   || (!candidate.privacy.allowed_regions.is_empty()
                       && !candidate.privacy.allowed_regions.contains(required_region)))
           {
               return Err(RejectionReason::RegionPolicy);
-          }
-          '''
-          if old_region not in text:
+          }'''
+          text, count = region_pattern.subn(region_replacement, text, count=1)
+          if count != 1:
               raise SystemExit('region eligibility target not found')
-          text = text.replace(old_region, new_region, 1)
 
-          old_snapshot = '''    if let Some(required_snapshot) = &request.requirements.pinned_model_snapshot {
-              if candidate.model_snapshot.as_ref() != Some(required_snapshot) {
-                  return Err(RejectionReason::SnapshotMismatch);
-              }
-          }
-          '''
-          new_snapshot = '''    if let Some(required_snapshot) = &request.requirements.pinned_model_snapshot
+          snapshot_pattern = re.compile(
+              r'''    if let Some\(required_snapshot\) = &request\.requirements\.pinned_model_snapshot \{\n'''
+              r'''\s+if candidate\.model_snapshot\.as_ref\(\) != Some\(required_snapshot\) \{\n'''
+              r'''\s+return Err\(RejectionReason::SnapshotMismatch\);\n\s+\}\n    \}'''
+          )
+          snapshot_replacement = '''    if let Some(required_snapshot) = &request.requirements.pinned_model_snapshot
               && candidate.model_snapshot.as_ref() != Some(required_snapshot)
           {
               return Err(RejectionReason::SnapshotMismatch);
-          }
-          '''
-          if old_snapshot not in text:
+          }'''
+          text, count = snapshot_pattern.subn(snapshot_replacement, text, count=1)
+          if count != 1:
               raise SystemExit('snapshot eligibility target not found')
-          text = text.replace(old_snapshot, new_snapshot, 1)
 
           path.write_text(text, encoding='utf-8')
       - name: Format
