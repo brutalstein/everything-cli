@@ -24,7 +24,7 @@ use sha2::{Digest, Sha256};
 
 use crate::syntax::{detect_language, is_test_path, parse_text, parser_key, tokenize};
 
-const INDEX_SCHEMA_VERSION: i64 = 2;
+const INDEX_SCHEMA_VERSION: i64 = 3;
 
 pub struct RepositoryIndex {
     connection: Connection,
@@ -492,7 +492,7 @@ impl RepositoryIndex {
     pub fn symbols(&self, snapshot_id: &str, name: &str) -> Result<Vec<SymbolRecord>, RepoError> {
         self.ensure_snapshot(snapshot_id)?;
         let mut statement = self.connection.prepare(
-            "SELECT f.path,f.content_sha256,s.local_id,s.name,s.kind,s.start_byte,s.end_byte,s.start_line,s.end_line,s.signature FROM snapshot_files f JOIN content_symbols s ON s.content_sha256=f.content_sha256 AND s.parser_key=f.parser_key WHERE f.snapshot_id=? AND lower(s.name)=lower(?) ORDER BY f.path,s.start_byte"
+            "SELECT f.path,f.content_sha256,s.local_id,s.name,s.container,s.kind,s.start_byte,s.end_byte,s.start_line,s.end_line,s.signature FROM snapshot_files f JOIN content_symbols s ON s.content_sha256=f.content_sha256 AND s.parser_key=f.parser_key WHERE f.snapshot_id=? AND lower(s.name)=lower(?) ORDER BY f.path,s.start_byte"
         )?;
         let rows = statement.query_map(params![snapshot_id, name], |row| {
             let path: String = row.get(0)?;
@@ -502,15 +502,40 @@ impl RepositoryIndex {
                 symbol_id: symbol_id(&path, &hash, &local),
                 path,
                 name: row.get(3)?,
-                kind: parse_symbol_kind(&row.get::<_, String>(4)?),
-                start_byte: row.get(5)?,
-                end_byte: row.get(6)?,
-                start_line: row.get(7)?,
-                end_line: row.get(8)?,
-                signature: row.get(9)?,
+                container: row.get(4)?,
+                kind: parse_symbol_kind(&row.get::<_, String>(5)?),
+                start_byte: row.get(6)?,
+                end_byte: row.get(7)?,
+                start_line: row.get(8)?,
+                end_line: row.get(9)?,
+                signature: row.get(10)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(RepoError::from)
+    }
+
+    /// Resolves an exactly named definition, optionally qualified as
+    /// `Container::name`. Returns every definition that matches the request so
+    /// callers can fail closed on genuine ambiguity instead of guessing.
+    pub fn definitions(
+        &self,
+        snapshot_id: &str,
+        qualified_name: &str,
+    ) -> Result<Vec<SymbolRecord>, RepoError> {
+        let (container, name) = split_qualified_name(qualified_name);
+        if name.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut records = self.symbols(snapshot_id, name)?;
+        if let Some(container) = container {
+            records.retain(|record| {
+                record
+                    .container
+                    .as_deref()
+                    .is_some_and(|value| value.eq_ignore_ascii_case(container))
+            });
+        }
+        Ok(records)
     }
 
     pub fn dependencies(
@@ -938,6 +963,21 @@ struct GitView {
     cochanges: Vec<CoChangeRecord>,
 }
 
+/// Splits `Container::name` into its optional container and its final segment.
+/// Longer paths keep only the immediately enclosing segment, which is what the
+/// index records.
+fn split_qualified_name(qualified_name: &str) -> (Option<&str>, &str) {
+    let trimmed = qualified_name.trim();
+    match trimmed.rsplit_once("::") {
+        Some((container, name)) => {
+            let container = container.trim().rsplit("::").next().unwrap_or("").trim();
+            let container = (!container.is_empty()).then_some(container);
+            (container, name.trim())
+        }
+        None => (None, trimmed),
+    }
+}
+
 fn initialize_schema(connection: &Connection) -> Result<(), RepoError> {
     let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
     if version == 0 {
@@ -969,9 +1009,26 @@ fn initialize_schema(connection: &Connection) -> Result<(), RepoError> {
     let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
     if version == 1 {
         ri2::migrate_v1_to_v2(connection)?;
+    }
+    let version: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    if version == 2 {
+        migrate_v2_to_v3(connection)?;
     } else if version != INDEX_SCHEMA_VERSION {
         return Err(RepoError::UnsupportedIndexVersion(version));
     }
+    Ok(())
+}
+
+/// v3 records the lexically enclosing definition scope of every symbol so exact
+/// `Container::name` definition retrieval can resolve without a second index.
+/// Existing artifacts are re-parsed because the extraction query version changed.
+fn migrate_v2_to_v3(connection: &Connection) -> Result<(), RepoError> {
+    connection.execute_batch(
+        "BEGIN;
+         ALTER TABLE content_symbols ADD COLUMN container TEXT;
+         PRAGMA user_version=3;
+         COMMIT;",
+    )?;
     Ok(())
 }
 
@@ -1027,7 +1084,7 @@ fn insert_artifact(
         tx.execute("INSERT INTO content_terms(content_sha256,parser_key,term,tf,first_line) VALUES(?,?,?,?,?)", params![hash,key,term.term,term.tf,term.first_line])?;
     }
     for symbol in &artifact.symbols {
-        tx.execute("INSERT INTO content_symbols(content_sha256,parser_key,local_id,name,kind,start_byte,end_byte,start_line,end_line,signature) VALUES(?,?,?,?,?,?,?,?,?,?)", params![hash,key,symbol.local_id,symbol.name,symbol.kind.as_str(),symbol.start_byte,symbol.end_byte,symbol.start_line,symbol.end_line,symbol.signature])?;
+        tx.execute("INSERT INTO content_symbols(content_sha256,parser_key,local_id,name,container,kind,start_byte,end_byte,start_line,end_line,signature) VALUES(?,?,?,?,?,?,?,?,?,?,?)", params![hash,key,symbol.local_id,symbol.name,symbol.container,symbol.kind.as_str(),symbol.start_byte,symbol.end_byte,symbol.start_line,symbol.end_line,symbol.signature])?;
     }
     for link in &artifact.links {
         tx.execute("INSERT INTO content_links(content_sha256,parser_key,source_local_id,kind,target_name,line) VALUES(?,?,?,?,?,?)", params![hash,key,link.source_local_id,link.kind.as_str(),link.target_name,link.line])?;
@@ -1579,6 +1636,50 @@ mod tests {
             )
             .unwrap();
         assert!(none.abstained);
+    }
+    #[test]
+    fn qualified_definitions_resolve_the_exact_defining_span() {
+        let fixture = Fixture::new();
+        fs::write(
+            fixture.root.join("src/capsule.rs"),
+            "pub struct Capsule {\n    pub version: u32,\n}\n\npub struct Envelope {\n    pub version: u32,\n}\n\nimpl Capsule {\n    pub fn compile() -> Self {\n        Self { version: 3 }\n    }\n}\n\nimpl Envelope {\n    pub fn compile() -> Self {\n        Self { version: 2 }\n    }\n}\n",
+        )
+        .unwrap();
+        run(&fixture.root, ["add", "."]);
+        run(&fixture.root, ["commit", "-m", "capsule"]);
+        let mut db = fixture.db();
+        let report = db.refresh(&fixture.root).unwrap();
+        let snapshot = &report.snapshot.snapshot_id;
+
+        let unqualified = db.definitions(snapshot, "compile").unwrap();
+        assert_eq!(unqualified.len(), 2, "bare name is genuinely ambiguous");
+
+        let qualified = db.definitions(snapshot, "Capsule::compile").unwrap();
+        assert_eq!(qualified.len(), 1);
+        let record = &qualified[0];
+        assert_eq!(record.path, "src/capsule.rs");
+        assert_eq!(record.container.as_deref(), Some("Capsule"));
+        let source = fs::read_to_string(fixture.root.join("src/capsule.rs")).unwrap();
+        let defining = source
+            .lines()
+            .skip((record.start_line - 1) as usize)
+            .take((record.end_line - record.start_line + 1) as usize)
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(defining.contains("version: 3"));
+        assert!(!defining.contains("version: 2"));
+
+        assert!(
+            db.definitions(snapshot, "Capsule::missing_symbol")
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            db.definitions(snapshot, "Envelope::compile")
+                .unwrap()
+                .iter()
+                .all(|found| found.container.as_deref() == Some("Envelope"))
+        );
     }
     #[test]
     fn stale_index_is_never_reused_and_content_artifacts_are_reused() {

@@ -109,6 +109,8 @@ Mutable status/roadmap detail is not dumped wholesale into the stable authority 
 
 The stable core is cache-friendly because unrelated file churn and audit-only metadata do not need to alter provider-visible bytes.
 
+The capsule quotes real repository headings verbatim and fails closed when one is missing, so renumbering or renaming a referenced section disables every provider call. That coupling MUST be guarded by an automated check that compiles the capsule against this repository's actual documents; fixture-only tests cannot see the drift.
+
 ### 4.2 Task-specific Context Economy material
 
 Task-specific code/docs/evidence is selected through the existing RI2 + Context Economy engine.
@@ -146,7 +148,17 @@ A nearby structural span in the correct file is not sufficient merely because pa
 
 Required exact evidence must not be evicted by lower-value context candidates once the task declares that coverage necessary.
 
-The 2026-08-17 authority-split acceptance matrix exposed this requirement concretely: a capsule-version query selected `model_context.rs` but omitted the actual `version: 3` assignment. This retrieval defect must be repaired in RI2/Context Economy before the provider gate closes.
+The 2026-08-17 authority-split acceptance matrix exposed this requirement concretely: a capsule-version query selected `model_context.rs` but omitted the actual `version: 3` assignment.
+
+That defect is repaired inside the existing pipeline, not by a second retriever:
+
+- RI2 records each symbol's enclosing definition scope, so `Container::name` resolves exactly;
+- Context Economy accepts required identifiers and reserves their exact defining spans ahead of discretionary selection;
+- unresolvable, genuinely ambiguous, oversized or unaffordable coverage fails closed instead of shipping a partial span.
+
+Provider task construction derives those identifiers conservatively from the objective: only code-shaped quoted names that the repository actually defines become mandatory coverage, so a quoted answer literal cannot force an abstention.
+
+The live authority-split matrix must be rerun on the target machine before the gate can close on this requirement.
 
 ## 5. AER owns tools; providers are intelligence resources
 
@@ -361,8 +373,8 @@ Therefore:
 
 - authority split remains the leading Claude production candidate;
 - it is not production-default yet;
-- exact-definition retrieval is the immediate correctness blocker;
-- the full live matrix must be rerun after that repair;
+- exact-definition retrieval has since been repaired in RI2/Context Economy with deterministic regression coverage (§4.4);
+- the full live matrix must be rerun on the target machine before that repair can be credited in the acceptance ledger;
 - Step 14 remains blocked;
 - strong sandbox work remains necessary before process-capable provider-native agentic execution is accepted.
 

@@ -64,7 +64,7 @@ const PROFILES: &[LanguageProfile] = &[
         role: FileRole::Programming,
         grammar_adapter: Some("tree-sitter-rust"),
         grammar_version: Some("0.24.2"),
-        extraction_query_version: "aer-v2",
+        extraction_query_version: "aer-v3",
     },
     LanguageProfile {
         language: LanguageKind::Python,
@@ -76,7 +76,7 @@ const PROFILES: &[LanguageProfile] = &[
         role: FileRole::Programming,
         grammar_adapter: Some("tree-sitter-python"),
         grammar_version: Some("0.25.0"),
-        extraction_query_version: "aer-v2",
+        extraction_query_version: "aer-v3",
     },
     LanguageProfile {
         language: LanguageKind::JavaScript,
@@ -88,7 +88,7 @@ const PROFILES: &[LanguageProfile] = &[
         role: FileRole::Programming,
         grammar_adapter: Some("tree-sitter-javascript"),
         grammar_version: Some("0.25.0"),
-        extraction_query_version: "aer-v2",
+        extraction_query_version: "aer-v3",
     },
     LanguageProfile {
         language: LanguageKind::TypeScript,
@@ -100,7 +100,7 @@ const PROFILES: &[LanguageProfile] = &[
         role: FileRole::Programming,
         grammar_adapter: Some("tree-sitter-typescript"),
         grammar_version: Some("0.23.2"),
-        extraction_query_version: "aer-v2",
+        extraction_query_version: "aer-v3",
     },
     LanguageProfile {
         language: LanguageKind::Tsx,
@@ -112,7 +112,7 @@ const PROFILES: &[LanguageProfile] = &[
         role: FileRole::Programming,
         grammar_adapter: Some("tree-sitter-tsx"),
         grammar_version: Some("0.23.2"),
-        extraction_query_version: "aer-v2",
+        extraction_query_version: "aer-v3",
     },
     LanguageProfile {
         language: LanguageKind::Json,

@@ -95,6 +95,43 @@ impl ContextEngine {
             }
         }
 
+        for symbol in &request.required_symbols {
+            let definitions = index.definitions(&snapshot_id, symbol)?;
+            if definitions.is_empty() {
+                return Err(ContextError::ExactDefinitionUnavailable(symbol.clone()));
+            }
+            if definitions.len() > self.policy.max_definitions_per_symbol {
+                return Err(ContextError::ExactDefinitionAmbiguous {
+                    symbol: symbol.clone(),
+                    definitions: definitions.len(),
+                });
+            }
+            for definition in definitions {
+                let start = definition.start_line.max(1);
+                let end = definition.end_line.max(start);
+                let lines = end.saturating_sub(start).saturating_add(1);
+                if lines > self.policy.max_required_definition_lines {
+                    return Err(ContextError::ExactDefinitionTooLarge {
+                        symbol: symbol.clone(),
+                        lines,
+                        maximum: self.policy.max_required_definition_lines,
+                    });
+                }
+                let Some(resolved_candidate) =
+                    resolve_path_candidate(index, &snapshot_id, &definition.path)?
+                else {
+                    return Err(ContextError::ExactDefinitionUnavailable(symbol.clone()));
+                };
+                let path = resolved_candidate.path.clone();
+                let candidate = candidates.entry(path).or_insert(resolved_candidate);
+                candidate.required_definitions.insert((start, end));
+                candidate.required_symbols.insert(symbol.clone());
+                candidate
+                    .reasons
+                    .insert(format!("exact definition: {symbol}"));
+            }
+        }
+
         for hint in &request.runtime_hints {
             if hint.score_milli == 0 {
                 continue;
@@ -251,6 +288,12 @@ impl ContextEngine {
                 mandatory_paths.insert(candidate.path.clone());
             }
         }
+        for candidate in ranked
+            .iter()
+            .filter(|candidate| !candidate.required_definitions.is_empty())
+        {
+            mandatory_paths.insert(candidate.path.clone());
+        }
 
         for candidate in ranked.iter().take(consideration_limit).chain(
             ranked
@@ -273,6 +316,23 @@ impl ContextEngine {
         }
 
         let mut selected = BTreeMap::<String, ContextItem>::new();
+        for candidate in materialized
+            .iter()
+            .filter(|candidate| !candidate.required_spans.is_empty())
+        {
+            let item = candidate.required_item(&self.policy)?;
+            if item.token_cost > remaining {
+                return Err(ContextError::BudgetTooSmall {
+                    required: available
+                        .saturating_sub(remaining)
+                        .saturating_add(item.token_cost),
+                    available,
+                });
+            }
+            remaining -= item.token_cost;
+            selected.insert(candidate.candidate.path.clone(), item);
+        }
+
         for semantic_id in &request.required_semantic_ids {
             let candidate = materialized
                 .iter()
@@ -380,6 +440,34 @@ impl ContextEngine {
             }
         }
 
+        // Fail closed rather than ship a pack that silently omits a definition the
+        // task named. Selection above reserves these first; this re-checks the
+        // invariant against the produced items.
+        for symbol in &request.required_symbols {
+            let mut covered = false;
+            for candidate in materialized
+                .iter()
+                .filter(|candidate| candidate.candidate.required_symbols.contains(symbol))
+            {
+                let Some(item) = selected.get(&candidate.candidate.path) else {
+                    return Err(ContextError::ExactDefinitionUnavailable(symbol.clone()));
+                };
+                for (start, end) in &candidate.required_spans {
+                    if !item
+                        .segments
+                        .iter()
+                        .any(|segment| segment.start_line <= *start && segment.end_line >= *end)
+                    {
+                        return Err(ContextError::ExactDefinitionUnavailable(symbol.clone()));
+                    }
+                }
+                covered = true;
+            }
+            if !covered {
+                return Err(ContextError::ExactDefinitionUnavailable(symbol.clone()));
+            }
+        }
+
         let selected_paths = selected.keys().cloned().collect::<BTreeSet<_>>();
         let mut items = selected.into_values().collect::<Vec<_>>();
         items.sort_by(|left, right| {
@@ -456,11 +544,13 @@ impl ContextEngine {
                 break;
             }
         }
+        let required_spans = merge_spans(&candidate.required_definitions, line_count);
         Ok(MaterializedCandidate {
             candidate: candidate.clone(),
             text,
             line_count,
             symbol_span,
+            required_spans,
         })
     }
 
@@ -480,6 +570,8 @@ struct Candidate {
     matched_terms: BTreeSet<String>,
     matched_symbols: BTreeSet<String>,
     required_semantic_ids: BTreeSet<String>,
+    required_symbols: BTreeSet<String>,
+    required_definitions: BTreeSet<(u32, u32)>,
     reasons: BTreeSet<String>,
     lexical_rank: Option<usize>,
     semantic_rank: Option<usize>,
@@ -497,6 +589,8 @@ impl Candidate {
             matched_terms: BTreeSet::new(),
             matched_symbols: BTreeSet::new(),
             required_semantic_ids: BTreeSet::new(),
+            required_symbols: BTreeSet::new(),
+            required_definitions: BTreeSet::new(),
             reasons: BTreeSet::new(),
             lexical_rank: None,
             semantic_rank: None,
@@ -514,6 +608,8 @@ impl Candidate {
             matched_terms: BTreeSet::new(),
             matched_symbols: BTreeSet::new(),
             required_semantic_ids: BTreeSet::new(),
+            required_symbols: BTreeSet::new(),
+            required_definitions: BTreeSet::new(),
             reasons: BTreeSet::new(),
             lexical_rank: None,
             semantic_rank: None,
@@ -542,10 +638,36 @@ struct MaterializedCandidate {
     text: String,
     line_count: u32,
     symbol_span: Option<(u32, u32)>,
+    required_spans: Vec<(u32, u32)>,
 }
 
 impl MaterializedCandidate {
+    /// Exactly named definitions are materialized verbatim and never traded down
+    /// to a narrower tier, so a task that names an identifier either receives the
+    /// defining span or the compilation fails closed.
+    fn required_item(&self, policy: &ContextPolicy) -> Result<ContextItem, ContextError> {
+        let mut segments = Vec::with_capacity(self.required_spans.len());
+        let mut body = String::new();
+        for (start, end) in &self.required_spans {
+            segments.push(source_segment(&self.text, *start, *end)?);
+            if !body.is_empty() {
+                body.push('\n');
+            }
+            body.push_str(&format!(
+                "{}#L{}-L{}\n{}",
+                self.candidate.path,
+                start,
+                end,
+                extract_lines(&self.text, *start, *end)?
+            ));
+        }
+        self.finish(ContextTier::Expanded, segments, body, policy)
+    }
+
     fn tier(&self, tier: ContextTier, policy: &ContextPolicy) -> Result<ContextItem, ContextError> {
+        if !self.required_spans.is_empty() {
+            return self.required_item(policy);
+        }
         let (segments, body) = match tier {
             ContextTier::Identifier => (Vec::new(), format!("path: {}", self.candidate.path)),
             ContextTier::Structural => {
@@ -618,16 +740,31 @@ impl MaterializedCandidate {
                 )
             }
         };
+        self.finish(tier, segments, body, policy)
+    }
+
+    fn finish(
+        &self,
+        tier: ContextTier,
+        segments: Vec<SourceSegment>,
+        body: String,
+        policy: &ContextPolicy,
+    ) -> Result<ContextItem, ContextError> {
         let token_cost = estimate_tokens(&body)
             .saturating_add(policy.per_item_token_overhead)
             .max(1);
-        let source_ref = if let Some(segment) = segments.first() {
-            format!(
-                "{}#L{}-L{}",
-                self.candidate.path, segment.start_line, segment.end_line
-            )
-        } else {
+        let source_ref = if segments.is_empty() {
             self.candidate.path.clone()
+        } else {
+            format!(
+                "{}#{}",
+                self.candidate.path,
+                segments
+                    .iter()
+                    .map(|segment| format!("L{}-L{}", segment.start_line, segment.end_line))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            )
         };
         let mut required_semantic_ids = self
             .candidate
@@ -637,12 +774,7 @@ impl MaterializedCandidate {
             .collect::<Vec<_>>();
         required_semantic_ids.sort();
         Ok(ContextItem {
-            id: context_item_id(
-                &self.candidate.content_hash,
-                &source_ref,
-                tier,
-                segments.first().map(|segment| segment.sha256.as_str()),
-            ),
+            id: context_item_id(&self.candidate.content_hash, &source_ref, tier, &segments),
             source_type: "repository_source".to_owned(),
             source_ref,
             content_hash: self.candidate.content_hash.clone(),
@@ -688,6 +820,21 @@ fn validate_request(request: &ContextRequest, policy: &ContextPolicy) -> Result<
             "semantic id count exceeds {}",
             policy.max_semantic_ids
         )));
+    }
+    if request.required_symbols.len() > policy.max_required_symbols {
+        return Err(ContextError::InvalidRequest(format!(
+            "required symbol count exceeds {}",
+            policy.max_required_symbols
+        )));
+    }
+    if request
+        .required_symbols
+        .iter()
+        .any(|symbol| symbol.trim().is_empty())
+    {
+        return Err(ContextError::InvalidRequest(
+            "required symbols cannot be empty".to_owned(),
+        ));
     }
     if request.runtime_hints.len() > policy.max_runtime_hints {
         return Err(ContextError::InvalidRequest(format!(
@@ -767,6 +914,9 @@ fn utility(candidate: &Candidate, policy: &ContextPolicy) -> Result<u64, Context
     }
     if !candidate.required_semantic_ids.is_empty() {
         value = value.saturating_add(RRF_SCALE);
+    }
+    if !candidate.required_definitions.is_empty() {
+        value = value.saturating_add(RRF_SCALE.saturating_mul(2));
     }
     Ok(value.max(1))
 }
@@ -958,7 +1108,7 @@ fn context_item_id(
     content_hash: &str,
     source_ref: &str,
     tier: ContextTier,
-    span_hash: Option<&str>,
+    segments: &[SourceSegment],
 ) -> String {
     let mut digest = Sha256::new();
     digest.update(b"aer-context-item-v1\0");
@@ -967,11 +1117,26 @@ fn context_item_id(
     digest.update(source_ref.as_bytes());
     digest.update(b"\0");
     digest.update([tier.as_u8()]);
-    if let Some(span_hash) = span_hash {
+    for segment in segments {
         digest.update(b"\0");
-        digest.update(span_hash.as_bytes());
+        digest.update(segment.sha256.as_bytes());
     }
     format!("context-item:{}", hex(digest.finalize().as_ref()))
+}
+
+/// Merges the exact definition spans requested for one file into ordered,
+/// non-overlapping ranges clamped to the file.
+fn merge_spans(spans: &BTreeSet<(u32, u32)>, line_count: u32) -> Vec<(u32, u32)> {
+    let mut merged: Vec<(u32, u32)> = Vec::new();
+    for (start, end) in spans {
+        let start = (*start).clamp(1, line_count.max(1));
+        let end = (*end).clamp(start, line_count.max(1));
+        match merged.last_mut() {
+            Some(last) if start <= last.1.saturating_add(1) => last.1 = last.1.max(end),
+            _ => merged.push((start, end)),
+        }
+    }
+    merged
 }
 
 fn sha256(bytes: &[u8]) -> String {

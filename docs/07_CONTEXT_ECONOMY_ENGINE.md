@@ -159,6 +159,33 @@ Adjacent implementation, callers/callees, implementations, build/test topology, 
 
 Start low and escalate just in time.
 
+### Exactly named identifiers are not subject to tier economics
+
+When a task names an identifier explicitly and asks for its concrete
+definition or value, progressive disclosure does not apply to that identifier.
+The request carries the named identifiers as mandatory coverage, and the engine
+MUST either:
+
+1. include the exact defining source span, verbatim and untruncated; or
+2. fail closed with an explicit abstention.
+
+A nearby structural span, a window centred on a lexical anchor, or a
+tier-limited excerpt that omits the requested assignment is NOT coverage.
+
+Mandatory definitions are reserved before discretionary selection, so budget
+pressure removes optional evidence first and can never quietly shrink a named
+definition. Fail-closed conditions are:
+
+- the identifier resolves to no definition in the exact snapshot;
+- it resolves to more definitions than policy allows to be treated as one
+  answer (genuine ambiguity);
+- its definition is longer than the verbatim bound policy permits;
+- the remaining token budget cannot hold it.
+
+Identifier demands are derived conservatively. Only code-shaped names promote
+to mandatory coverage, and only when the repository actually defines them, so
+quoted prose in a task cannot turn a valid request into an abstention.
+
 ### Expansion handles
 
 A compact candidate SHOULD expose handles that allow exact escalation without rerunning broad discovery, for example:
