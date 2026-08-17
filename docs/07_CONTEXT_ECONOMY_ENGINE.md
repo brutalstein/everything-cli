@@ -278,6 +278,22 @@ Stable reusable prefixes can include:
 
 Task-specific evidence should remain dynamic.
 
+### Model-visible cache identity versus audit identity
+
+AER MUST distinguish **what the model needs to see** from **what the control plane needs to audit**.
+
+Repository snapshots, pack IDs, full-file hashes, fragment hashes and source line offsets remain mandatory provenance in receipts and Context Pack state. They MUST NOT be injected into provider-visible prompt bytes solely for audit purposes when they carry no task semantics. Otherwise an unrelated workspace edit can invalidate an otherwise identical prompt prefix and destroy provider-cache reuse without improving model quality.
+
+Therefore:
+
+- provider-visible cache identity is derived from the exact semantic bytes supplied to the model;
+- audit identity remains snapshot- and provenance-bound out of band;
+- if unrelated workspace churn changes `repo_snapshot`/`pack_id` but the selected model-visible evidence is byte-identical, the provider prompt digest SHOULD remain identical;
+- if a selected authority fragment or selected task source changes, the provider prompt digest MUST change;
+- cache optimization never permits stale evidence reuse: exact-snapshot compilation and fidelity verification still run before dispatch.
+
+This separation must be regression-tested with synthetic unselected workspace churn and then validated with real provider cache-write/read telemetry.
+
 Repository-side caches SHOULD key derived retrieval representations on content/source scope plus producer policy/version. Expensive embeddings and role summaries are lazy; exact lexical/syntax/graph facts needed for freshness are prioritized.
 
 ## Context effectiveness telemetry
