@@ -1454,12 +1454,8 @@ mod tests {
 
     #[test]
     fn codex_smoke_plan_blocks_provider_local_behavior_sources() {
-        let adapter = DelegatedCliProvider::new(
-            DelegatedProviderKind::Codex,
-            "architecture",
-            "digest",
-            None,
-        );
+        let adapter =
+            DelegatedCliProvider::new(DelegatedProviderKind::Codex, "architecture", "digest", None);
         let (args, stdin) = adapter.smoke_plan("prompt", Path::new("scratch"));
         let args = args
             .iter()
@@ -1472,10 +1468,7 @@ mod tests {
             args.windows(2)
                 .any(|pair| pair == ["--sandbox", "read-only"])
         );
-        assert!(
-            args.windows(2)
-                .any(|pair| pair == ["--cd", "scratch"])
-        );
+        assert!(args.windows(2).any(|pair| pair == ["--cd", "scratch"]));
     }
 
     #[test]
