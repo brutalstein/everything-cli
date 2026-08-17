@@ -373,12 +373,7 @@ impl fmt::Display for PermissionError {
 impl std::error::Error for PermissionError {}
 
 pub fn parse_side_effect(value: &str) -> Result<SideEffectClass, PermissionError> {
-    match value
-        .trim()
-        .to_ascii_lowercase()
-        .replace('-', "_")
-        .as_str()
-    {
+    match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
         "read" | "pure_read" => Ok(SideEffectClass::PureRead),
         "write" | "workspace_write" => Ok(SideEffectClass::WorkspaceWrite),
         "exec" | "command" | "process_execution" => Ok(SideEffectClass::ProcessExecution),
@@ -422,18 +417,15 @@ mod tests {
             PermissionRiskClass::Low
         );
         assert_eq!(
-            PermissionRequest::new(SideEffectClass::ProcessExecution, "x", "r", true)
-                .risk_class(),
+            PermissionRequest::new(SideEffectClass::ProcessExecution, "x", "r", true).risk_class(),
             PermissionRiskClass::Moderate
         );
         assert_eq!(
-            PermissionRequest::new(SideEffectClass::ExternalMutation, "x", "r", true)
-                .risk_class(),
+            PermissionRequest::new(SideEffectClass::ExternalMutation, "x", "r", true).risk_class(),
             PermissionRiskClass::High
         );
         assert_eq!(
-            PermissionRequest::new(SideEffectClass::ExternalMutation, "x", "r", false)
-                .risk_class(),
+            PermissionRequest::new(SideEffectClass::ExternalMutation, "x", "r", false).risk_class(),
             PermissionRiskClass::Critical
         );
         assert_eq!(
