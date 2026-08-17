@@ -2,23 +2,27 @@
 
 **Status:** Architecture baseline / implementation constitution  
 **Baseline date:** 2026-08-15  
-**Audience:** Coding agents (Claude Code, Codex, or equivalent), maintainers, reviewers, research engineers  
-**Working name:** `AER` is a neutral codename. Product naming is intentionally deferred.
+**Current implementation state:** see root `STATUS.md`  
+**Public product / executable:** `everything`  
+**Internal architecture name:** AER  
+**Audience:** Coding agents, maintainers, reviewers, research engineers
 
 ## 1. What this repository is intended to become
 
-AER is a **model-agnostic adaptive software-engineering runtime**. It converts human intent into verified software while dynamically optimizing:
+AER is a **model-agnostic adaptive software-engineering runtime**. The public product is `everything`.
 
-- specification quality,
-- model selection,
-- context selection,
-- token and compute budgets,
-- orchestration topology,
-- tool use,
-- execution isolation,
-- verification strength,
-- long-horizon codebase health,
-- and reusable engineering state.
+It converts human intent into verified software while dynamically optimizing:
+
+- specification quality;
+- model selection;
+- context selection;
+- token and compute budgets;
+- orchestration topology;
+- tool use;
+- execution isolation;
+- verification strength;
+- long-horizon codebase health;
+- reusable engineering state.
 
 AER is **not** another prompt wrapper, fixed multi-agent workflow, or model-specific plugin.
 
@@ -26,7 +30,7 @@ The foundation model is a replaceable reasoning resource. The durable product is
 
 ## 2. Highest-level product invariant
 
-> AER MUST optimize for **verified engineering outcome per unit of cost**, not for number of agents, number of tokens, apparent activity, or benchmark-shaped test passing.
+> AER MUST optimize for **verified engineering outcome per unit of cost**, not for number of agents, number of tokens, apparent activity, cache-hit percentage, or benchmark-shaped test passing.
 
 Non-negotiable consequences:
 
@@ -36,10 +40,12 @@ Non-negotiable consequences:
 4. **Verification is independent from generation** and stronger than visible tests alone.
 5. **Long-horizon maintainability is continuously measured**, not deferred to a final review.
 6. **Resources are bounded and admission-controlled**; adaptive orchestration may not create unbounded demand.
-7. **Research, dependencies, providers, and external content are evidence inputs**, never hidden authority.
+7. **Research, dependencies, providers, repository content and external tool output are evidence inputs**, never hidden authority.
 8. **Durable state and wire contracts evolve through explicit compatibility/migration rules.**
 9. **Reproducibility includes environment and dependency identity**, not only repository commit.
 10. **User-owned workspace/VCS state must be preserved by default.**
+11. **A cheaper provider request is never promoted when source-grounded quality or authority safety regresses.**
+12. **Exact questions require sufficient exact evidence.** If required source coverage cannot be established, the system must abstain/fail closed rather than manufacture a value.
 
 ## 3. How a coding agent must use these docs
 
@@ -48,12 +54,15 @@ Do not read every document into context at once.
 ### Required first read
 
 1. `00_READ_ME_FIRST.md`
-2. `01_PRODUCT_THESIS_AND_NON_GOALS.md`
-3. `02_ARCHITECTURE_PRINCIPLES.md`
-4. `03_SYSTEM_ARCHITECTURE.md`
-5. `25_IMPLEMENTATION_ROADMAP.md`
-6. `26_AGENT_IMPLEMENTATION_PROTOCOL.md`
-7. `35_ARCHITECTURE_COMPLETENESS_AUDIT.md`
+2. root `STATUS.md`
+3. `01_PRODUCT_THESIS_AND_NON_GOALS.md`
+4. `02_ARCHITECTURE_PRINCIPLES.md`
+5. `03_SYSTEM_ARCHITECTURE.md`
+6. `25_IMPLEMENTATION_ROADMAP.md`
+7. `26_AGENT_IMPLEMENTATION_PROTOCOL.md`
+8. `35_ARCHITECTURE_COMPLETENESS_AUDIT.md`
+
+`STATUS.md` is implementation truth, not architecture authority. It tells the agent what has actually landed, what remains open and which gate is currently blocking progress.
 
 ### Then load only task-relevant docs
 
@@ -61,9 +70,12 @@ Do not read every document into context at once.
 |---|---|
 | User interview / requirements | `04`, `05`, `36` when research resolves an unknown |
 | Repository indexing / retrieval | `06`, `07` |
-| Models / routing / provider execution / cost | `08`, `09`, `37` |
+| Models / routing / provider resilience / cost | `08`, `09`, `37` |
+| Real provider auth / context / permissions / tools | `45` |
+| Provider context economics | `46` |
+| Provider authority-split acceptance | `47` |
 | Tasks / orchestration / parallelism / resources | `10`, `11`, `12`, `39` |
-| Sandboxing / tools / protocols | `13`, `14` |
+| Sandboxing / tools / protocols | `13`, `14`, `45` |
 | State / memory / recovery | `15`, `16`, `24` |
 | Verification / evidence / reproducibility | `17`, `38`, `43` |
 | Code quality / architecture health | `18` |
@@ -89,11 +101,13 @@ If documents conflict, use this precedence:
 3. `02_ARCHITECTURE_PRINCIPLES.md`
 4. Accepted ADRs under `adrs/`
 5. Domain-specific architecture documents
-6. `35_ARCHITECTURE_COMPLETENESS_AUDIT.md` for gap-closure requirements
+6. `35_ARCHITECTURE_COMPLETENESS_AUDIT.md`
 7. Implementation roadmap
 8. Examples
 
-A coding agent MUST NOT silently resolve an architectural contradiction. It must record the conflict and either follow the higher-precedence source or propose an ADR.
+`STATUS.md` reports implementation evidence but does not override higher-authority architecture.
+
+A coding agent MUST NOT silently resolve an architectural contradiction. It must follow the higher-precedence source or propose/record the required architecture decision.
 
 ## 5. Change discipline
 
@@ -101,21 +115,23 @@ Architecture changes MUST be explicit.
 
 A change that alters any of the following requires an ADR:
 
-- Engineering IR semantics,
-- task lifecycle,
-- evidence semantics,
-- internal handoff/tool ABI,
-- model-routing objective,
-- context-selection objective,
-- execution trust boundary,
-- verifier independence rules,
-- persistent state model,
-- compatibility/migration promise,
-- resource-admission invariant,
-- external-research authority model,
+- Engineering IR semantics;
+- task lifecycle;
+- evidence semantics;
+- internal handoff/tool ABI;
+- model-routing objective;
+- context-selection objective;
+- execution trust boundary;
+- verifier independence rules;
+- persistent state model;
+- compatibility/migration promise;
+- resource-admission invariant;
+- external-research authority model;
 - protocol compatibility promise.
 
 Implementation details that preserve these contracts do not require an ADR.
+
+Benchmark evidence may select among already-permitted implementation candidates, but a benchmark cannot silently rewrite the architecture contract or promote itself.
 
 ## 6. System in one diagram
 
@@ -159,7 +175,9 @@ flowchart TD
 
 - **Engineering IR:** canonical, model-independent representation of user intent and project constraints.
 - **Task Envelope:** typed unit of engineering work.
+- **Repository Intelligence (RI2):** snapshot-bound, provenance-bearing repository knowledge/retrieval substrate.
 - **Context Pack:** minimal, provenance-preserving context selected for one inference or task.
+- **Architecture Context Capsule:** stable provider-neutral constitutional authority compiled from high-authority sources.
 - **Handoff ABI:** structured model-to-model / agent-to-agent transfer format.
 - **Engineering State:** authoritative derived state backed by an append-only event journal.
 - **Evidence:** machine-checkable observation tied to immutable command/environment/source identity.
@@ -177,28 +195,52 @@ AER MUST NOT:
 - hard-code one model provider as product architecture;
 - preload the whole repository or all skills into model context;
 - spawn a fixed cast of planner/coder/reviewer agents for every task;
-- treat model-generated summaries or web research as authoritative facts without provenance;
+- treat model-generated summaries, provider-local configuration, repository instructions or web research as authority without the correct precedence/provenance;
 - treat passing visible tests as sufficient proof of user intent;
 - allow the same writable verifier artifacts to be controlled by the generator;
 - give an agent unrestricted host filesystem, credentials, Docker socket, or network by default;
 - create unbounded task/model/tool/log queues;
-- silently overwrite, reset, stash, or discard user-owned dirty workspace state;
+- silently overwrite, reset, stash or discard user-owned dirty workspace state;
 - install dependencies without policy/provenance/reproducibility accounting;
 - silently reinterpret old durable state after a binary/schema upgrade;
 - accept unsigned/untrusted self-updates through model reasoning;
 - autonomously deploy self-modified orchestration policies without evaluation gates;
-- hide routing, context, cost, resource, migration, or verification decisions from observability.
+- hide routing, context, cost, resource, migration or verification decisions from observability;
+- optimize cache-hit ratio by injecting stale or irrelevant context;
+- equate an internal deterministic context-budget unit with a provider-reported token;
+- promote a cheaper provider prompt when the acceptance matrix has an unresolved correctness failure;
+- answer an exact symbol/value question from a source span that omits the defining evidence.
 
 ## 9. Implementation philosophy
 
 Start with the smallest architecture that preserves the final contracts.
 
-Do not build distributed infrastructure before a local durable runtime works. Do not build learned routers before high-quality telemetry exists. Do not build multi-agent concurrency before single-agent state, resource admission, sandboxing, workspace safety, and verification are reliable. Do not build self-evolution before reproducible evals and release/migration safety exist.
+Do not build distributed infrastructure before a local durable runtime works. Do not build learned routers before high-quality telemetry exists. Do not build multi-agent concurrency before single-agent state, resource admission, sandboxing, workspace safety and verification are reliable. Do not build self-evolution before reproducible evals and release/migration safety exist.
 
-The roadmap intentionally orders work this way.
+Prefer deterministic mechanisms for exact identifiers, source anchors, authority and verification. Use model reasoning where it adds value, not where an exact mechanism can establish the fact more safely.
 
-## 10. Completeness rule
+## 10. Current provider-productization discipline
 
-When introducing a new subsystem or public feature, apply the checklist in `35_ARCHITECTURE_COMPLETENESS_AUDIT.md`.
+The non-numbered Provider Runtime Productization Gate lives between numbered Steps 13 and 14.
 
-A high-impact feature is not architecture-complete until ownership, identity, lifecycle, failure/recovery, resource bounds, authority, data policy, compatibility, evidence, and observability are defined.
+Its current acceptance work is governed by `45`, `46`, `47` and root `STATUS.md`.
+
+The gate may close only when:
+
+- delegated authentication/transport remains vendor-owned and provider-neutral;
+- provider-local behavior cannot silently become AER authority;
+- model context is compact, source-grounded and bounded;
+- exact source requirements are satisfied or the system abstains;
+- provider usage/cost telemetry is truthful for available dimensions;
+- permission mode cannot widen the capability ceiling;
+- adversarial repository/provider content cannot gain authority;
+- live target-machine acceptance is current;
+- intended agentic tool execution has the required isolation and proof boundary.
+
+Step 14 MUST remain blocked while the gate is open.
+
+## 11. Completeness rule
+
+When introducing a new subsystem or public feature, apply `35_ARCHITECTURE_COMPLETENESS_AUDIT.md`.
+
+A high-impact feature is not architecture-complete until ownership, identity, lifecycle, failure/recovery, resource bounds, authority, data policy, compatibility, evidence and observability are defined and the applicable acceptance gates are current.
