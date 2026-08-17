@@ -6,7 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use aer_core::model_context::ArchitectureContextCapsule;
+use aer_core::model_context::ModelContextEnvelope;
 use aer_provider::{
     NeverCancelled,
     delegated::{DelegatedCliProvider, DelegatedProviderKind, LoginFlow},
@@ -54,7 +54,7 @@ enum ProviderCommand {
     },
     /// Clear the vendor-owned local authentication session when supported.
     Logout { provider: String },
-    /// Make one real, read-only model call with the bounded architecture capsule.
+    /// Make one real, read-only model call with bounded constitutional + RI2 context.
     Smoke {
         provider: String,
         #[arg(long)]
@@ -280,11 +280,11 @@ pub(crate) fn provider_smoke(
         .into());
     }
     let provider = parse_provider(provider)?;
-    let capsule = ArchitectureContextCapsule::compile(path)?;
+    let context = ModelContextEnvelope::compile(path, prompt)?;
     let adapter = DelegatedCliProvider::new(
         provider,
-        capsule.rendered.clone(),
-        capsule.digest.clone(),
+        context.rendered.clone(),
+        context.digest.clone(),
         model,
     );
 
@@ -292,16 +292,28 @@ pub(crate) fn provider_smoke(
         println!("everything provider smoke");
         println!("  provider   {}", provider.display_name());
         println!("  transport  {}", provider.transport());
-        println!("  context    {}", short_id(&capsule.digest));
+        println!("  context    {}", short_id(&context.digest));
+        println!("  core       {}", short_id(&context.architecture.digest));
+        println!("  policy     {}", context.architecture.policy_version);
+        println!("  pack       {}", short_id(&context.task_context.pack_id));
         println!(
-            "  sources    {}",
-            capsule
-                .sources
-                .iter()
-                .map(|source| source.path.as_str())
-                .collect::<Vec<_>>()
-                .join(", ")
+            "  budget     {} estimated token units · {} selected",
+            context.estimated_tokens,
+            context.task_context.items.len()
         );
+        println!("  sources    {}", context.architecture.source_paths().join(", "));
+        if !context.task_context.items.is_empty() {
+            println!(
+                "  retrieved  {}",
+                context
+                    .task_context
+                    .items
+                    .iter()
+                    .map(|item| item.source_ref.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
         if show_input {
             println!("\ninput\n-----\n{}", prompt.trim());
         }
@@ -316,14 +328,40 @@ pub(crate) fn provider_smoke(
                 "provider": trace.provider,
                 "transport": trace.transport,
                 "model": trace.requested_model,
-                "architecture_context_digest": trace.architecture_context_digest,
-                "architecture_sources": capsule.sources.iter().map(|source| serde_json::json!({
-                    "path": source.path,
-                    "sha256": source.sha256,
-                    "included_bytes": source.included_bytes,
-                    "total_bytes": source.total_bytes,
-                    "truncated": source.truncated,
-                })).collect::<Vec<_>>(),
+                "model_context_digest": trace.architecture_context_digest,
+                "model_context_estimated_tokens": context.estimated_tokens,
+                "architecture_core": {
+                    "version": context.architecture.version,
+                    "policy_version": context.architecture.policy_version,
+                    "digest": context.architecture.digest,
+                    "estimated_tokens": context.architecture.estimated_tokens,
+                    "sources": context.architecture.sources.iter().map(|source| serde_json::json!({
+                        "path": source.path,
+                        "file_sha256": source.sha256,
+                        "fragment_sha256": source.fragment_sha256,
+                        "section": source.section,
+                        "start_line": source.start_line,
+                        "end_line": source.end_line,
+                        "included_bytes": source.included_bytes,
+                        "total_bytes": source.total_bytes,
+                    })).collect::<Vec<_>>(),
+                },
+                "context_pack": {
+                    "pack_id": context.task_context.pack_id,
+                    "policy_version": context.task_context.policy_version,
+                    "repo_snapshot": context.task_context.repo_snapshot,
+                    "input_token_budget": context.task_context.input_token_budget,
+                    "selected_token_cost": context.task_context.total_token_cost(),
+                    "items": context.task_context.items.iter().map(|item| serde_json::json!({
+                        "path": item.path,
+                        "source_ref": item.source_ref,
+                        "content_hash": item.content_hash,
+                        "token_cost": item.token_cost,
+                        "tier": item.tier.as_u8(),
+                        "utility_micros": item.utility_micros,
+                    })).collect::<Vec<_>>(),
+                    "omitted_high_rank_items": context.task_context.omitted_high_rank_items,
+                },
                 "input": trace.input,
                 "output": trace.output,
                 "usage": {
@@ -352,10 +390,7 @@ pub(crate) fn provider_smoke(
             .map_or_else(|| "unknown".to_owned(), |value| value.to_string())
     );
     println!("  events     {}", trace.raw_event_count);
-    println!(
-        "  context    {}",
-        short_id(&trace.architecture_context_digest)
-    );
+    println!("  context    {}", short_id(&trace.architecture_context_digest));
     Ok(())
 }
 
