@@ -2,7 +2,7 @@ use std::{error::Error, io, path::Path};
 
 use aer_core::model_context::ModelContextEnvelope;
 use aer_provider::{
-    NeverCancelled, ProviderUsage,
+    NeverCancelled,
     delegated::{DelegatedCliProvider, DelegatedProviderKind, ModelIoTrace},
 };
 
@@ -70,7 +70,11 @@ pub(super) fn run(
                 display_bps(sample.cache_read_share_bps),
                 display_u64(sample.output_tokens),
                 sample.duration_ms,
-                if sample.output_contract_pass { "PASS" } else { "FAIL" },
+                if sample.output_contract_pass {
+                    "PASS"
+                } else {
+                    "FAIL"
+                },
             );
         }
         samples.push(sample);
@@ -165,7 +169,11 @@ fn print_report(report: &Report) {
     println!("\nmeasurement");
     println!(
         "  integrity  {}",
-        if report.measurement_valid { "PASS" } else { "FAIL" }
+        if report.measurement_valid {
+            "PASS"
+        } else {
+            "FAIL"
+        }
     );
     println!(
         "  context    {}",
@@ -287,8 +295,8 @@ struct Report {
 
 impl Report {
     fn from_samples(samples: Vec<Sample>) -> Self {
-        let output_contract_pass = !samples.is_empty()
-            && samples.iter().all(|sample| sample.output_contract_pass);
+        let output_contract_pass =
+            !samples.is_empty() && samples.iter().all(|sample| sample.output_contract_pass);
         let model_context_digest_stable = samples.len() >= 2
             && samples
                 .windows(2)
@@ -301,9 +309,8 @@ impl Report {
             .iter()
             .all(|sample| sample.exact_observed_input_tokens.is_some());
 
-        let exact_inputs = collect_complete_u64(&samples, |sample| {
-            sample.exact_observed_input_tokens
-        });
+        let exact_inputs =
+            collect_complete_u64(&samples, |sample| sample.exact_observed_input_tokens);
         let exact_input_min = exact_inputs
             .as_ref()
             .and_then(|values| values.iter().min().copied());
@@ -313,28 +320,21 @@ impl Report {
         let exact_input_spread_tokens = exact_input_min
             .zip(exact_input_max)
             .and_then(|(minimum, maximum)| maximum.checked_sub(minimum));
-        let exact_input_median = exact_inputs
-            .as_ref()
-            .and_then(|values| median_u64(values));
+        let exact_input_median = exact_inputs.as_ref().and_then(|values| median_u64(values));
 
         let steady = samples.get(1..).unwrap_or(&[]);
-        let steady_state_fresh_input_median = median_complete_u64(steady, |sample| {
-            sample.fresh_input_tokens
-        });
-        let steady_state_cache_creation_median = median_complete_u64(steady, |sample| {
-            sample.cache_creation_input_tokens
-        });
-        let steady_state_cache_read_median = median_complete_u64(steady, |sample| {
-            sample.cache_read_input_tokens
-        });
-        let steady_state_fresh_share_bps_median = median_complete_u32(steady, |sample| {
-            sample.fresh_input_share_bps
-        });
+        let steady_state_fresh_input_median =
+            median_complete_u64(steady, |sample| sample.fresh_input_tokens);
+        let steady_state_cache_creation_median =
+            median_complete_u64(steady, |sample| sample.cache_creation_input_tokens);
+        let steady_state_cache_read_median =
+            median_complete_u64(steady, |sample| sample.cache_read_input_tokens);
+        let steady_state_fresh_share_bps_median =
+            median_complete_u32(steady, |sample| sample.fresh_input_share_bps);
         let steady_state_cache_creation_share_bps_median =
             median_complete_u32(steady, |sample| sample.cache_creation_share_bps);
-        let steady_state_cache_read_share_bps_median = median_complete_u32(steady, |sample| {
-            sample.cache_read_share_bps
-        });
+        let steady_state_cache_read_share_bps_median =
+            median_complete_u32(steady, |sample| sample.cache_read_share_bps);
 
         let first_to_steady_cache_read_delta_tokens = samples
             .first()
@@ -465,6 +465,8 @@ fn display_bps(value: Option<u32>) -> String {
 
 #[cfg(test)]
 mod tests {
+    use aer_provider::ProviderUsage;
+
     use super::*;
 
     fn trace(
@@ -509,7 +511,14 @@ mod tests {
     fn report_separates_output_variance_from_input_cache_profile() {
         let first = Sample::from_trace(
             1,
-            &trace("same", Some(2), Some(6_800), Some(4_200), 1, EXPECTED_OUTPUT),
+            &trace(
+                "same",
+                Some(2),
+                Some(6_800),
+                Some(4_200),
+                1,
+                EXPECTED_OUTPUT,
+            ),
         );
         let second = Sample::from_trace(
             2,
@@ -524,7 +533,14 @@ mod tests {
         );
         let third = Sample::from_trace(
             3,
-            &trace("same", Some(2), Some(2_000), Some(9_000), 7, EXPECTED_OUTPUT),
+            &trace(
+                "same",
+                Some(2),
+                Some(2_000),
+                Some(9_000),
+                7,
+                EXPECTED_OUTPUT,
+            ),
         );
 
         let report = Report::from_samples(vec![first, second, third]);
@@ -532,7 +548,10 @@ mod tests {
         assert_eq!(report.steady_state_cache_read_median, Some(9_100));
         assert_eq!(report.steady_state_cache_creation_median, Some(1_900));
         assert_eq!(report.first_to_steady_cache_read_delta_tokens, Some(4_900));
-        assert_eq!(report.first_to_steady_cache_creation_delta_tokens, Some(-4_900));
+        assert_eq!(
+            report.first_to_steady_cache_creation_delta_tokens,
+            Some(-4_900)
+        );
     }
 
     #[test]
