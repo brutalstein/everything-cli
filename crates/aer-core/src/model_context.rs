@@ -352,7 +352,7 @@ impl TemporaryIndex {
     fn new() -> Result<Self, ArchitectureContextError> {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map_err(|_| ArchitectureContextError::Clock)?;
+            .map_err(|_| ArchitectureContextError::Clock)?
             .as_nanos();
         Ok(Self {
             path: std::env::temp_dir().join(format!(
@@ -394,7 +394,7 @@ impl fmt::Display for ArchitectureContextError {
             Self::Io(error) => error.fmt(formatter),
             Self::Repository(error) => error.fmt(formatter),
             Self::Context(error) => error.fmt(formatter),
-            Self::Clock => write!(formatter, "system clock is before Unix epoch"),
+            Self::Clock => write!(formatter, "system clock is before the Unix epoch"),
             Self::EmptyObjective => write!(formatter, "model context objective cannot be empty"),
             Self::RequiredSourceMissing(path) => {
                 write!(
