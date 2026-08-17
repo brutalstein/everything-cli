@@ -78,8 +78,20 @@ mod tests {
 
     #[test]
     fn scouting_can_use_a_cheaper_model_but_coding_cannot_be_silently_downgraded() {
-        assert!(CognitiveWorkRole::Scout.policy().permits_low_cost_scout_tier);
-        assert!(!CognitiveWorkRole::Coder.policy().permits_low_cost_scout_tier);
-        assert!(CognitiveWorkRole::Coder.policy().requires_frontier_reasoning);
+        assert!(
+            CognitiveWorkRole::Scout
+                .policy()
+                .permits_low_cost_scout_tier
+        );
+        assert!(
+            !CognitiveWorkRole::Coder
+                .policy()
+                .permits_low_cost_scout_tier
+        );
+        assert!(
+            CognitiveWorkRole::Coder
+                .policy()
+                .requires_frontier_reasoning
+        );
     }
 }

@@ -159,7 +159,10 @@ pub fn parse_edit_plan(text: &str, limits: EditLimits) -> Result<CompactEditPlan
     let object = value
         .as_object()
         .ok_or_else(|| EditAbiError::InvalidPlan("plan must be an object".to_owned()))?;
-    require_keys(object.keys().map(String::as_str), &["operations", "summary"])?;
+    require_keys(
+        object.keys().map(String::as_str),
+        &["operations", "summary"],
+    )?;
     let summary = object
         .get("summary")
         .and_then(Value::as_str)
@@ -646,7 +649,11 @@ fn required_hash(
     field: &str,
 ) -> Result<String, EditAbiError> {
     let hash = required_string(object, field)?;
-    if hash.len() != 64 || !hash.bytes().all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()) {
+    if hash.len() != 64
+        || !hash
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    {
         return Err(EditAbiError::InvalidPlan(format!(
             "{field} must be a lowercase 64-character SHA-256"
         )));
@@ -654,10 +661,7 @@ fn required_hash(
     Ok(hash)
 }
 
-fn required_u32(
-    object: &serde_json::Map<String, Value>,
-    field: &str,
-) -> Result<u32, EditAbiError> {
+fn required_u32(object: &serde_json::Map<String, Value>, field: &str) -> Result<u32, EditAbiError> {
     object
         .get(field)
         .and_then(Value::as_u64)
@@ -695,7 +699,10 @@ pub fn sha256(bytes: &[u8]) -> String {
 pub enum EditAbiError {
     InvalidLimits,
     PlanTooLarge(usize),
-    OperationTooLarge { path: String, bytes: usize },
+    OperationTooLarge {
+        path: String,
+        bytes: usize,
+    },
     InvalidPlan(String),
     UnknownOperation(String),
     InvalidPath(String),
@@ -706,7 +713,11 @@ pub enum EditAbiError {
     NotRegularFile(String),
     MissingBase(String),
     CreateTargetExists(String),
-    StaleBase { path: String, expected: String, actual: String },
+    StaleBase {
+        path: String,
+        expected: String,
+        actual: String,
+    },
     StaleRange {
         path: String,
         start_line: u32,
@@ -714,7 +725,11 @@ pub enum EditAbiError {
         expected: String,
         actual: String,
     },
-    InvalidRange { path: String, start_line: u32, end_line: u32 },
+    InvalidRange {
+        path: String,
+        start_line: u32,
+        end_line: u32,
+    },
     OverlappingRanges {
         path: String,
         first: (u32, u32),
@@ -723,7 +738,10 @@ pub enum EditAbiError {
     ConflictingOperations(String),
     ConflictingBaseHashes(String),
     ArithmeticOverflow,
-    RollbackFailed { mutation_error: String, rollback_error: String },
+    RollbackFailed {
+        mutation_error: String,
+        rollback_error: String,
+    },
     Io(std::io::Error),
     Json(serde_json::Error),
 }
@@ -732,26 +750,90 @@ impl fmt::Display for EditAbiError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidLimits => write!(formatter, "invalid compact edit limits"),
-            Self::PlanTooLarge(bytes) => write!(formatter, "compact edit plan exceeds byte limit: {bytes}"),
-            Self::OperationTooLarge { path, bytes } => write!(formatter, "compact edit operation exceeds byte limit: {path} ({bytes})"),
+            Self::PlanTooLarge(bytes) => {
+                write!(formatter, "compact edit plan exceeds byte limit: {bytes}")
+            }
+            Self::OperationTooLarge { path, bytes } => write!(
+                formatter,
+                "compact edit operation exceeds byte limit: {path} ({bytes})"
+            ),
             Self::InvalidPlan(message) => write!(formatter, "invalid compact edit plan: {message}"),
             Self::UnknownOperation(op) => write!(formatter, "unknown compact edit operation: {op}"),
             Self::InvalidPath(path) => write!(formatter, "invalid compact edit path: {path}"),
-            Self::ProtectedPath(path) => write!(formatter, "compact edit targets protected control-plane path: {path}"),
-            Self::ParentUnavailable(path) => write!(formatter, "compact edit parent must exist inside worktree: {path}"),
-            Self::PathEscape(path) => write!(formatter, "compact edit escapes owned worktree: {path}"),
-            Self::SymlinkTarget(path) => write!(formatter, "compact edit refuses symlink target: {path}"),
-            Self::NotRegularFile(path) => write!(formatter, "compact edit target is not a regular file: {path}"),
-            Self::MissingBase(path) => write!(formatter, "compact edit base file is missing: {path}"),
-            Self::CreateTargetExists(path) => write!(formatter, "compact create target already exists: {path}"),
-            Self::StaleBase { path, expected, actual } => write!(formatter, "stale compact edit base for {path}: expected {expected}, actual {actual}"),
-            Self::StaleRange { path, start_line, end_line, expected, actual } => write!(formatter, "stale compact edit range for {path}:{start_line}-{end_line}: expected {expected}, actual {actual}"),
-            Self::InvalidRange { path, start_line, end_line } => write!(formatter, "invalid compact edit range for {path}:{start_line}-{end_line}"),
-            Self::OverlappingRanges { path, first, second } => write!(formatter, "overlapping compact edit ranges for {path}: {}-{} and {}-{}", first.0, first.1, second.0, second.1),
-            Self::ConflictingOperations(path) => write!(formatter, "conflicting compact edit operations for {path}"),
-            Self::ConflictingBaseHashes(path) => write!(formatter, "conflicting compact edit base identities for {path}"),
+            Self::ProtectedPath(path) => write!(
+                formatter,
+                "compact edit targets protected control-plane path: {path}"
+            ),
+            Self::ParentUnavailable(path) => write!(
+                formatter,
+                "compact edit parent must exist inside worktree: {path}"
+            ),
+            Self::PathEscape(path) => {
+                write!(formatter, "compact edit escapes owned worktree: {path}")
+            }
+            Self::SymlinkTarget(path) => {
+                write!(formatter, "compact edit refuses symlink target: {path}")
+            }
+            Self::NotRegularFile(path) => write!(
+                formatter,
+                "compact edit target is not a regular file: {path}"
+            ),
+            Self::MissingBase(path) => {
+                write!(formatter, "compact edit base file is missing: {path}")
+            }
+            Self::CreateTargetExists(path) => {
+                write!(formatter, "compact create target already exists: {path}")
+            }
+            Self::StaleBase {
+                path,
+                expected,
+                actual,
+            } => write!(
+                formatter,
+                "stale compact edit base for {path}: expected {expected}, actual {actual}"
+            ),
+            Self::StaleRange {
+                path,
+                start_line,
+                end_line,
+                expected,
+                actual,
+            } => write!(
+                formatter,
+                "stale compact edit range for {path}:{start_line}-{end_line}: expected {expected}, actual {actual}"
+            ),
+            Self::InvalidRange {
+                path,
+                start_line,
+                end_line,
+            } => write!(
+                formatter,
+                "invalid compact edit range for {path}:{start_line}-{end_line}"
+            ),
+            Self::OverlappingRanges {
+                path,
+                first,
+                second,
+            } => write!(
+                formatter,
+                "overlapping compact edit ranges for {path}: {}-{} and {}-{}",
+                first.0, first.1, second.0, second.1
+            ),
+            Self::ConflictingOperations(path) => {
+                write!(formatter, "conflicting compact edit operations for {path}")
+            }
+            Self::ConflictingBaseHashes(path) => write!(
+                formatter,
+                "conflicting compact edit base identities for {path}"
+            ),
             Self::ArithmeticOverflow => write!(formatter, "compact edit arithmetic overflow"),
-            Self::RollbackFailed { mutation_error, rollback_error } => write!(formatter, "compact edit failed ({mutation_error}) and rollback failed ({rollback_error})"),
+            Self::RollbackFailed {
+                mutation_error,
+                rollback_error,
+            } => write!(
+                formatter,
+                "compact edit failed ({mutation_error}) and rollback failed ({rollback_error})"
+            ),
             Self::Io(error) => error.fmt(formatter),
             Self::Json(error) => error.fmt(formatter),
         }
@@ -771,16 +853,32 @@ impl Error for EditAbiError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::{fs, time::{SystemTime, UNIX_EPOCH}};
+    use std::{
+        fs,
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     fn temp_root(label: &str) -> PathBuf {
-        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).expect("clock").as_nanos();
-        let root = std::env::temp_dir().join(format!("aer-edit-abi-{label}-{}-{nonce}", std::process::id()));
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("clock")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "aer-edit-abi-{label}-{}-{nonce}",
+            std::process::id()
+        ));
         fs::create_dir_all(root.join("src")).expect("temp root");
         root
     }
 
-    fn replace(path: &str, base: &[u8], start: u32, end: u32, segment: &[u8], replacement: &str) -> EditOperation {
+    fn replace(
+        path: &str,
+        base: &[u8],
+        start: u32,
+        end: u32,
+        segment: &[u8],
+        replacement: &str,
+    ) -> EditOperation {
         EditOperation::ReplaceRange {
             path: path.to_owned(),
             base_file_sha256: sha256(base),
@@ -801,7 +899,10 @@ mod tests {
             operations: vec![replace("src/value.txt", base, 2, 2, b"two\n", "TWO\n")],
         };
         let receipt = apply_edit_plan(&root, &plan, EditLimits::default()).expect("apply");
-        assert_eq!(fs::read(root.join("src/value.txt")).expect("read"), b"one\nTWO\nthree\nfour\n");
+        assert_eq!(
+            fs::read(root.join("src/value.txt")).expect("read"),
+            b"one\nTWO\nthree\nfour\n"
+        );
         assert_eq!(receipt.changed_output_bytes, 4);
         assert!(receipt.changed_output_bytes < base.len());
         fs::remove_dir_all(root).expect("cleanup");
@@ -820,7 +921,10 @@ mod tests {
             ],
         };
         apply_edit_plan(&root, &plan, EditLimits::default()).expect("apply");
-        assert_eq!(fs::read(root.join("src/value.txt")).expect("read"), b"alpha\nb\nc\ndelta\n");
+        assert_eq!(
+            fs::read(root.join("src/value.txt")).expect("read"),
+            b"alpha\nb\nc\ndelta\n"
+        );
         fs::remove_dir_all(root).expect("cleanup");
     }
 
@@ -836,7 +940,10 @@ mod tests {
                 replace("src/value.txt", base, 2, 3, b"b\nc\n", "y\n"),
             ],
         };
-        assert!(matches!(apply_edit_plan(&root, &overlap, EditLimits::default()), Err(EditAbiError::OverlappingRanges { .. })));
+        assert!(matches!(
+            apply_edit_plan(&root, &overlap, EditLimits::default()),
+            Err(EditAbiError::OverlappingRanges { .. })
+        ));
         let wrong_base = CompactEditPlan {
             summary: "stale".to_owned(),
             operations: vec![EditOperation::ReplaceRange {
@@ -848,12 +955,18 @@ mod tests {
                 replacement: b"x\n".to_vec(),
             }],
         };
-        assert!(matches!(apply_edit_plan(&root, &wrong_base, EditLimits::default()), Err(EditAbiError::StaleBase { .. })));
+        assert!(matches!(
+            apply_edit_plan(&root, &wrong_base, EditLimits::default()),
+            Err(EditAbiError::StaleBase { .. })
+        ));
         let wrong_range = CompactEditPlan {
             summary: "stale range".to_owned(),
             operations: vec![replace("src/value.txt", base, 1, 1, b"not-a\n", "x\n")],
         };
-        assert!(matches!(apply_edit_plan(&root, &wrong_range, EditLimits::default()), Err(EditAbiError::StaleRange { .. })));
+        assert!(matches!(
+            apply_edit_plan(&root, &wrong_range, EditLimits::default()),
+            Err(EditAbiError::StaleRange { .. })
+        ));
         assert_eq!(fs::read(root.join("src/value.txt")).expect("read"), base);
         fs::remove_dir_all(root).expect("cleanup");
     }
@@ -866,23 +979,45 @@ mod tests {
         let plan = CompactEditPlan {
             summary: "lifecycle".to_owned(),
             operations: vec![
-                EditOperation::CreateFile { path: "src/new.txt".to_owned(), content: b"new\n".to_vec() },
-                EditOperation::DeleteFile { path: "src/old.txt".to_owned(), base_file_sha256: sha256(old) },
+                EditOperation::CreateFile {
+                    path: "src/new.txt".to_owned(),
+                    content: b"new\n".to_vec(),
+                },
+                EditOperation::DeleteFile {
+                    path: "src/old.txt".to_owned(),
+                    base_file_sha256: sha256(old),
+                },
             ],
         };
         let receipt = apply_edit_plan(&root, &plan, EditLimits::default()).expect("apply");
         assert_eq!(fs::read(root.join("src/new.txt")).expect("new"), b"new\n");
         assert!(!root.join("src/old.txt").exists());
-        let new_result = receipt.results.iter().find(|item| item.path == "src/new.txt").expect("result");
-        assert_eq!(new_result.resulting_sha256.as_deref(), Some(sha256(b"new\n").as_str()));
+        let new_result = receipt
+            .results
+            .iter()
+            .find(|item| item.path == "src/new.txt")
+            .expect("result");
+        assert_eq!(
+            new_result.resulting_sha256.as_deref(),
+            Some(sha256(b"new\n").as_str())
+        );
         fs::remove_dir_all(root).expect("cleanup");
     }
 
     #[test]
     fn parser_rejects_traversal_and_protected_paths() {
-        for path in ["../escape", ".git/config", "nested/.AeR/state", "src\\x", "C:/x"] {
+        for path in [
+            "../escape",
+            ".git/config",
+            "nested/.AeR/state",
+            "src\\x",
+            "C:/x",
+        ] {
             let value = json!({"summary":"bad","operations":[{"op":"create_file","path":path,"content":"x"}]}).to_string();
-            assert!(parse_edit_plan(&value, EditLimits::default()).is_err(), "accepted {path}");
+            assert!(
+                parse_edit_plan(&value, EditLimits::default()).is_err(),
+                "accepted {path}"
+            );
         }
     }
 
@@ -895,9 +1030,15 @@ mod tests {
         symlink(root.join("outside.txt"), root.join("src/link.txt")).expect("symlink");
         let plan = CompactEditPlan {
             summary: "bad".to_owned(),
-            operations: vec![EditOperation::DeleteFile { path: "src/link.txt".to_owned(), base_file_sha256: sha256(b"outside\n") }],
+            operations: vec![EditOperation::DeleteFile {
+                path: "src/link.txt".to_owned(),
+                base_file_sha256: sha256(b"outside\n"),
+            }],
         };
-        assert!(matches!(apply_edit_plan(&root, &plan, EditLimits::default()), Err(EditAbiError::SymlinkTarget(_))));
+        assert!(matches!(
+            apply_edit_plan(&root, &plan, EditLimits::default()),
+            Err(EditAbiError::SymlinkTarget(_))
+        ));
         fs::remove_dir_all(root).expect("cleanup");
     }
 

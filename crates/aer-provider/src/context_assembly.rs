@@ -205,13 +205,12 @@ impl ContextAssemblyPlanner {
             }
         }
 
-        let cache_breakpoints = if capabilities.family
-            == ProviderCacheFamily::ExplicitPrefixBreakpoints
-        {
-            explicit_breakpoints(&ordered, capabilities)
-        } else {
-            Vec::new()
-        };
+        let cache_breakpoints =
+            if capabilities.family == ProviderCacheFamily::ExplicitPrefixBreakpoints {
+                explicit_breakpoints(&ordered, capabilities)
+            } else {
+                Vec::new()
+            };
 
         Ok(ContextAssemblyPlan {
             ordered_segments: ordered,

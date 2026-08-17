@@ -109,18 +109,10 @@ impl RepositoryIndex {
         self.ensure_snapshot(snapshot_id)?;
         let resolved = self.resolve_capsule_scope(snapshot_id, scope)?;
         let key_symbols = self.capsule_symbols(snapshot_id, &resolved, limits.max_symbols)?;
-        let dependencies = self.capsule_graph_relations(
-            snapshot_id,
-            &resolved,
-            true,
-            limits.max_dependencies,
-        )?;
-        let dependents = self.capsule_graph_relations(
-            snapshot_id,
-            &resolved,
-            false,
-            limits.max_dependents,
-        )?;
+        let dependencies =
+            self.capsule_graph_relations(snapshot_id, &resolved, true, limits.max_dependencies)?;
+        let dependents =
+            self.capsule_graph_relations(snapshot_id, &resolved, false, limits.max_dependents)?;
         let tests = self.capsule_tests(snapshot_id, &resolved, limits.max_tests)?;
         let build_targets =
             self.capsule_build_targets(snapshot_id, &resolved, limits.max_build_targets)?;
@@ -225,7 +217,9 @@ impl RepositoryIndex {
                     |row| row.get(0),
                 )?;
                 if !exists {
-                    return Err(RepoError::Integrity(format!("unknown indexed file: {normalized}")));
+                    return Err(RepoError::Integrity(format!(
+                        "unknown indexed file: {normalized}"
+                    )));
                 }
                 Ok(ResolvedScope {
                     kind: RepositoryCapsuleKind::File,
@@ -242,7 +236,9 @@ impl RepositoryIndex {
                     params![snapshot_id, symbol_id],
                     |row| Ok((row.get(0)?, row.get(1)?)),
                 ).optional()?;
-                let (path, label) = row.ok_or_else(|| RepoError::Integrity(format!("unknown RI2 symbol: {symbol_id}")))?;
+                let (path, label) = row.ok_or_else(|| {
+                    RepoError::Integrity(format!("unknown RI2 symbol: {symbol_id}"))
+                })?;
                 Ok(ResolvedScope {
                     kind: RepositoryCapsuleKind::Symbol,
                     canonical_identity: format!("{path}::{label}"),
@@ -504,7 +500,8 @@ impl ResolvedScope {
     }
 
     fn matches_optional_path(&self, path: Option<&str>) -> bool {
-        self.kind == RepositoryCapsuleKind::Repository || path.is_some_and(|path| self.matches_path(path))
+        self.kind == RepositoryCapsuleKind::Repository
+            || path.is_some_and(|path| self.matches_path(path))
     }
 }
 

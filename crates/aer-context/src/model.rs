@@ -138,6 +138,7 @@ pub struct EvidenceDemand {
 pub enum EvidenceDemandKind {
     ExactDefinition,
     RequirementContext,
+    ImplementationContext,
     RuntimeEvidence,
     EditTarget,
     TestContext,

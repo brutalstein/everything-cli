@@ -209,11 +209,13 @@ impl ContextEngine {
         let pack = self.select(
             workspace_root,
             index,
-            &snapshot_id,
-            request,
-            &demands,
-            retrieval_trace,
-            ranked,
+            SelectionInputs {
+                snapshot_id: &snapshot_id,
+                request,
+                demands: &demands,
+                retrieval_trace,
+                ranked,
+            },
         )?;
 
         if index.verified_current_snapshot_id(workspace_root)? != snapshot_id {
@@ -272,12 +274,15 @@ impl ContextEngine {
         &self,
         workspace_root: &Path,
         index: &RepositoryIndex,
-        snapshot_id: &str,
-        request: &ContextRequest,
-        demands: &[EvidenceDemand],
-        mut retrieval_trace: RetrievalTrace,
-        ranked: Vec<Candidate>,
+        inputs: SelectionInputs<'_>,
     ) -> Result<ContextPack, ContextError> {
+        let SelectionInputs {
+            snapshot_id,
+            request,
+            demands,
+            mut retrieval_trace,
+            ranked,
+        } = inputs;
         let available = request.input_token_budget;
         if available <= self.policy.base_pack_token_overhead {
             return Err(ContextError::BudgetTooSmall {
@@ -570,6 +575,14 @@ impl ContextEngine {
             .validate_current(CoreContract::ContextPack, &instance)
             .map_err(|error| ContextError::ContractValidation(error.issues))
     }
+}
+
+struct SelectionInputs<'a> {
+    snapshot_id: &'a str,
+    request: &'a ContextRequest,
+    demands: &'a [EvidenceDemand],
+    retrieval_trace: RetrievalTrace,
+    ranked: Vec<Candidate>,
 }
 
 #[derive(Clone, Debug)]
@@ -888,15 +901,33 @@ fn compile_evidence_demands(request: &ContextRequest) -> Vec<EvidenceDemand> {
             verification_critical: true,
         });
     }
+    let implementation_task = objective_requires_implementation(&request.objective);
     for (index, semantic_id) in request.required_semantic_ids.iter().enumerate() {
+        let kind = if implementation_task {
+            EvidenceDemandKind::ImplementationContext
+        } else {
+            EvidenceDemandKind::RequirementContext
+        };
         demands.push(EvidenceDemand {
             demand_id: format!("requirement-context:{index}:{semantic_id}"),
-            kind: EvidenceDemandKind::RequirementContext,
+            kind,
             target: EvidenceDemandTarget::SemanticId(semantic_id.clone()),
-            minimum_tier: ContextTier::Structural,
-            required_provenance: EvidenceProvenance::IndexedSource,
+            minimum_tier: if implementation_task {
+                ContextTier::SourceSpan
+            } else {
+                ContextTier::Structural
+            },
+            required_provenance: if implementation_task {
+                EvidenceProvenance::ExactSource
+            } else {
+                EvidenceProvenance::IndexedSource
+            },
             minimum_coverage: 1,
-            expansion_policy: EvidenceExpansionPolicy::Never,
+            expansion_policy: if implementation_task {
+                EvidenceExpansionPolicy::BoundedSourceSpan
+            } else {
+                EvidenceExpansionPolicy::Never
+            },
             importance_milli: 950,
             verification_critical: true,
         });
@@ -980,6 +1011,28 @@ fn compile_evidence_demands(request: &ContextRequest) -> Vec<EvidenceDemand> {
     demands
 }
 
+fn objective_requires_implementation(objective: &str) -> bool {
+    objective
+        .split(|character: char| !character.is_ascii_alphanumeric() && character != '_')
+        .filter(|token| !token.is_empty())
+        .any(|token| {
+            matches!(
+                token.to_ascii_lowercase().as_str(),
+                "fix"
+                    | "implement"
+                    | "change"
+                    | "modify"
+                    | "update"
+                    | "repair"
+                    | "refactor"
+                    | "add"
+                    | "remove"
+                    | "delete"
+                    | "create"
+            )
+        })
+}
+
 fn demand_needs_lexical(demand: &EvidenceDemand) -> bool {
     matches!(demand.target, EvidenceDemandTarget::Objective)
 }
@@ -1012,6 +1065,8 @@ fn candidate_covers_demand(candidate: &Candidate, demand: &EvidenceDemand) -> bo
         EvidenceDemandTarget::Symbol(symbol) => candidate.required_symbols.contains(symbol),
         EvidenceDemandTarget::SemanticId(semantic_id) => {
             candidate.required_semantic_ids.contains(semantic_id)
+                && (demand.kind != EvidenceDemandKind::ImplementationContext
+                    || !is_test_source_path(&candidate.path))
         }
         EvidenceDemandTarget::Path(path) => candidate.path == *path,
         EvidenceDemandTarget::Objective => {

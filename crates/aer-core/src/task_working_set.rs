@@ -107,9 +107,15 @@ impl ContextDelta {
                 delta.invalidated.push(identity.clone());
             }
         }
-        delta.added.sort_by(|left, right| left.identity.cmp(&right.identity));
-        delta.changed.sort_by(|left, right| left.identity.cmp(&right.identity));
-        delta.removed.sort_by(|left, right| left.identity.cmp(&right.identity));
+        delta
+            .added
+            .sort_by(|left, right| left.identity.cmp(&right.identity));
+        delta
+            .changed
+            .sort_by(|left, right| left.identity.cmp(&right.identity));
+        delta
+            .removed
+            .sort_by(|left, right| left.identity.cmp(&right.identity));
         delta.invalidated.sort();
         delta.invalidated.dedup();
         delta
