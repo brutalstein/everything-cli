@@ -177,6 +177,9 @@ pub struct SymbolRecord {
     pub symbol_id: String,
     pub path: String,
     pub name: String,
+    /// Enclosing definition scope name (`impl`/`trait`/class/function), when the
+    /// language and grammar expose one.
+    pub container: Option<String>,
     pub kind: SymbolKind,
     pub start_byte: u32,
     pub end_byte: u32,

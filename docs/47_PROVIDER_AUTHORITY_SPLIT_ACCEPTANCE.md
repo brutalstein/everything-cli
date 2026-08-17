@@ -5,7 +5,7 @@
 **Protocol:** `claude-authority-split-acceptance-v2`  
 **Scope:** delegated Claude production-candidate validation  
 **Current decision:** **PRODUCTION PROMOTION BLOCKED**  
-**Reason:** the latest matrix exposed an exact-definition retrieval defect shared by both profiles; full quality acceptance must be rerun after repair.
+**Reason:** the latest matrix exposed an exact-definition retrieval defect shared by both profiles. The defect is repaired with deterministic regression coverage (§10.1); the live matrix has not yet been rerun, so full quality acceptance remains outstanding.
 
 This document defines the decision gate. It does not automatically change production transport behavior.
 
@@ -186,6 +186,19 @@ Acceptance regression must prove:
 - if the exact defining span is unavailable, context compilation fails/abstains instead of silently degrading to an unsupported answer.
 
 Do not add a parallel retrieval subsystem. Reuse and improve RI2 + Context Economy.
+
+### 10.1 Implemented correction
+
+The correction landed inside the existing pipeline:
+
+- RI2 records each symbol's enclosing definition scope, so a qualified `Container::name` resolves to exactly one defining span instead of the first same-named symbol in the file;
+- `ContextRequest` carries required identifiers, whose exact defining spans are materialized verbatim and reserved before discretionary selection;
+- unresolvable, ambiguous, oversized or unaffordable coverage fails closed with a typed error rather than degrading to a partial span;
+- provider task construction promotes only code-shaped quoted names that the repository actually defines, so quoted answer literals such as `` `no` `` cannot force an abstention.
+
+Deterministic regression coverage lives in `crates/aer-context/tests/exact_definition.rs`, `crates/aer-repo/src/lib.rs` and `crates/aer-core/src/model_context.rs`. The fixture reproduces the production shape — a long file whose lexical anchor sits far above the assignment, plus a second same-named definition with a different value — and an ignored baseline test records that unqualified retrieval misses the assignment on that fixture.
+
+This satisfies step 1 and step 2 of §11. Steps 5 onward still require the live rerun on the target machine.
 
 ## 11. Production-promotion sequence
 

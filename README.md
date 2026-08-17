@@ -27,7 +27,9 @@ The merged runtime includes:
 - AER-owned permission policy and typed ToolBroker foundations;
 - provider context-economics and Claude authority-split acceptance diagnostics.
 
-The repository is not claiming that the provider gate is complete. The latest live Claude acceptance matrix exposed an exact-definition retrieval defect: a task asking for `ArchitectureContextCapsule::compile`'s `version` received a Context Pack that stopped before the actual `version: 3` assignment. Both the current Claude preset and the authority-split candidate therefore failed the same task. That retrieval defect must be fixed and the full matrix rerun before production promotion.
+The repository is not claiming that the provider gate is complete. The latest live Claude acceptance matrix exposed an exact-definition retrieval defect: a task asking for `ArchitectureContextCapsule::compile`'s `version` received a Context Pack that stopped before the actual `version: 3` assignment. Both the current Claude preset and the authority-split candidate therefore failed the same task.
+
+That defect is now repaired inside RI2 + Context Economy: symbols carry their enclosing definition scope so a qualified `Container::name` resolves exactly, identifiers a task names explicitly are reserved as mandatory verbatim coverage before discretionary selection, and coverage that cannot be established fails closed instead of shipping a partial span. The live matrix still has to be rerun before production promotion.
 
 See:
 

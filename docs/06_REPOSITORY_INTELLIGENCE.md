@@ -439,6 +439,28 @@ why_relevant(candidate, task)
 
 Every traversal is bounded by depth/node/token policy.
 
+### Exact-definition resolution
+
+`definition(symbol)` MUST be able to answer a request that names an identifier
+exactly, including a qualified `Container::name` form. To make that possible
+every indexed symbol records the name of its lexically enclosing definition
+scope: the Rust `impl`/`trait`/`mod` type name, the Python/TypeScript class, or
+the enclosing function. Qualification is resolved from that recorded container,
+never from proximity heuristics or textual guessing.
+
+Resolution rules:
+
+- an unqualified name MAY resolve to several definitions; that is genuine
+  ambiguity and is reported as such rather than silently narrowed;
+- a qualified name resolves only to definitions whose recorded container
+  matches;
+- a name that resolves to nothing returns nothing, and callers that required it
+  MUST fail closed.
+
+The returned record carries the exact defining span. A structural span that
+contains the enclosing item but omits the requested assignment is NOT an
+acceptable substitute for it.
+
 ---
 
 ## Token and latency economics

@@ -31,6 +31,10 @@ pub(crate) struct TermArtifact {
 pub(crate) struct LocalSymbol {
     pub local_id: String,
     pub name: String,
+    /// Name of the lexically enclosing definition scope (Rust `impl`/`trait`/`mod`
+    /// type name, Python/TypeScript class, enclosing function). Exact-definition
+    /// retrieval uses it to disambiguate `Container::name` requests.
+    pub container: Option<String>,
     pub kind: SymbolKind,
     pub start_byte: u32,
     pub end_byte: u32,
@@ -99,7 +103,7 @@ pub(crate) fn parse_text(
         symbols: &mut symbols,
         links: &mut links,
     };
-    walk(tree.root_node(), None, &mut context)?;
+    walk(tree.root_node(), None, None, &mut context)?;
 
     symbols.sort_by(|left, right| {
         left.start_byte
@@ -152,6 +156,7 @@ struct WalkContext<'a> {
 fn walk(
     node: Node<'_>,
     parent_symbol: Option<&str>,
+    scope_name: Option<&str>,
     context: &mut WalkContext<'_>,
 ) -> Result<(), RepoError> {
     if context.symbols.len() > context.policy.max_links_per_file
@@ -164,6 +169,8 @@ fn walk(
     }
 
     let mut scope = parent_symbol.map(str::to_owned);
+    let mut child_scope_name = scope_container(context.language, node, context.bytes)
+        .or_else(|| scope_name.map(str::to_owned));
     if let Some(kind) = definition_kind(context.language, node.kind())
         && let Some(name_node) = definition_name_node(context.language, node)
         && let Ok(name) = name_node.utf8_text(context.bytes)
@@ -193,6 +200,7 @@ fn walk(
             context.symbols.push(LocalSymbol {
                 local_id: local_id.clone(),
                 name: name.to_owned(),
+                container: scope_name.map(str::to_owned),
                 kind: effective_kind,
                 start_byte: start,
                 end_byte: end,
@@ -201,6 +209,7 @@ fn walk(
                 signature,
             });
             scope = Some(local_id);
+            child_scope_name = Some(name.to_owned());
         }
     }
 
@@ -249,9 +258,29 @@ fn walk(
 
     let mut cursor = node.walk();
     for child in node.named_children(&mut cursor) {
-        walk(child, scope.as_deref(), context)?;
+        walk(
+            child,
+            scope.as_deref(),
+            child_scope_name.as_deref(),
+            context,
+        )?;
     }
     Ok(())
+}
+
+/// Container name contributed by a node that is itself not an indexed definition,
+/// such as a Rust `impl` block. Definitions contribute their own name instead.
+fn scope_container(language: LanguageKind, node: Node<'_>, bytes: &[u8]) -> Option<String> {
+    if language != LanguageKind::Rust || node.kind() != "impl_item" {
+        return None;
+    }
+    let type_node = node.child_by_field_name("type")?;
+    let raw = type_node.utf8_text(bytes).ok()?;
+    let base = raw
+        .split(['<', '>', ' ', '&', '\'', '(', ')'])
+        .find(|part| !part.is_empty())?;
+    let name = base.rsplit("::").next()?.trim();
+    (!name.is_empty()).then(|| name.to_owned())
 }
 
 fn definition_kind(language: LanguageKind, kind: &str) -> Option<SymbolKind> {

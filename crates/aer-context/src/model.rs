@@ -10,6 +10,14 @@ pub struct ContextPolicy {
     pub max_tier3_lines: u32,
     pub max_semantic_ids: usize,
     pub max_runtime_hints: usize,
+    /// Upper bound on exactly named identifiers a single request may demand.
+    pub max_required_symbols: usize,
+    /// A named identifier that resolves to more than this many definitions is
+    /// treated as ambiguous and fails closed instead of guessing one.
+    pub max_definitions_per_symbol: usize,
+    /// Longest exact definition that may be materialized verbatim. Anything
+    /// larger fails closed rather than shipping a truncated definition.
+    pub max_required_definition_lines: u32,
     pub max_impact_seeds: usize,
     pub omitted_high_rank_limit: usize,
     pub rrf_k: u32,
@@ -32,6 +40,9 @@ impl Default for ContextPolicy {
             max_tier3_lines: 240,
             max_semantic_ids: 32,
             max_runtime_hints: 64,
+            max_required_symbols: 8,
+            max_definitions_per_symbol: 4,
+            max_required_definition_lines: 240,
             max_impact_seeds: 8,
             omitted_high_rank_limit: 16,
             rrf_k: 60,
@@ -56,6 +67,9 @@ impl ContextPolicy {
             || self.max_tier3_lines < self.max_span_lines
             || self.max_semantic_ids == 0
             || self.max_runtime_hints == 0
+            || self.max_required_symbols == 0
+            || self.max_definitions_per_symbol == 0
+            || self.max_required_definition_lines == 0
             || self.max_impact_seeds == 0
             || self.omitted_high_rank_limit == 0
             || self.rrf_k == 0
@@ -77,6 +91,10 @@ pub struct ContextRequest {
     pub engineering_ir_version: u64,
     pub input_token_budget: u32,
     pub required_semantic_ids: Vec<String>,
+    /// Identifiers the task named explicitly, optionally qualified as
+    /// `Container::name`. Each one must be covered by its exact defining source
+    /// span or compilation fails closed.
+    pub required_symbols: Vec<String>,
     pub runtime_hints: Vec<RuntimeHint>,
 }
 
@@ -94,6 +112,7 @@ impl ContextRequest {
             engineering_ir_version,
             input_token_budget,
             required_semantic_ids: Vec::new(),
+            required_symbols: Vec::new(),
             runtime_hints: Vec::new(),
         }
     }
@@ -189,11 +208,29 @@ pub enum ContextError {
     InvalidRequest(String),
     Repository(aer_repo::RepoError),
     Io(std::io::Error),
-    SourceTooLarge { path: String, bytes: u64 },
-    SourceHashMismatch { path: String },
+    SourceTooLarge {
+        path: String,
+        bytes: u64,
+    },
+    SourceHashMismatch {
+        path: String,
+    },
     SourceNotRetrievable(String),
     MandatoryCoverageUnavailable(String),
-    BudgetTooSmall { required: u32, available: u32 },
+    ExactDefinitionUnavailable(String),
+    ExactDefinitionAmbiguous {
+        symbol: String,
+        definitions: usize,
+    },
+    ExactDefinitionTooLarge {
+        symbol: String,
+        lines: u32,
+        maximum: u32,
+    },
+    BudgetTooSmall {
+        required: u32,
+        available: u32,
+    },
     ContractRegistry(String),
     ContractValidation(Vec<String>),
     Fidelity(String),
@@ -231,6 +268,25 @@ impl fmt::Display for ContextError {
                     "mandatory semantic context has no resolvable source: {id}"
                 )
             }
+            Self::ExactDefinitionUnavailable(symbol) => write!(
+                f,
+                "exactly named identifier has no retrievable defining source span: {symbol}"
+            ),
+            Self::ExactDefinitionAmbiguous {
+                symbol,
+                definitions,
+            } => write!(
+                f,
+                "exactly named identifier is ambiguous: {symbol} resolves to {definitions} definitions"
+            ),
+            Self::ExactDefinitionTooLarge {
+                symbol,
+                lines,
+                maximum,
+            } => write!(
+                f,
+                "exact definition exceeds the verbatim bound: {symbol} spans {lines} lines, maximum {maximum}"
+            ),
             Self::BudgetTooSmall {
                 required,
                 available,

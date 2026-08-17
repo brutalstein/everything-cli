@@ -21,6 +21,9 @@ const MAX_AER_CONTEXT_ESTIMATED_TOKENS: u32 = 18 * 1024;
 const CONTEXT_ENVELOPE_RESERVE: u32 = 1024;
 const MIN_DYNAMIC_CONTEXT_BUDGET: u32 = 2 * 1024;
 const MAX_DYNAMIC_CONTEXT_BUDGET: u32 = 6 * 1024;
+/// Upper bound on exactly named identifiers promoted to mandatory retrieval
+/// coverage for one provider task.
+const MAX_NAMED_IDENTIFIERS: usize = 4;
 
 /// Verbatim, high-authority sections that define identity and authority. Mutable
 /// status/roadmap material is intentionally excluded from the cache-stable core.
@@ -61,7 +64,7 @@ const CORE_SECTIONS: [(&str, &str); 10] = [
     ),
     (
         "docs/45_PROVIDER_AUTH_CONTEXT_PERMISSION_AND_TOOL_RUNTIME.md",
-        "## 10. Security invariants",
+        "## 11. Security invariants",
     ),
 ];
 
@@ -248,10 +251,18 @@ impl ModelContextEnvelope {
         // exact-snapshot index without claiming an authoritative IR revision.
         let temporary_index = TemporaryIndex::new()?;
         let mut index = RepositoryIndex::open(&temporary_index.path, IndexPolicy::default())?;
-        index.refresh(&root)?;
+        let snapshot_id = index.refresh(&root)?.snapshot.snapshot_id;
         let objective = objective.trim();
         let task_id = format!("provider-probe:{}", &hex_sha256(objective.as_bytes())[..16]);
-        let request = ContextRequest::new(task_id, objective, 1, dynamic_context_budget);
+        let mut request = ContextRequest::new(task_id, objective, 1, dynamic_context_budget);
+        for symbol in named_identifiers(objective, MAX_NAMED_IDENTIFIERS) {
+            // Only identifiers the repository actually defines become mandatory
+            // coverage. Prose that merely looks like an identifier must not turn
+            // a valid task into an abstention.
+            if !index.definitions(&snapshot_id, &symbol)?.is_empty() {
+                request.required_symbols.push(symbol);
+            }
+        }
         let task_context = engine.compile(&root, &index, &request)?;
         engine.verify_fidelity(&root, &index, &task_context)?;
 
@@ -290,6 +301,45 @@ impl ModelContextEnvelope {
             rendered,
         })
     }
+}
+
+/// Backtick-quoted identifiers a task named explicitly, in first-seen order.
+/// Only code-shaped names qualify: a qualified path, an underscored name or a
+/// name carrying an uppercase letter. Plain prose words such as `no` never do,
+/// so quoting an answer literal cannot turn into a retrieval demand.
+fn named_identifiers(objective: &str, limit: usize) -> Vec<String> {
+    let mut found = Vec::new();
+    let mut seen = BTreeSet::new();
+    let mut parts = objective.split('`');
+    // The first part precedes any backtick; quoted spans are every other part.
+    parts.next();
+    while let Some(quoted) = parts.next() {
+        parts.next();
+        let candidate = quoted.trim();
+        if found.len() >= limit || !is_named_identifier(candidate) || !seen.insert(candidate) {
+            continue;
+        }
+        found.push(candidate.to_owned());
+    }
+    found
+}
+
+fn is_named_identifier(candidate: &str) -> bool {
+    if candidate.is_empty() || candidate.len() > 128 {
+        return false;
+    }
+    let segments = candidate.split("::").collect::<Vec<_>>();
+    let well_formed = segments.iter().all(|segment| {
+        let mut characters = segment.chars();
+        characters
+            .next()
+            .is_some_and(|first| first.is_ascii_alphabetic() || first == '_')
+            && characters.all(|value| value.is_ascii_alphanumeric() || value == '_')
+    });
+    well_formed
+        && (segments.len() > 1
+            || candidate.contains('_')
+            || candidate.chars().any(|value| value.is_ascii_uppercase()))
 }
 
 #[derive(Debug)]
@@ -475,7 +525,8 @@ mod tests {
     };
 
     use super::{
-        ArchitectureContextCapsule, MAX_AER_CONTEXT_ESTIMATED_TOKENS, ModelContextEnvelope,
+        ArchitectureContextCapsule, MAX_AER_CONTEXT_ESTIMATED_TOKENS, MAX_NAMED_IDENTIFIERS,
+        ModelContextEnvelope, named_identifiers,
     };
 
     static COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -501,7 +552,7 @@ mod tests {
         .expect("principles");
         fs::write(
             root.join("docs/45_PROVIDER_AUTH_CONTEXT_PERMISSION_AND_TOOL_RUNTIME.md"),
-            "# Provider runtime\n\n## 3. Provider transport\nTransport is separate.\n\n### 3.1 Provider-local behavior isolation\nAuthentication cannot import provider-local authority.\n\n### 3.2 Other\nunselected.\n\n## 6. Permission mode is not capability authority\nPermission mode cannot widen capability.\n\n## 10. Security invariants\nProvider-native tools cannot bypass AER authority.\n\n## 11. Evolution\nunselected tail.\n",
+            "# Provider runtime\n\n## 3. Provider transport\nTransport is separate.\n\n### 3.1 Provider-local behavior isolation\nAuthentication cannot import provider-local authority.\n\n### 3.2 Other\nunselected.\n\n## 6. Permission mode is not capability authority\nPermission mode cannot widen capability.\n\n## 11. Security invariants\nProvider-native tools cannot bypass AER authority.\n\n## 12. Evolution\nunselected tail.\n",
         )
         .expect("provider runtime");
         root
@@ -650,6 +701,104 @@ mod tests {
         let selected_change =
             ModelContextEnvelope::compile(&root, objective).expect("selected source envelope");
         assert_ne!(second.digest, selected_change.digest);
+        fs::remove_dir_all(root).expect("cleanup");
+    }
+
+    /// The constitutional core quotes real repository headings verbatim, so a
+    /// documentation renumbering silently breaks every provider call while the
+    /// synthetic fixtures above keep passing. Compile against the real docs.
+    #[test]
+    fn constitutional_core_compiles_against_the_real_repository_documents() {
+        let repository_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .expect("repository root");
+        let capsule = ArchitectureContextCapsule::compile(&repository_root)
+            .expect("every referenced authority section must exist in this repository");
+        assert_eq!(capsule.sources.len(), super::CORE_SECTIONS.len());
+        assert!(
+            capsule
+                .sources
+                .iter()
+                .all(|source| !source.text.trim().is_empty())
+        );
+    }
+
+    #[test]
+    fn only_code_shaped_quoted_names_become_retrieval_demands() {
+        assert_eq!(
+            named_identifiers(
+                "what integer version does `ArchitectureContextCapsule::compile` assign?",
+                MAX_NAMED_IDENTIFIERS
+            ),
+            vec!["ArchitectureContextCapsule::compile".to_owned()]
+        );
+        assert_eq!(
+            named_identifiers(
+                "what decimal value does `MAX_DYNAMIC_CONTEXT_BUDGET` evaluate to?",
+                MAX_NAMED_IDENTIFIERS
+            ),
+            vec!["MAX_DYNAMIC_CONTEXT_BUDGET".to_owned()]
+        );
+        // Quoted answer literals are prose, not repository identifiers.
+        assert!(
+            named_identifiers(
+                "Reply exactly `no` or `yes`, lowercase.",
+                MAX_NAMED_IDENTIFIERS
+            )
+            .is_empty()
+        );
+        assert!(named_identifiers("no backticks here at all", MAX_NAMED_IDENTIFIERS).is_empty());
+        assert!(
+            named_identifiers("`not an identifier!`", MAX_NAMED_IDENTIFIERS).is_empty(),
+            "punctuation is not an identifier"
+        );
+        assert_eq!(
+            named_identifiers(
+                "`A_one` `B_two` `C_three` `D_four` `E_five`",
+                MAX_NAMED_IDENTIFIERS
+            )
+            .len(),
+            MAX_NAMED_IDENTIFIERS
+        );
+    }
+
+    #[test]
+    fn provider_context_carries_the_exact_definition_a_task_names() {
+        let root = fixture_root();
+        let mut source = String::from(
+            "//! capsule compile version assign integer compiled capsule\npub struct Capsule {\n    pub version: u32,\n}\n\npub struct Envelope {\n    pub version: u32,\n}\n\n",
+        );
+        for index in 0..200 {
+            source.push_str(&format!("pub const PREAMBLE_{index}: u32 = {index};\n"));
+        }
+        source.push_str("\nimpl Capsule {\n    pub fn compile() -> Self {\n");
+        for index in 0..40 {
+            source.push_str(&format!("        let _filler_{index} = PREAMBLE_0;\n"));
+        }
+        source.push_str("        Self { version: 3 }\n    }\n}\n\nimpl Envelope {\n    pub fn compile() -> Self {\n        Self { version: 7 }\n    }\n}\n");
+        fs::write(root.join("src/capsule.rs"), source).expect("capsule source");
+        git(&root, &["init"]);
+        git(&root, &["config", "user.email", "aer@example.invalid"]);
+        git(&root, &["config", "user.name", "AER Test"]);
+        git(&root, &["add", "."]);
+        git(&root, &["commit", "-m", "fixture"]);
+
+        let envelope = ModelContextEnvelope::compile(
+            &root,
+            "Using only the supplied AER context, what integer version does `Capsule::compile` assign to the compiled capsule?",
+        )
+        .expect("context envelope");
+        assert!(
+            envelope.rendered.contains("Self { version: 3 }"),
+            "the named definition must reach the model verbatim"
+        );
+        assert!(
+            !envelope.rendered.contains("Self { version: 7 }"),
+            "the unrelated definition must not be pulled in"
+        );
+        assert!(envelope.task_context.total_token_cost() <= envelope.dynamic_context_budget);
+        assert!(envelope.estimated_tokens <= MAX_AER_CONTEXT_ESTIMATED_TOKENS);
         fs::remove_dir_all(root).expect("cleanup");
     }
 }

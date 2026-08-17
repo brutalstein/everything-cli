@@ -9,7 +9,7 @@
 **Verified repository CI before this documentation refresh:** `foundation-ci` run `32029479851` / #314 — SUCCESS on merged `main`  
 **Repository health at this documentation refresh:** CI GREEN; no open pull requests or open issues before the documentation PR  
 **Provider gate:** OPEN  
-**Immediate engineering blocker:** exact-identifier / exact-definition retrieval can select a nearby source span while omitting the defining value; production Claude authority-split promotion is therefore NOT yet accepted.
+**Immediate engineering blocker:** none in repository correctness. The exact-identifier / exact-definition retrieval defect is repaired with deterministic regressions; the live Claude authority-split matrix must now be rerun on the target Windows machine before production promotion can be considered.
 
 ## Executive state
 
@@ -25,9 +25,10 @@ Provider productization has advanced materially since the first live Claude smok
 - provider-visible cache identity is separated from audit/provenance-only identity;
 - a repeatable provider context-economics benchmark exists;
 - a controlled cache-attribution lab rejected rotating scratch CWD as the primary Claude cache-write cause and identified an AER-owned authority split as a materially cheaper candidate;
-- a multi-task Claude authority-split acceptance matrix now measures correctness, authority safety and provider economics before any production default change.
+- a multi-task Claude authority-split acceptance matrix now measures correctness, authority safety and provider economics before any production default change;
+- exact-identifier / exact-definition retrieval now resolves qualified `Container::name` definitions, reserves their exact defining spans ahead of discretionary selection and fails closed when that coverage cannot be established.
 
-The gate is **not closed**. Step 14 must not start until the retrieval defect exposed by the live acceptance matrix is corrected, the complete matrix is rerun on the target Windows machine, and the candidate satisfies the acceptance contract with no quality regression.
+The gate is **not closed**. Step 14 must not start until the complete matrix is rerun on the target Windows machine and the candidate satisfies the acceptance contract with no quality regression.
 
 ## Completed milestones
 
@@ -135,33 +136,54 @@ Important interpretation:
 - both profiles failed from the same insufficient Context Pack;
 - the real source sets `ArchitectureContextCapsule::compile` output to `version: 3`;
 - the selected `model_context.rs` span stopped before that assignment;
-- therefore the run is evidence of a **retrieval/localization correctness gap**, not evidence that `version: 1` is correct and not evidence that authority split is unsafe.
+- therefore the run is evidence of a **retrieval/localization correctness gap**, not evidence that `version: 1` is correct and not evidence that authority split is unsafe;
+- that gap is now repaired (see the section below); the table above records the pre-repair run and is not rerun evidence.
 
 Across the six tasks, the candidate reduced main-loop provider input by about **4.27k tokens per call (median paired reduction)**. The median paired provider-reported cost reduction was about **$0.0191 per call**. Cache-read tokens were lower because the whole candidate prompt was smaller; cache-read count alone is not the optimization objective. Latency showed no reliable directional advantage in this small matrix.
 
 The adversarial prompt-injection task passed in both authority-split runs with the exact required `AER_AUTHORITY_HELD` output.
 
-## Open correctness defect: exact-definition retrieval
+## Closed correctness defect: exact-definition retrieval
 
-The next engineering task is not ContextSizer tuning and not Step 14.
+The retrieval/localization gap the matrix exposed is repaired in place, inside RI2 + Context Economy. No parallel retriever was introduced and no context budget was widened to compensate.
 
-When a user/task explicitly names an identifier or symbol and asks for a concrete definition/value, RI2 + Context Economy must either:
+What changed:
 
-1. include the exact defining source span containing that value; or
-2. explicitly abstain/fail closed because required semantic coverage is unavailable.
+- **RI2 symbol scope.** Every indexed symbol now records the name of its lexically enclosing definition scope (Rust `impl`/`trait`/`mod`, Python/TypeScript class, enclosing function). `RepositoryIndex::definitions` resolves a qualified `Container::name` against that recorded container instead of returning the first same-named symbol in the file. Index schema is v3 and the language extraction query version is `aer-v3`, so existing artifacts are re-parsed rather than reused stale.
+- **Context Economy required coverage.** `ContextRequest::required_symbols` carries identifiers a task named explicitly. Their exact defining spans are materialized verbatim and reserved before any discretionary selection, so budget pressure evicts optional evidence first and can never silently shrink a named definition.
+- **Fail-closed abstention.** Unresolvable, genuinely ambiguous, oversized or unaffordable coverage returns a typed error (`ExactDefinitionUnavailable`, `ExactDefinitionAmbiguous`, `ExactDefinitionTooLarge`, `BudgetTooSmall`) instead of shipping a partial span.
+- **Conservative demand derivation.** The provider path promotes only code-shaped quoted identifiers that the repository actually defines, so a quoted answer literal such as `` `no` `` in a task prompt cannot turn a valid request into an abstention.
 
-A nearby structural span that contains the type/function but omits the requested assignment is insufficient.
+Deterministic regression coverage:
 
-The fix must evolve the existing repository/context pipeline in place. Do not introduce a parallel retriever and do not solve the problem by indiscriminately increasing every context budget.
+| Regression | Location |
+|---|---|
+| qualified definition resolves to exactly one defining span containing `version: 3` | `crates/aer-repo/src/lib.rs` |
+| named definition retrieved verbatim, unrelated same-named definition excluded, pack within budget, fidelity verified | `crates/aer-context/tests/exact_definition.rs` |
+| unresolvable / ambiguous / oversized / unaffordable coverage fails closed | `crates/aer-context/tests/exact_definition.rs` |
+| exact coverage survives Context Economy selection pressure | `crates/aer-context/tests/exact_definition.rs` |
+| pre-fix baseline misses the assignment on the same fixture (`#[ignore]`d, documents the gap) | `crates/aer-context/tests/exact_definition.rs` |
+| only code-shaped quoted names become retrieval demands | `crates/aer-core/src/model_context.rs` |
+| provider envelope carries the exact definition a task names | `crates/aer-core/src/model_context.rs` |
 
-Required deterministic regression:
+The live Claude authority-split matrix has **not** been rerun yet. Repository correctness is verified; product acceptance is not.
 
-- task names `ArchitectureContextCapsule::compile` and asks for compiled `version`;
-- retrieval must include the source anchor containing `version: 3`;
-- the pack must remain within policy budget;
-- stale/different-repository evidence remains rejected;
-- exact-symbol coverage must be preserved through Context Economy selection;
-- if exact coverage cannot be established, compilation must abstain rather than fabricate an answer.
+### Constitutional-core heading drift, found and fixed
+
+Inspecting real-repository retrieval exposed a second, unrelated break: the documentation refresh in `050e461` renumbered `docs/45_…` §10 "Security invariants" to §11, but `CORE_SECTIONS` still quoted `## 10. Security invariants`. `ArchitectureContextCapsule::compile` fails closed on a missing section, so **every provider call on `main` was failing** with `RequiredSectionMissing`. The unit tests did not see it because they compile the capsule against a synthetic fixture that carried the old heading.
+
+Fixed by pointing the reference at the current heading and by adding `constitutional_core_compiles_against_the_real_repository_documents`, which compiles the capsule against this repository's actual `docs/`. Heading drift is now a test failure rather than a runtime outage.
+
+### Real-repository retrieval evidence (dry run, zero provider calls)
+
+`scripts/run-provider-acceptance-windows.ps1 -Runs 2` now compiles a Context Pack for all six tasks with no abstention, and the two exact-value tasks select their defining spans:
+
+| Task | Selected defining span |
+|---|---|
+| `architecture_capsule_version` | `crates/aer-core/src/model_context.rs#L107-L186` — the whole `ArchitectureContextCapsule::compile` body, containing `version: 3` |
+| `dynamic_context_budget` | `crates/aer-core/src/model_context.rs#L23-L23` — the `MAX_DYNAMIC_CONTEXT_BUDGET` definition |
+
+Pack sizes stayed within the dynamic budget (5.4k–6.0k estimated units against a 6144 budget).
 
 ## Provider productization gate ledger
 
@@ -179,8 +201,8 @@ Required deterministic regression:
 | Authority-split permission invariant | PASS | live acceptance |
 | Authority-split execution self-promotion invariant | PASS | live acceptance |
 | Authority-split repository prompt-injection defense | PASS | live acceptance |
-| Exact repository-definition retrieval | **FAIL / OPEN** | capsule-version task missed defining assignment |
-| Full authority-split quality acceptance | **BLOCKED** | rerun required after retrieval repair |
+| Exact repository-definition retrieval | PASS | qualified-definition resolution + required exact coverage + fail-closed abstention, with deterministic regressions |
+| Full authority-split quality acceptance | **BLOCKED** | live matrix rerun still outstanding |
 | Production default promotion | **BLOCKED** | no promotion while matrix is incomplete |
 | Strong sandbox for provider-native agentic tool execution | **OPEN** | direct host process is not a strong sandbox |
 | Provider Productization Gate | **OPEN** | blockers above |
@@ -188,9 +210,9 @@ Required deterministic regression:
 
 ## Exact next-action order
 
-1. Fix exact-identifier / exact-definition source-span retrieval in the existing RI2 + Context Economy path.
-2. Add deterministic regression coverage for required defining-span inclusion and fail-closed abstention.
-3. Run workspace format, `-D warnings` Clippy, full tests, RI2/Context Economy benches, provider runtime tests, docs checks and canonical Windows verification.
+1. ~~Fix exact-identifier / exact-definition source-span retrieval in the existing RI2 + Context Economy path.~~ **Done.**
+2. ~~Add deterministic regression coverage for required defining-span inclusion and fail-closed abstention.~~ **Done.**
+3. ~~Run workspace format, `-D warnings` Clippy, full tests, RI2/Context Economy benches, provider runtime tests, docs checks and canonical Windows verification.~~ **Done — canonical Windows verification PASS.**
 4. Merge only if Linux and Windows authoritative CI are green.
 5. Re-run the full live Claude authority-split matrix on the target Windows machine.
 6. Promote authority split to production Claude delegated transport only if every candidate measurement is valid, every acceptance contract passes, the adversarial task passes and there is no current-pass → candidate-fail regression.
