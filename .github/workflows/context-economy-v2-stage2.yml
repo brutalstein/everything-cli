@@ -11,6 +11,7 @@ on:
       - crates/aer-core/src/task_working_set.rs
       - crates/aer-repo/src/ri2/capsule.rs
       - .aer-dev/stage2-export.py
+      - .aer-dev/fix-stage1-clippy.py
       - .github/workflows/context-economy-v2-stage2.yml
   pull_request:
     branches:
@@ -22,6 +23,7 @@ on:
       - crates/aer-core/src/task_working_set.rs
       - crates/aer-repo/src/ri2/capsule.rs
       - .aer-dev/stage2-export.py
+      - .aer-dev/fix-stage1-clippy.py
       - .github/workflows/context-economy-v2-stage2.yml
 
 permissions:
@@ -37,6 +39,8 @@ jobs:
           fetch-depth: 0
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - name: Consolidate Stage-1 selection inputs
+        run: python3 .aer-dev/fix-stage1-clippy.py
       - name: Export staged modules
         run: python3 .aer-dev/stage2-export.py
       - name: Format
@@ -45,7 +49,7 @@ jobs:
         run: cargo +1.97.1 clippy --locked -p aer-provider -p aer-core -p aer-repo --all-targets -- -D warnings
       - name: Test focused packages
         run: cargo +1.97.1 test --locked -p aer-provider -p aer-core -p aer-repo --all-targets
-      - name: Commit validated exports
+      - name: Commit validated implementation
         if: github.event_name == 'push'
         shell: bash
         run: |
