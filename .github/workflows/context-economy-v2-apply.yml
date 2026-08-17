@@ -6,12 +6,14 @@ on:
       - feat/context-economy-v2
     paths:
       - .aer-dev/apply-context-economy-v2.py
+      - .aer-dev/fix-context-transformer.py
       - .github/workflows/context-economy-v2-apply.yml
   pull_request:
     branches:
       - main
     paths:
       - .aer-dev/apply-context-economy-v2.py
+      - .aer-dev/fix-context-transformer.py
       - .github/workflows/context-economy-v2-apply.yml
 
 permissions:
@@ -25,6 +27,8 @@ jobs:
         with:
           ref: feat/context-economy-v2
           fetch-depth: 0
+      - name: Repair transformation anchor
+        run: python3 .aer-dev/fix-context-transformer.py
       - name: Apply fail-closed source transformations
         run: python3 .aer-dev/apply-context-economy-v2.py
       - name: Format
