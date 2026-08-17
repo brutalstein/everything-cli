@@ -429,6 +429,18 @@ impl RepositoryIndex {
         workspace_root: impl AsRef<Path>,
         query: &SearchQuery,
     ) -> Result<SearchResult, RepoError> {
+        let indexed = self.verified_current_snapshot_id(workspace_root)?;
+        self.search(&indexed, query)
+    }
+
+    /// Returns the exact indexed snapshot for the current workspace without
+    /// forcing a lexical query merely to establish snapshot freshness.
+    /// Context Economy uses this so deterministic exact evidence can terminate
+    /// discovery before a broader retrieval family is invoked.
+    pub fn verified_current_snapshot_id(
+        &self,
+        workspace_root: impl AsRef<Path>,
+    ) -> Result<String, RepoError> {
         let current = snapshot_identity(&WorkspaceSnapshot::capture(
             workspace_root.as_ref(),
             &SnapshotPolicy::default(),
@@ -442,7 +454,8 @@ impl RepositoryIndex {
                 current: current.snapshot_id,
             });
         }
-        self.search(&indexed, query)
+        self.ensure_snapshot(&indexed)?;
+        Ok(indexed)
     }
 
     pub fn file(&self, snapshot_id: &str, path: &str) -> Result<Option<IndexedFile>, RepoError> {

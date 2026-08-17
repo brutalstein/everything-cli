@@ -118,6 +118,73 @@ impl ContextRequest {
     }
 }
 
+/// A typed information requirement compiled before Context Economy selects
+/// model-visible evidence. `minimum_coverage` is a count of independent
+/// repository candidates; the token budget is only an upper bound.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct EvidenceDemand {
+    pub demand_id: String,
+    pub kind: EvidenceDemandKind,
+    pub target: EvidenceDemandTarget,
+    pub minimum_tier: ContextTier,
+    pub required_provenance: EvidenceProvenance,
+    pub minimum_coverage: u16,
+    pub expansion_policy: EvidenceExpansionPolicy,
+    pub importance_milli: u16,
+    pub verification_critical: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EvidenceDemandKind {
+    ExactDefinition,
+    RequirementContext,
+    RuntimeEvidence,
+    EditTarget,
+    TestContext,
+    SupportingContext,
+    ChangeImpact,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum EvidenceDemandTarget {
+    Symbol(String),
+    SemanticId(String),
+    Path(String),
+    Objective,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EvidenceProvenance {
+    ExactSource,
+    IndexedSource,
+    DerivedGraph,
+    RuntimeObserved,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum EvidenceExpansionPolicy {
+    Never,
+    ExactDefinition,
+    BoundedSourceSpan,
+    BoundedNeighborhood,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RetrievalStage {
+    Exact,
+    Lexical,
+    Structural,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct RetrievalTrace {
+    pub stages_invoked: Vec<RetrievalStage>,
+    pub demands_total: usize,
+    pub demands_satisfied: usize,
+    pub tier_escalations: usize,
+    pub unnecessary_stage_count: usize,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RuntimeHint {
     pub path: String,
@@ -175,6 +242,8 @@ pub struct ContextPack {
     pub items: Vec<ContextItem>,
     pub omitted_high_rank_items: Vec<String>,
     pub source_hashes: Vec<String>,
+    pub evidence_demands: Vec<EvidenceDemand>,
+    pub retrieval_trace: RetrievalTrace,
 }
 
 impl ContextPack {
@@ -227,6 +296,7 @@ pub enum ContextError {
         lines: u32,
         maximum: u32,
     },
+    EvidenceDemandUnsatisfied(String),
     BudgetTooSmall {
         required: u32,
         available: u32,
@@ -286,6 +356,10 @@ impl fmt::Display for ContextError {
             } => write!(
                 f,
                 "exact definition exceeds the verbatim bound: {symbol} spans {lines} lines, maximum {maximum}"
+            ),
+            Self::EvidenceDemandUnsatisfied(demand_id) => write!(
+                f,
+                "required context evidence demand could not be satisfied: {demand_id}"
             ),
             Self::BudgetTooSmall {
                 required,
