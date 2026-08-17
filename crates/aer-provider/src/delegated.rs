@@ -675,9 +675,9 @@ fn parse_codex_usage(value: Option<&Value>) -> Result<ProviderUsage, ProviderErr
         .and_then(Value::as_u64);
     let fresh_input = match (total_input, cache_read, cache_creation) {
         (Some(total), Some(read), Some(created)) => {
-            let cached = read.checked_add(created).ok_or_else(|| {
-                schema_violation("Codex cache token counters overflowed u64")
-            })?;
+            let cached = read
+                .checked_add(created)
+                .ok_or_else(|| schema_violation("Codex cache token counters overflowed u64"))?;
             Some(total.checked_sub(cached).ok_or_else(|| {
                 schema_violation("Codex cache token counters exceed total input_tokens")
             })?)
@@ -689,20 +689,19 @@ fn parse_codex_usage(value: Option<&Value>) -> Result<ProviderUsage, ProviderErr
         cache_creation_input_tokens: cache_creation,
         cache_read_input_tokens: cache_read,
         output_tokens: usage.get("output_tokens").and_then(Value::as_u64),
-        reasoning_output_tokens: usage
-            .get("reasoning_output_tokens")
-            .and_then(Value::as_u64),
+        reasoning_output_tokens: usage.get("reasoning_output_tokens").and_then(Value::as_u64),
     })
 }
 
 fn parse_claude_json(stdout: &[u8]) -> Result<ParsedOutput, ProviderError> {
-    let value: Value = serde_json::from_slice(stdout).map_err(|error| {
-        schema_violation(format!("Claude emitted invalid JSON: {error}"))
-    })?;
+    let value: Value = serde_json::from_slice(stdout)
+        .map_err(|error| schema_violation(format!("Claude emitted invalid JSON: {error}")))?;
     let output = required_string(&value, "result", "Claude")?;
     let usage = value.get("usage").and_then(Value::as_object);
     let usage = ProviderUsage {
-        input_tokens: usage.and_then(|usage| usage.get("input_tokens")).and_then(Value::as_u64),
+        input_tokens: usage
+            .and_then(|usage| usage.get("input_tokens"))
+            .and_then(Value::as_u64),
         cache_creation_input_tokens: usage
             .and_then(|usage| usage.get("cache_creation_input_tokens"))
             .and_then(Value::as_u64),
@@ -739,9 +738,8 @@ fn parse_claude_json(stdout: &[u8]) -> Result<ParsedOutput, ProviderError> {
 }
 
 fn parse_gemini_json(stdout: &[u8]) -> Result<ParsedOutput, ProviderError> {
-    let value: Value = serde_json::from_slice(stdout).map_err(|error| {
-        schema_violation(format!("Gemini emitted invalid JSON: {error}"))
-    })?;
+    let value: Value = serde_json::from_slice(stdout)
+        .map_err(|error| schema_violation(format!("Gemini emitted invalid JSON: {error}")))?;
     let output = required_string(&value, "response", "Gemini")?;
     let Some(models) = value
         .get("stats")
@@ -783,9 +781,11 @@ fn parse_gemini_json(stdout: &[u8]) -> Result<ParsedOutput, ProviderError> {
         fresh_input = checked_optional_add(
             fresh_input,
             match (prompt, cached) {
-                (Some(prompt), Some(cached)) => Some(prompt.checked_sub(cached).ok_or_else(|| {
-                    schema_violation("Gemini cached tokens exceed prompt tokens")
-                })?),
+                (Some(prompt), Some(cached)) => {
+                    Some(prompt.checked_sub(cached).ok_or_else(|| {
+                        schema_violation("Gemini cached tokens exceed prompt tokens")
+                    })?)
+                }
                 _ => None,
             },
             "Gemini fresh input token counters overflowed u64",
@@ -1353,10 +1353,7 @@ mod tests {
         assert_eq!(parsed.usage.reasoning_output_tokens, Some(13));
         assert_eq!(
             parsed.resolved_models,
-            vec![
-                "claude-opus-4-1".to_owned(),
-                "claude-sonnet-4-5".to_owned()
-            ]
+            vec!["claude-opus-4-1".to_owned(), "claude-sonnet-4-5".to_owned()]
         );
         assert_eq!(parsed.provider_cost_usd.as_deref(), Some("0.01234"));
         assert_eq!(parsed.provider_request_id.as_deref(), Some("session-abc"));
