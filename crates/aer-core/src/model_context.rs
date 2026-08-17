@@ -119,9 +119,8 @@ impl ArchitectureContextCapsule {
             if !canonical.starts_with(&root) {
                 return Err(ArchitectureContextError::SourceOutsideWorkspace(canonical));
             }
-            let full_text = std::str::from_utf8(&bytes).map_err(|_| {
-                ArchitectureContextError::SourceNotUtf8(relative.to_owned())
-            })?;
+            let full_text = std::str::from_utf8(&bytes)
+                .map_err(|_| ArchitectureContextError::SourceNotUtf8(relative.to_owned()))?;
             let fragment = extract_markdown_section(full_text, heading).ok_or_else(|| {
                 ArchitectureContextError::RequiredSectionMissing {
                     path: relative.to_owned(),
@@ -327,7 +326,10 @@ fn extract_markdown_section(text: &str, heading: &str) -> Option<MarkdownFragmen
 
 fn markdown_heading_level(line: &str) -> Option<usize> {
     let trimmed = line.trim_start();
-    let level = trimmed.chars().take_while(|character| *character == '#').count();
+    let level = trimmed
+        .chars()
+        .take_while(|character| *character == '#')
+        .count();
     if level == 0 || level > 6 || trimmed.chars().nth(level) != Some(' ') {
         return None;
     }
@@ -397,14 +399,20 @@ impl fmt::Display for ArchitectureContextError {
             Self::Clock => write!(formatter, "system clock is before the Unix epoch"),
             Self::EmptyObjective => write!(formatter, "model context objective cannot be empty"),
             Self::RequiredSourceMissing(path) => {
-                write!(formatter, "required architecture context source missing: {path}")
+                write!(
+                    formatter,
+                    "required architecture context source missing: {path}"
+                )
             }
             Self::RequiredSectionMissing { path, heading } => write!(
                 formatter,
                 "required architecture section missing: {path}::{heading}"
             ),
             Self::SourceNotUtf8(path) => {
-                write!(formatter, "architecture context source is not UTF-8: {path}")
+                write!(
+                    formatter,
+                    "architecture context source is not UTF-8: {path}"
+                )
             }
             Self::SourceOutsideWorkspace(path) => write!(
                 formatter,
@@ -536,7 +544,10 @@ mod tests {
             root.join("docs/00_READ_ME_FIRST.md"),
             fs::read_to_string(root.join("docs/00_READ_ME_FIRST.md"))
                 .expect("read")
-                .replace("AER is model agnostic.", "AER is explicitly model agnostic."),
+                .replace(
+                    "AER is model agnostic.",
+                    "AER is explicitly model agnostic.",
+                ),
         )
         .expect("rewrite selected");
         let selected_change = ArchitectureContextCapsule::compile(&root).expect("selected change");
@@ -563,8 +574,16 @@ mod tests {
             "inspect expired token rejection in src/auth.rs and explain its authority boundary",
         )
         .expect("context envelope");
-        assert!(envelope.rendered.starts_with("# everything/AER constitutional core"));
-        assert!(envelope.rendered.contains("# Task-specific Context Economy pack"));
+        assert!(
+            envelope
+                .rendered
+                .starts_with("# everything/AER constitutional core")
+        );
+        assert!(
+            envelope
+                .rendered
+                .contains("# Task-specific Context Economy pack")
+        );
         assert!(envelope.task_context.total_token_cost() <= envelope.dynamic_context_budget);
         assert!(envelope.estimated_tokens <= MAX_AER_CONTEXT_ESTIMATED_TOKENS);
         assert!(
