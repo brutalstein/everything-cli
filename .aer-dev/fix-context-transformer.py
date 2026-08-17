@@ -73,6 +73,37 @@ replace_once(
 )
 
 replace_once(
+    '''    }
+    demands
+}
+
+fn demand_needs_lexical''',
+    '''    }
+    if request.objective.to_ascii_lowercase().contains("test")
+        && !demands
+            .iter()
+            .any(|demand| demand.kind == EvidenceDemandKind::TestContext)
+    {
+        demands.push(EvidenceDemand {
+            demand_id: "objective:test-context".to_owned(),
+            kind: EvidenceDemandKind::TestContext,
+            target: EvidenceDemandTarget::Objective,
+            minimum_tier: ContextTier::SourceSpan,
+            required_provenance: EvidenceProvenance::IndexedSource,
+            minimum_coverage: 1,
+            expansion_policy: EvidenceExpansionPolicy::BoundedNeighborhood,
+            importance_milli: 850,
+            verification_critical: false,
+        });
+    }
+    demands
+}
+
+fn demand_needs_lexical''',
+    "test demand beside explicit evidence",
+)
+
+replace_once(
     "        EvidenceDemandKind::ChangeImpact | EvidenceDemandKind::SupportingContext\n",
     "        EvidenceDemandKind::ChangeImpact\n            | EvidenceDemandKind::TestContext\n            | EvidenceDemandKind::SupportingContext\n",
     "structural demand kinds",
@@ -125,4 +156,4 @@ replace_once(
 )
 
 path.write_text(text, encoding="utf-8")
-print("Context transformer repaired: precise selection anchor + explicit test-context demand")
+print("Context transformer repaired: demand-aware selection + explicit test-context preservation")
