@@ -233,13 +233,15 @@ impl ModelContextEnvelope {
             });
         }
 
-        let mut policy = ContextPolicy::default();
-        policy.version = PROVIDER_CONTEXT_POLICY_VERSION.to_owned();
-        policy.max_candidates = 64;
-        policy.max_items = 10;
-        policy.max_span_lines = 48;
-        policy.max_tier3_lines = 96;
-        policy.omitted_high_rank_limit = 8;
+        let policy = ContextPolicy {
+            version: PROVIDER_CONTEXT_POLICY_VERSION.to_owned(),
+            max_candidates: 64,
+            max_items: 10,
+            max_span_lines: 48,
+            max_tier3_lines: 96,
+            omitted_high_rank_limit: 8,
+            ..ContextPolicy::default()
+        };
         let engine = ContextEngine::new(policy)?;
 
         // Provider smoke is an acceptance probe, not an Engineering-IR mutation.
