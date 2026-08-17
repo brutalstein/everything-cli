@@ -35,6 +35,8 @@ jobs:
         with:
           ref: agent/context-economy-v2-stage2
           fetch-depth: 0
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
       - name: Export staged modules
         run: python3 .aer-dev/stage2-export.py
       - name: Format
