@@ -53,7 +53,7 @@ c42ab519779f1d2e43bc273dd0ca53d798a563298b5759d3637fc48bb2dfa645  docs/adrs/ADR-
 dd329bc12f5b43164218dca18f1f74e37222388151454f0b6906c0bf008759ca  docs/adrs/ADR-0005-sqlite-event-journal.md
 2670c1c7ea1028f8af954786eccfe0491aaf9eca1d923747fa6b01463f3bdee1  docs/adrs/ADR-0006-internal-abis-external-standards.md
 5a11caf976bfe9a3912039d7fff75346704f1aba04497dce44b1251a7476ca2a  docs/adrs/ADR-0007-bounded-resource-admission.md
-96be1953047bb99ebef2e83a1b43457449908f29b4ada9cab2ab911  docs/adrs/ADR-0008-explicit-compatibility-and-migrations.md
+96be1953047bb99ebef2e83a1b43457449908f29d82a48b09b4ada9cab2ab911  docs/adrs/ADR-0008-explicit-compatibility-and-migrations.md
 c5df8cbb4e4fde727b72ee1a0dc4810b2edac9f98671e444acc450dc3c5e64c7  docs/adrs/ADR-0009-external-research-is-evidence-not-authority.md
 5120e560501eb6e7acb152249cc18a522fcd1a848545324e669e881aa3f4eb44  docs/examples/example-handoff.json
 286516e43bc4fd2a6c62638af92bb2b609e3ae7678d1802db7ad39ed59ae8a53  docs/examples/example-project-ir.yaml
