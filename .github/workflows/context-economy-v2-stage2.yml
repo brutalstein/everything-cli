@@ -12,6 +12,17 @@ on:
       - crates/aer-repo/src/ri2/capsule.rs
       - .aer-dev/stage2-export.py
       - .github/workflows/context-economy-v2-stage2.yml
+  pull_request:
+    branches:
+      - feat/context-economy-v2
+    paths:
+      - crates/aer-provider/src/context_assembly.rs
+      - crates/aer-provider/src/cognitive.rs
+      - crates/aer-core/src/edit_abi.rs
+      - crates/aer-core/src/task_working_set.rs
+      - crates/aer-repo/src/ri2/capsule.rs
+      - .aer-dev/stage2-export.py
+      - .github/workflows/context-economy-v2-stage2.yml
 
 permissions:
   contents: write
@@ -33,6 +44,7 @@ jobs:
       - name: Test focused packages
         run: cargo +1.97.1 test --locked -p aer-provider -p aer-core -p aer-repo --all-targets
       - name: Commit validated exports
+        if: github.event_name == 'push'
         shell: bash
         run: |
           set -euo pipefail
