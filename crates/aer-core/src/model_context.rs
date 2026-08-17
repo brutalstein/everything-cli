@@ -352,7 +352,7 @@ impl TemporaryIndex {
     fn new() -> Result<Self, ArchitectureContextError> {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .map_err(|_| ArchitectureContextError::Clock)?
+            .map_err(|_| ArchitectureContextError::Clock)?;
             .as_nanos();
         Ok(Self {
             path: std::env::temp_dir().join(format!(
@@ -394,7 +394,7 @@ impl fmt::Display for ArchitectureContextError {
             Self::Io(error) => error.fmt(formatter),
             Self::Repository(error) => error.fmt(formatter),
             Self::Context(error) => error.fmt(formatter),
-            Self::Clock => write!(formatter, "system clock is before the Unix epoch"),
+            Self::Clock => write!(formatter, "system clock is before Unix epoch"),
             Self::EmptyObjective => write!(formatter, "model context objective cannot be empty"),
             Self::RequiredSourceMissing(path) => {
                 write!(
@@ -572,7 +572,7 @@ mod tests {
     }
 
     #[test]
-    fn provider_envelope_cache_identity_ignores_unselected_workspace_churn() {
+    fn provider_envelope_cache_identity_ignores_provenance_only_workspace_churn() {
         let root = fixture_root();
         fs::write(
             root.join("src/auth.rs"),
@@ -611,11 +611,14 @@ mod tests {
                 .any(|item| item.path == "src/auth.rs")
         );
 
+        // Binary/unretrievable workspace churn changes repository provenance,
+        // but cannot become model context. This isolates the exact invariant:
+        // audit identity may change while semantic prompt bytes stay identical.
         fs::write(
-            root.join("smoke-1.json"),
-            "{\"receipt\":\"unrelated provider telemetry artifact\"}\n",
+            root.join("cache-churn.bin"),
+            [0_u8, 0xff, 0x00, 0xfe, 0x01, 0x02, 0x03],
         )
-        .expect("unselected workspace churn");
+        .expect("provenance-only workspace churn");
         let second = ModelContextEnvelope::compile(&root, objective).expect("second envelope");
         assert_ne!(
             first.task_context.repo_snapshot,
