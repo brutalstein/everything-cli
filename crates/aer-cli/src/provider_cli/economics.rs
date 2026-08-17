@@ -33,12 +33,7 @@ pub(super) fn run(
     }
 
     let context = ModelContextEnvelope::compile(path, CANONICAL_INPUT)?;
-    let adapter = DelegatedCliProvider::new(
-        provider,
-        context.rendered.clone(),
-        context.digest.clone(),
-        model,
-    );
+    let adapter = DelegatedCliProvider::new(provider, context.delegated_context(), model);
 
     if !json {
         println!("everything provider context economics");
@@ -482,6 +477,7 @@ mod tests {
             transport: "claude-print-json".to_owned(),
             requested_model: None,
             resolved_models: vec!["claude-test".to_owned()],
+            per_model_usage: Vec::new(),
             provider_cost_usd: Some("0.01".to_owned()),
             provider_request_id: Some("request".to_owned()),
             architecture_context_digest: digest.to_owned(),

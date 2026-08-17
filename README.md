@@ -27,9 +27,11 @@ The merged runtime includes:
 - AER-owned permission policy and typed ToolBroker foundations;
 - provider context-economics and Claude authority-split acceptance diagnostics.
 
-The repository is not claiming that the provider gate is complete. The latest live Claude acceptance matrix exposed an exact-definition retrieval defect: a task asking for `ArchitectureContextCapsule::compile`'s `version` received a Context Pack that stopped before the actual `version: 3` assignment. Both the current Claude preset and the authority-split candidate therefore failed the same task.
+The repository is not claiming that the provider gate is complete. An earlier live Claude acceptance matrix exposed an exact-definition retrieval defect: a task asking for `ArchitectureContextCapsule::compile`'s `version` received a Context Pack that stopped before the actual `version: 3` assignment.
 
-That defect is now repaired inside RI2 + Context Economy: symbols carry their enclosing definition scope so a qualified `Container::name` resolves exactly, identifiers a task names explicitly are reserved as mandatory verbatim coverage before discretionary selection, and coverage that cannot be established fails closed instead of shipping a partial span. The live matrix still has to be rerun before production promotion.
+That defect is repaired inside RI2 + Context Economy: symbols carry their enclosing definition scope so a qualified `Container::name` resolves exactly, identifiers a task names explicitly are reserved as mandatory verbatim coverage before discretionary selection, and coverage that cannot be established fails closed instead of shipping a partial span. The rerun live matrix passed all six tasks on both profiles, and the AER authority split was promoted to the production delegated Claude transport.
+
+The gate nevertheless stays open: delegated provider calls still run as ordinary host processes, which is not the strong sandbox the provider contract requires.
 
 See:
 
@@ -62,11 +64,20 @@ Current posture:
 
 Vendor-owned login remains vendor-owned. `everything` does not scrape or copy consumer OAuth refresh secrets.
 
-### Authority split under evaluation
+### Authority split, in production for Claude
 
-A controlled Claude cache-attribution lab showed that merely stabilizing the scratch working directory did not materially improve cache reuse. Replacing the generic Claude Code preset with an AER-owned constitutional system authority, while keeping repository/task evidence in the user/data layer, substantially reduced provider input and cost in the diagnostic probe.
+A controlled Claude cache-attribution lab showed that merely stabilizing the scratch working directory did not materially improve cache reuse. Replacing the generic Claude Code preset with an AER-owned constitutional system authority, while keeping repository/task evidence in the user/data layer, substantially reduced provider input and cost.
 
-The candidate is **not production-default yet**. A multi-task acceptance matrix first requires correctness and adversarial authority invariants to pass. The current blocker is source retrieval, not a candidate-only authority regression.
+That split is now how every production delegated Claude request is built:
+
+```text
+SYSTEM   stable AER constitutional core + delegated transport policy
+USER     RI2 / Context Economy evidence + user objective
+```
+
+The two layers are separate typed values, so retrieved repository text cannot be concatenated into system authority. Tools stay disabled, permission mode stays `plan`, provider-local settings/hooks/skills/memory/MCP are not inherited, and sessions are not persisted.
+
+It was promoted because the live acceptance matrix passed on correctness, adversarial authority defense and measurement validity — not because it is cheaper. Against the retired preset the production transport measures roughly 4.0k fewer main-loop input tokens and about 40% lower provider-reported cost per comparable call.
 
 ## Interactive CLI
 
@@ -185,14 +196,13 @@ $out = Join-Path $env:TEMP "aer-provider-acceptance.json"
     Tee-Object -FilePath $out
 ```
 
-The live matrix compares the current Claude preset with the AER-owned authority-split candidate on repository facts, architecture authority and an adversarial repository prompt-injection case. Economic improvement alone cannot promote the candidate.
+The live matrix compares the production AER authority-split transport with a retained non-production reproduction of the retired Claude preset, on repository facts, architecture authority and an adversarial repository prompt-injection case. Economic improvement alone cannot promote a transport.
 
 ## What is not claimed yet
 
 `everything` does **not** currently claim:
 
 - Provider Runtime Productization Gate completion;
-- production promotion of the Claude authority-split candidate;
 - universal exact semantic understanding for every programming language;
 - a strong sandbox for unrestricted provider-native agentic process execution;
 - that provider prompt-cache ratios are an engineering-quality score;

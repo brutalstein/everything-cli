@@ -107,7 +107,9 @@ Do not invent:
 - a quality percentage;
 - an aspirational cache-hit threshold.
 
-## 7. Target-Windows Claude baseline
+## 7. Target-Windows Claude baselines
+
+### 7.1 Pre-promotion baseline — vendor coding-agent preset
 
 The repeated delegated-Claude benchmark established a stable main-loop plateau around:
 
@@ -117,6 +119,30 @@ The repeated delegated-Claude benchmark established a stable main-loop plateau a
 - near-zero fresh input.
 
 The model-visible AER context was stable, so the remaining cache-write plateau needed attribution rather than blind ContextSizer changes.
+
+### 7.2 Production baseline — AER authority split
+
+Recorded after the authority split became the production delegated Claude transport, with the same canonical probe (`provider-context-economics-v1`, 3 runs, target Windows):
+
+| Dimension | Observed |
+| --- | --- |
+| exact main-loop input (median / min / max) | 7144 / 7144 / 7144 tokens |
+| exact-input spread | 0 tokens |
+| fresh input (median) | 2 tokens (2 bps) |
+| cache creation (median) | 4272 tokens (5979 bps) |
+| cache read (median) | 2870 tokens (4017 bps) |
+| first-call to steady-state cache-write delta | 0 tokens |
+| first-call to steady-state cache-read delta | 0 tokens |
+| output | 17 tokens, contract pass |
+| provider-reported cost | $0.029039 per call |
+| latency | 3149–3202 ms |
+| resolved models | `claude-haiku-4-5-20251001`, `claude-sonnet-5` (stable) |
+| model-visible context digest | `f410f393…` (stable across all runs) |
+| measurement validity | `valid: true` |
+
+Against §7.1 that is roughly a 4.0k-token reduction in exact main-loop input and roughly a 40% reduction in provider-reported cost per comparable call. Cache-read tokens also fell (4.2k → 2.87k) because the whole request is smaller; per §11 a lower absolute cache-read count is not a regression when more total input was removed than was lost from reads.
+
+The `modelUsage` breakdown shows the reduction lands where expected: the main-loop model (`claude-sonnet-5`) sees fresh input of 2 tokens with the AER authority prefix served from cache read, and the auxiliary `claude-haiku-4-5-20251001` record accounts for the remaining uncached input.
 
 ## 8. Controlled Claude cache-attribution lab
 
@@ -161,34 +187,22 @@ It is **not** by itself a production-promotion decision.
 
 `docs/47_PROVIDER_AUTHORITY_SPLIT_ACCEPTANCE.md` defines the correctness/safety matrix.
 
-In the latest target-Windows 6-task × 2-profile × 2-run matrix, the authority-split candidate showed a highly consistent input reduction:
+In the post-repair, post-promotion target-Windows 6-task × 2-profile × 2-run matrix (`claude-authority-split-acceptance-v3`), the production authority-split transport measured against the retained non-production `legacy-claude-preset` comparator:
 
-- paired main-input reduction per task: approximately 4.26–4.27k provider tokens;
-- median paired main-input reduction across tasks: approximately **4.27k**;
-- median paired provider-cost reduction: approximately **$0.0191 per call**;
-- latency: no reliable directional advantage in this small sample.
+- median paired main-input reduction across tasks: **4280 provider tokens**;
+- median paired provider-cost reduction: **$0.01775 per call**;
+- median paired cache-creation reduction: **2931 tokens**;
+- median paired cache-read change: **−1349 tokens** (production reads fewer because the whole request is smaller);
+- median paired latency reduction: **223 ms** (small sample; not a reliable directional claim);
+- total provider-reported cost across the matrix: legacy **$0.5776**, production **$0.3633**.
 
-Cache-read token count was lower for the candidate because the entire prompt was smaller. A lower absolute cache-read count is not a regression when more total input was removed than was lost from reads.
+`production_measurements_valid` was `true` for all six tasks. `legacy_measurements_valid` was `false`: on three tasks the vendor preset resolved `['claude-sonnet-5']` on one run and `['claude-haiku-4-5-20251001', 'claude-sonnet-5']` on the other, which fails the stable-resolved-model requirement of §5. That instability belongs to the retired comparator, not to the production transport, and it widens the uncertainty band on the paired economics above without affecting the acceptance decision.
 
-## 10. Why economics cannot yet promote the candidate
+## 10. Economics did not promote the candidate
 
-One acceptance task asked for the value assigned by `ArchitectureContextCapsule::compile`.
+The exact-definition retrieval defect that previously blocked this section is repaired: both profiles now answer `3` for the value assigned by `ArchitectureContextCapsule::compile`, and the defining span is present in the selected Context Pack.
 
-Repository truth is:
-
-```rust
-version: 3
-```
-
-but the selected Context Pack stopped before that assignment. Both the current preset and the authority-split candidate answered `1`.
-
-That failure demonstrates a source-retrieval/coverage defect shared by both profiles. It prevents the full acceptance matrix from becoming a clean production-promotion proof.
-
-Therefore:
-
-- the authority-split economic result remains valid evidence;
-- the candidate is not accused of a unique quality regression by that task;
-- production promotion remains blocked until exact-definition retrieval is repaired and the full matrix is rerun.
+Promotion was decided by the acceptance gate in `47_PROVIDER_AUTHORITY_SPLIT_ACCEPTANCE.md` — authority safety, adversarial defense, source-grounded correctness and measurement validity — not by the numbers in §7.2 and §9. Those numbers are recorded consequences of the promotion, not its justification.
 
 ## 11. Interpretation discipline
 
@@ -212,15 +226,14 @@ The system-level objective remains verified engineering outcome per unit cost.
 
 ## 12. Follow-on sequence
 
-1. repair exact-identifier defining-span retrieval in the existing RI2 + Context Economy path;
-2. add deterministic coverage/fail-closed regressions;
-3. rerun deterministic repository gates and canonical Windows verification;
-4. rerun the full live authority-split acceptance matrix;
-5. if quality/authority eligibility is clean, decide whether to promote the authority split;
-6. rerun `provider-context-economics-v1` against the promoted/candidate transport;
-7. only then calibrate ContextSizer/retrieval budgets from the new production baseline.
+Steps 1–6 are complete: exact-identifier defining-span retrieval was repaired with deterministic regressions, the repository gates and canonical Windows verification were rerun, the live acceptance matrix passed, the authority split was promoted to the production delegated Claude transport, and `provider-context-economics-v1` was rerun against it (§7.2).
 
-Do not tune the old ~7k cache-write plateau as if the provider request architecture were already settled.
+Remaining:
+
+1. calibrate ContextSizer/retrieval budgets from the §7.2 production baseline rather than from the retired §7.1 plateau;
+2. establish the strong sandbox boundary required by `45_PROVIDER_AUTH_CONTEXT_PERMISSION_AND_TOOL_RUNTIME.md` before any tool-capable delegated path is considered.
+
+Do not tune the old ~7k cache-write plateau as if it were current: it belongs to the retired vendor-preset transport.
 
 ## 13. Related documents
 

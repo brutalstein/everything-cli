@@ -331,12 +331,7 @@ pub(crate) fn provider_smoke(
     let provider = parse_provider(provider)?;
     ensure_provider_smoke_eligible(provider)?;
     let context = ModelContextEnvelope::compile(path, prompt)?;
-    let adapter = DelegatedCliProvider::new(
-        provider,
-        context.rendered.clone(),
-        context.digest.clone(),
-        model,
-    );
+    let adapter = DelegatedCliProvider::new(provider, context.delegated_context(), model);
 
     if !json {
         println!("everything provider smoke");
@@ -383,6 +378,14 @@ pub(crate) fn provider_smoke(
                 "model": trace.requested_model.as_deref(),
                 "requested_model": trace.requested_model.as_deref(),
                 "resolved_models": &trace.resolved_models,
+                "per_model_usage": trace.per_model_usage.iter().map(|record| serde_json::json!({
+                    "model": record.model,
+                    "input_tokens": record.input_tokens,
+                    "cache_creation_input_tokens": record.cache_creation_input_tokens,
+                    "cache_read_input_tokens": record.cache_read_input_tokens,
+                    "output_tokens": record.output_tokens,
+                    "cost_usd": record.cost_usd,
+                })).collect::<Vec<_>>(),
                 "provider_cost_usd": trace.provider_cost_usd.as_deref(),
                 "provider_request_id": trace.provider_request_id.as_deref(),
                 "model_context_digest": trace.architecture_context_digest,
@@ -422,6 +425,7 @@ pub(crate) fn provider_smoke(
                 "input": trace.input,
                 "output": trace.output,
                 "usage": {
+                    "scope": "provider-main-loop",
                     "fresh_input_tokens": trace.usage.input_tokens,
                     "cache_creation_input_tokens": trace.usage.cache_creation_input_tokens,
                     "cache_read_input_tokens": trace.usage.cache_read_input_tokens,
@@ -442,8 +446,19 @@ pub(crate) fn provider_smoke(
     if !trace.resolved_models.is_empty() {
         println!("  models     {}", trace.resolved_models.join(", "));
     }
+    for record in &trace.per_model_usage {
+        println!(
+            "  per-model  {} · in {} · cache-write {} · cache-read {} · out {} · cost {}",
+            record.model,
+            display_u64(record.input_tokens),
+            display_u64(record.cache_creation_input_tokens),
+            display_u64(record.cache_read_input_tokens),
+            display_u64(record.output_tokens),
+            record.cost_usd.as_deref().unwrap_or("unknown"),
+        );
+    }
     println!(
-        "  tokens     fresh {} · cache-write {} · cache-read {} · out {} · reasoning {}",
+        "  main-loop  fresh {} · cache-write {} · cache-read {} · out {} · reasoning {}",
         display_u64(trace.usage.input_tokens),
         display_u64(trace.usage.cache_creation_input_tokens),
         display_u64(trace.usage.cache_read_input_tokens),

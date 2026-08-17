@@ -9,6 +9,7 @@ use std::{
 use aer_context::{
     ContextEngine, ContextError, ContextPack, ContextPolicy, ContextRequest, estimate_tokens,
 };
+use aer_provider::delegated::DelegatedModelContext;
 use aer_repo::{IndexPolicy, RepoError, RepositoryIndex};
 use sha2::{Digest, Sha256};
 
@@ -209,6 +210,13 @@ pub struct ModelContextEnvelope {
     pub task_context: ContextPack,
     pub dynamic_context_budget: u32,
     pub estimated_tokens: u32,
+    /// Rendered task evidence only. This is untrusted repository/task material
+    /// and never belongs in a provider's system-authority layer.
+    pub task_evidence: String,
+    /// Concatenation of the constitutional core and the task evidence. It exists
+    /// to define one semantic identity (`digest`) over everything AER selected;
+    /// transports must use [`Self::delegated_context`] rather than sending this
+    /// as a single undifferentiated blob.
     pub rendered: String,
 }
 
@@ -266,21 +274,22 @@ impl ModelContextEnvelope {
         let task_context = engine.compile(&root, &index, &request)?;
         engine.verify_fidelity(&root, &index, &task_context)?;
 
-        let mut rendered = architecture.rendered.clone();
+        let mut task_evidence = String::new();
         use fmt::Write as _;
         writeln!(
-            rendered,
+            task_evidence,
             "# Task-specific Context Economy pack\npolicy: {}\n",
             task_context.policy_version,
         )
         .expect("writing to String cannot fail");
         for item in &task_context.items {
-            rendered.push_str(&item.rendered_text);
+            task_evidence.push_str(&item.rendered_text);
             if !item.rendered_text.ends_with('\n') {
-                rendered.push('\n');
+                task_evidence.push('\n');
             }
-            rendered.push('\n');
+            task_evidence.push('\n');
         }
+        let rendered = format!("{}{task_evidence}", architecture.rendered);
         let estimated_tokens = estimate_tokens(&rendered);
         if estimated_tokens > MAX_AER_CONTEXT_ESTIMATED_TOKENS {
             return Err(ArchitectureContextError::ModelContextBudgetExceeded {
@@ -298,8 +307,24 @@ impl ModelContextEnvelope {
             task_context,
             dynamic_context_budget,
             estimated_tokens,
+            task_evidence,
             rendered,
         })
+    }
+
+    /// Splits the compiled envelope along the provider authority boundary.
+    ///
+    /// Only the constitutional core reaches the provider's system layer. The
+    /// Context Economy pack stays untrusted data, and audit identities
+    /// (`repo_snapshot`, `pack_id`, source hashes) stay out of provider-visible
+    /// bytes entirely — they remain on this envelope for the receipt.
+    #[must_use]
+    pub fn delegated_context(&self) -> DelegatedModelContext {
+        DelegatedModelContext::new(
+            &self.architecture.rendered,
+            &self.task_evidence,
+            self.digest.clone(),
+        )
     }
 }
 
@@ -692,6 +717,31 @@ mod tests {
         );
         assert_eq!(first.rendered, second.rendered);
         assert_eq!(first.digest, second.digest);
+        // The provider-visible split is what actually ships, so cache stability
+        // has to hold layer by layer, not only on the combined rendering.
+        assert_eq!(
+            first.delegated_context().authority(),
+            second.delegated_context().authority()
+        );
+        assert_eq!(
+            first.delegated_context().evidence(),
+            second.delegated_context().evidence()
+        );
+        // Authority is AER-owned policy only; selected repository evidence is
+        // data and must not appear there.
+        assert!(
+            first
+                .delegated_context()
+                .authority()
+                .starts_with("# everything/AER constitutional core")
+        );
+        assert!(
+            !first
+                .delegated_context()
+                .authority()
+                .contains("src/auth.rs")
+        );
+        assert!(first.delegated_context().evidence().contains("src/auth.rs"));
 
         fs::write(
             root.join("src/auth.rs"),
@@ -701,6 +751,15 @@ mod tests {
         let selected_change =
             ModelContextEnvelope::compile(&root, objective).expect("selected source envelope");
         assert_ne!(second.digest, selected_change.digest);
+        assert_ne!(
+            second.delegated_context().evidence(),
+            selected_change.delegated_context().evidence()
+        );
+        assert_eq!(
+            second.delegated_context().authority(),
+            selected_change.delegated_context().authority(),
+            "a task-evidence change must not perturb the cache-stable authority prefix"
+        );
         fs::remove_dir_all(root).expect("cleanup");
     }
 
@@ -799,6 +858,17 @@ mod tests {
         );
         assert!(envelope.task_context.total_token_cost() <= envelope.dynamic_context_budget);
         assert!(envelope.estimated_tokens <= MAX_AER_CONTEXT_ESTIMATED_TOKENS);
+
+        // The required exact definition must survive the authority split, and it
+        // must land in the untrusted data layer rather than in system authority.
+        let delegated = envelope.delegated_context();
+        assert!(delegated.evidence().contains("Self { version: 3 }"));
+        assert!(!delegated.authority().contains("Self { version: 3 }"));
+        assert!(
+            delegated
+                .user_layer("what version?")
+                .contains("Self { version: 3 }")
+        );
         fs::remove_dir_all(root).expect("cleanup");
     }
 }
