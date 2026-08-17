@@ -176,6 +176,9 @@ struct Report {
 impl Report {
     fn from_samples(scenario: Scenario, samples: Vec<Sample>) -> Self {
         let contract_stable = samples.iter().all(|sample| sample.contract_pass);
+        let models_complete = samples
+            .iter()
+            .all(|sample| !sample.models.is_empty() && sample.pipeline().exact_input().is_some());
         let models_stable = samples.len() >= 2
             && samples
                 .windows(2)
@@ -183,18 +186,28 @@ impl Report {
         let exact_inputs = collect_complete(&samples, |sample| sample.main.exact_input());
         let input_median = exact_inputs.as_deref().and_then(median);
         let steady = samples.get(1..).unwrap_or(&[]);
-        let valid = contract_stable && models_stable && exact_inputs.is_some();
+        let steady_main_fresh = median_complete(steady, |sample| sample.main.fresh);
+        let steady_main_write = median_complete(steady, |sample| sample.main.write);
+        let steady_main_read = median_complete(steady, |sample| sample.main.read);
+        let steady_pipeline_fresh = median_complete(steady, |sample| sample.pipeline().fresh);
+        let steady_pipeline_write = median_complete(steady, |sample| sample.pipeline().write);
+        let steady_pipeline_read = median_complete(steady, |sample| sample.pipeline().read);
+        let valid = contract_stable
+            && models_complete
+            && models_stable
+            && exact_inputs.is_some()
+            && samples.len() >= 2;
         Self {
             scenario,
             samples,
             valid,
             input_median,
-            steady_main_fresh: median_complete(steady, |sample| sample.main.fresh),
-            steady_main_write: median_complete(steady, |sample| sample.main.write),
-            steady_main_read: median_complete(steady, |sample| sample.main.read),
-            steady_pipeline_fresh: median_complete(steady, |sample| sample.pipeline().fresh),
-            steady_pipeline_write: median_complete(steady, |sample| sample.pipeline().write),
-            steady_pipeline_read: median_complete(steady, |sample| sample.pipeline().read),
+            steady_main_fresh,
+            steady_main_write,
+            steady_main_read,
+            steady_pipeline_fresh,
+            steady_pipeline_write,
+            steady_pipeline_read,
         }
     }
 
@@ -545,7 +558,10 @@ fn decimal(value: Option<&Value>) -> Option<String> {
     }
 }
 
-fn collect_complete<T>(values: &[T], projection: impl FnMut(&T) -> Option<u64>) -> Option<Vec<u64>> {
+fn collect_complete<T>(
+    values: &[T],
+    projection: impl FnMut(&T) -> Option<u64>,
+) -> Option<Vec<u64>> {
     values.iter().map(projection).collect()
 }
 
@@ -598,7 +614,10 @@ impl TempRoot {
             .duration_since(UNIX_EPOCH)
             .map_err(|_| LabError::Clock)?
             .as_nanos();
-        let path = env::temp_dir().join(format!("everything-cache-lab-{}-{nonce}", std::process::id()));
+        let path = env::temp_dir().join(format!(
+            "everything-cache-lab-{}-{nonce}",
+            std::process::id()
+        ));
         fs::create_dir_all(&path)?;
         Ok(Self { path })
     }
@@ -714,9 +733,25 @@ fn join_capture(
 
 fn inherit_environment(command: &mut Command) {
     for key in [
-        "PATH", "PATHEXT", "HOME", "USERPROFILE", "SYSTEMROOT", "COMSPEC", "APPDATA",
-        "LOCALAPPDATA", "TEMP", "TMP", "SHELL", "XDG_CONFIG_HOME", "XDG_DATA_HOME",
-        "CLAUDE_CONFIG_DIR", "CLAUDE_CODE_GIT_BASH_PATH", "LANG", "LC_ALL", "TERM", "NO_COLOR",
+        "PATH",
+        "PATHEXT",
+        "HOME",
+        "USERPROFILE",
+        "SYSTEMROOT",
+        "COMSPEC",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "TEMP",
+        "TMP",
+        "SHELL",
+        "XDG_CONFIG_HOME",
+        "XDG_DATA_HOME",
+        "CLAUDE_CONFIG_DIR",
+        "CLAUDE_CODE_GIT_BASH_PATH",
+        "LANG",
+        "LC_ALL",
+        "TERM",
+        "NO_COLOR",
     ] {
         if let Some(value) = env::var_os(key) {
             command.env(key, value);
@@ -748,10 +783,20 @@ fn windows_suffixes(name: &str) -> Vec<String> {
     }
     let mut values = vec![String::new()];
     let pathext = env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_owned());
-    for suffix in pathext.split(';').filter(|suffix| !suffix.trim().is_empty()) {
+    for suffix in pathext
+        .split(';')
+        .filter(|suffix| !suffix.trim().is_empty())
+    {
         let suffix = suffix.trim();
-        let suffix = if suffix.starts_with('.') { suffix.to_owned() } else { format!(".{suffix}") };
-        if !values.iter().any(|value| value.eq_ignore_ascii_case(&suffix)) {
+        let suffix = if suffix.starts_with('.') {
+            suffix.to_owned()
+        } else {
+            format!(".{suffix}")
+        };
+        if !values
+            .iter()
+            .any(|value| value.eq_ignore_ascii_case(&suffix))
+        {
             values.push(suffix);
         }
     }
@@ -767,14 +812,26 @@ fn version(executable: &Path) -> Result<String, LabError> {
 }
 
 fn preview(value: &str) -> String {
-    value.lines().take(12).collect::<Vec<_>>().join(" | ").chars().take(1200).collect()
+    value
+        .lines()
+        .take(12)
+        .collect::<Vec<_>>()
+        .join(" | ")
+        .chars()
+        .take(1200)
+        .collect()
 }
 
 #[derive(Debug)]
 enum LabError {
     Executable(String),
     Version(Option<i32>),
-    Provider { scenario: &'static str, run: u8, code: Option<i32>, detail: String },
+    Provider {
+        scenario: &'static str,
+        run: u8,
+        code: Option<i32>,
+        detail: String,
+    },
     Truncated(&'static str, u8),
     TimedOut,
     MissingPipe(&'static str),
@@ -789,9 +846,23 @@ impl fmt::Display for LabError {
         match self {
             Self::Executable(name) => write!(formatter, "{name} executable not found on PATH"),
             Self::Version(code) => write!(formatter, "claude --version failed with {code:?}"),
-            Self::Provider { scenario, run, code, detail } => write!(formatter, "Claude failed in {scenario} run {run} with {code:?}: {detail}"),
-            Self::Truncated(scenario, run) => write!(formatter, "Claude output truncated in {scenario} run {run}"),
-            Self::TimedOut => write!(formatter, "Claude call timed out after {} seconds", TIMEOUT.as_secs()),
+            Self::Provider {
+                scenario,
+                run,
+                code,
+                detail,
+            } => write!(
+                formatter,
+                "Claude failed in {scenario} run {run} with {code:?}: {detail}"
+            ),
+            Self::Truncated(scenario, run) => {
+                write!(formatter, "Claude output truncated in {scenario} run {run}")
+            }
+            Self::TimedOut => write!(
+                formatter,
+                "Claude call timed out after {} seconds",
+                TIMEOUT.as_secs()
+            ),
             Self::MissingPipe(pipe) => write!(formatter, "missing child {pipe} pipe"),
             Self::Worker(worker) => write!(formatter, "{worker} worker panicked"),
             Self::Schema(message) => formatter.write_str(message),
