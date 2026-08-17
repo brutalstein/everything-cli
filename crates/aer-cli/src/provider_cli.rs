@@ -13,6 +13,8 @@ use aer_provider::{
 };
 use clap::{Parser, Subcommand};
 
+const GEMINI_DELEGATED_ISOLATION_BLOCK: &str = "current Gemini CLI delegated OAuth keeps authentication and user behavior/configuration under the same user state; its home .gemini/.env fallback can still inject process configuration even with --ignore-env. AER will not copy OAuth credentials or claim isolation it cannot enforce";
+
 #[derive(Parser, Debug)]
 #[command(name = "everything")]
 struct ProviderSurface {
@@ -127,6 +129,26 @@ fn contains_provider_command(args: &[OsString]) -> bool {
     false
 }
 
+fn provider_smoke_block_reason(provider: DelegatedProviderKind) -> Option<&'static str> {
+    match provider {
+        DelegatedProviderKind::Gemini => Some(GEMINI_DELEGATED_ISOLATION_BLOCK),
+        DelegatedProviderKind::Codex | DelegatedProviderKind::Claude => None,
+    }
+}
+
+fn ensure_provider_smoke_eligible(provider: DelegatedProviderKind) -> Result<(), io::Error> {
+    if let Some(reason) = provider_smoke_block_reason(provider) {
+        return Err(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            format!(
+                "{} delegated smoke is blocked fail-closed: {reason}",
+                provider.display_name()
+            ),
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) fn print_providers(path: &Path, json: bool) -> Result<(), Box<dyn Error>> {
     let statuses = DelegatedProviderKind::ALL
         .into_iter()
@@ -146,6 +168,8 @@ pub(crate) fn print_providers(path: &Path, json: bool) -> Result<(), Box<dyn Err
                         "authentication": status.authentication.as_str(),
                         "authentication_method": status.authentication_method,
                         "account_plan": status.account_plan,
+                        "smoke_eligible": provider_smoke_block_reason(status.provider).is_none(),
+                        "smoke_block_reason": provider_smoke_block_reason(status.provider),
                         "detail": status.detail,
                     }))
                     .collect::<Vec<_>>()
@@ -169,6 +193,9 @@ pub(crate) fn print_providers(path: &Path, json: bool) -> Result<(), Box<dyn Err
         );
         if status.installed && !status.detail.trim().is_empty() {
             println!("           {}", status.detail);
+        }
+        if let Some(reason) = provider_smoke_block_reason(status.provider) {
+            println!("           smoke blocked · {reason}");
         }
     }
     println!("\nconnect  everything provider login <codex|claude|gemini>");
@@ -194,6 +221,8 @@ pub(crate) fn provider_status(
                 "authentication": status.authentication.as_str(),
                 "authentication_method": status.authentication_method,
                 "account_plan": status.account_plan,
+                "smoke_eligible": provider_smoke_block_reason(status.provider).is_none(),
+                "smoke_block_reason": provider_smoke_block_reason(status.provider),
                 "detail": status.detail,
             }))?
         );
@@ -210,6 +239,9 @@ pub(crate) fn provider_status(
         }
         if let Some(plan) = status.account_plan {
             println!("plan       {plan}");
+        }
+        if let Some(reason) = provider_smoke_block_reason(status.provider) {
+            println!("smoke      blocked · {reason}");
         }
         println!("detail     {}", status.detail);
     }
@@ -240,16 +272,14 @@ pub(crate) fn provider_login(
             println!("Opening the official Claude Code browser authentication flow…");
         }
         DelegatedProviderKind::Gemini => println!(
-            "Opening Gemini CLI authentication. Choose ‘Sign in with Google’, finish the browser flow, then exit Gemini with /quit."
+            "Opening Gemini CLI authentication. Authentication remains vendor-owned; AER delegated smoke stays blocked until behavior state can be isolated without copying credentials."
         ),
     }
     DelegatedCliProvider::login(provider, path, flow)?;
     let status = DelegatedCliProvider::status(provider, path);
     println!("auth       {}", status.authentication.as_str());
-    if matches!(provider, DelegatedProviderKind::Gemini) {
-        println!(
-            "verify     run `everything provider smoke gemini --prompt \"Reply with AER-OK\"`"
-        );
+    if let Some(reason) = provider_smoke_block_reason(provider) {
+        println!("smoke      blocked · {reason}");
     }
     Ok(())
 }
@@ -280,6 +310,7 @@ pub(crate) fn provider_smoke(
         .into());
     }
     let provider = parse_provider(provider)?;
+    ensure_provider_smoke_eligible(provider)?;
     let context = ModelContextEnvelope::compile(path, prompt)?;
     let adapter = DelegatedCliProvider::new(
         provider,
@@ -433,7 +464,11 @@ fn display_u64(value: Option<u64>) -> String {
 mod tests {
     use std::ffi::OsString;
 
-    use super::contains_provider_command;
+    use aer_provider::delegated::DelegatedProviderKind;
+
+    use super::{
+        contains_provider_command, ensure_provider_smoke_eligible, provider_smoke_block_reason,
+    };
 
     #[test]
     fn provider_surface_is_lazy_for_ordinary_commands() {
@@ -459,5 +494,16 @@ mod tests {
             OsString::from("status"),
             OsString::from("codex"),
         ]));
+    }
+
+    #[test]
+    fn delegated_smoke_eligibility_is_fail_closed_per_provider() {
+        assert!(ensure_provider_smoke_eligible(DelegatedProviderKind::Codex).is_ok());
+        assert!(ensure_provider_smoke_eligible(DelegatedProviderKind::Claude).is_ok());
+        let error = ensure_provider_smoke_eligible(DelegatedProviderKind::Gemini)
+            .expect_err("Gemini delegated smoke must stay blocked");
+        assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+        assert!(error.to_string().contains("blocked fail-closed"));
+        assert!(provider_smoke_block_reason(DelegatedProviderKind::Gemini).is_some());
     }
 }
