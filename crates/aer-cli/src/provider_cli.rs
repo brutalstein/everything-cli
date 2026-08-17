@@ -301,7 +301,10 @@ pub(crate) fn provider_smoke(
             context.estimated_tokens,
             context.task_context.items.len()
         );
-        println!("  sources    {}", context.architecture.source_paths().join(", "));
+        println!(
+            "  sources    {}",
+            context.architecture.source_paths().join(", ")
+        );
         if !context.task_context.items.is_empty() {
             println!(
                 "  retrieved  {}",
@@ -390,7 +393,10 @@ pub(crate) fn provider_smoke(
             .map_or_else(|| "unknown".to_owned(), |value| value.to_string())
     );
     println!("  events     {}", trace.raw_event_count);
-    println!("  context    {}", short_id(&trace.architecture_context_digest));
+    println!(
+        "  context    {}",
+        short_id(&trace.architecture_context_digest)
+    );
     Ok(())
 }
 
