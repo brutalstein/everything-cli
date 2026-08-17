@@ -143,6 +143,11 @@ pub struct ModelIoTrace {
     pub provider: String,
     pub transport: String,
     pub requested_model: Option<String>,
+    /// Exact provider-reported model identities. Multiple entries are retained
+    /// because delegated runtimes can legitimately use more than one model.
+    pub resolved_models: Vec<String>,
+    pub provider_cost_usd: Option<String>,
+    pub provider_request_id: Option<String>,
     pub architecture_context_digest: String,
     pub input: String,
     pub output: String,
@@ -365,6 +370,9 @@ impl DelegatedCliProvider {
             provider: self.kind.id().to_owned(),
             transport: self.kind.transport().to_owned(),
             requested_model: self.model.clone(),
+            resolved_models: parsed.resolved_models,
+            provider_cost_usd: parsed.provider_cost_usd,
+            provider_request_id: parsed.provider_request_id,
             architecture_context_digest: self.architecture_context_digest.clone(),
             input: input.to_owned(),
             output: parsed.output,
@@ -425,6 +433,7 @@ impl DelegatedCliProvider {
                     OsString::from(""),
                     OsString::from("--disable-slash-commands"),
                     OsString::from("--no-session-persistence"),
+                    OsString::from("--exclude-dynamic-system-prompt-sections"),
                 ];
                 if let Some(model) = &self.model {
                     args.push(OsString::from("--model"));
@@ -475,11 +484,17 @@ impl ProviderAdapter for DelegatedCliProvider {
     ) -> Result<ProviderResponse, ProviderError> {
         let input = format!("{}\n\n{}", request.instructions, request.input);
         let trace = self.smoke(&input, cancellation)?;
+        let model = if trace.resolved_models.len() == 1 {
+            trace.resolved_models[0].clone()
+        } else {
+            trace
+                .requested_model
+                .clone()
+                .unwrap_or_else(|| "provider-default".to_owned())
+        };
         Ok(ProviderResponse {
             provider_id: trace.provider,
-            model: trace
-                .requested_model
-                .unwrap_or_else(|| "provider-default".to_owned()),
+            model,
             output_text: trace.output,
             usage: trace.usage,
         })
@@ -582,6 +597,9 @@ fn claude_auth_status(
 struct ParsedOutput {
     output: String,
     usage: ProviderUsage,
+    resolved_models: Vec<String>,
+    provider_cost_usd: Option<String>,
+    provider_request_id: Option<String>,
     raw_event_count: usize,
 }
 
@@ -591,8 +609,8 @@ fn parse_provider_output(
 ) -> Result<ParsedOutput, ProviderError> {
     match kind {
         DelegatedProviderKind::Codex => parse_codex_jsonl(stdout),
-        DelegatedProviderKind::Claude => parse_single_json(stdout, "result"),
-        DelegatedProviderKind::Gemini => parse_single_json(stdout, "response"),
+        DelegatedProviderKind::Claude => parse_claude_json(stdout),
+        DelegatedProviderKind::Gemini => parse_gemini_json(stdout),
     }
 }
 
@@ -600,6 +618,7 @@ fn parse_codex_jsonl(stdout: &[u8]) -> Result<ParsedOutput, ProviderError> {
     let text = String::from_utf8_lossy(stdout);
     let mut output = None;
     let mut usage = ProviderUsage::default();
+    let mut provider_request_id = None;
     let mut events = 0_usize;
     for line in text.lines().filter(|line| !line.trim().is_empty()) {
         let value: Value = serde_json::from_str(line).map_err(|error| {
@@ -609,15 +628,26 @@ fn parse_codex_jsonl(stdout: &[u8]) -> Result<ParsedOutput, ProviderError> {
             )
         })?;
         events = events.saturating_add(1);
-        if value.get("type").and_then(Value::as_str) == Some("item.completed") {
-            let item = value.get("item").unwrap_or(&Value::Null);
-            if item.get("type").and_then(Value::as_str) == Some("agent_message")
-                && let Some(text) = item.get("text").and_then(Value::as_str)
-            {
-                output = Some(text.to_owned());
+        match value.get("type").and_then(Value::as_str) {
+            Some("thread.started") => {
+                provider_request_id = value
+                    .get("thread_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned);
             }
+            Some("item.completed") => {
+                let item = value.get("item").unwrap_or(&Value::Null);
+                if item.get("type").and_then(Value::as_str) == Some("agent_message")
+                    && let Some(text) = item.get("text").and_then(Value::as_str)
+                {
+                    output = Some(text.to_owned());
+                }
+            }
+            Some("turn.completed") => {
+                usage = parse_codex_usage(value.get("usage"))?;
+            }
+            _ => {}
         }
-        merge_usage(&mut usage, &value);
     }
     Ok(ParsedOutput {
         output: output.ok_or_else(|| {
@@ -627,75 +657,203 @@ fn parse_codex_jsonl(stdout: &[u8]) -> Result<ParsedOutput, ProviderError> {
             )
         })?,
         usage,
+        resolved_models: Vec::new(),
+        provider_cost_usd: None,
+        provider_request_id,
         raw_event_count: events,
     })
 }
 
-fn parse_single_json(stdout: &[u8], output_key: &str) -> Result<ParsedOutput, ProviderError> {
+fn parse_codex_usage(value: Option<&Value>) -> Result<ProviderUsage, ProviderError> {
+    let Some(usage) = value.and_then(Value::as_object) else {
+        return Ok(ProviderUsage::default());
+    };
+    let total_input = usage.get("input_tokens").and_then(Value::as_u64);
+    let cache_read = usage.get("cached_input_tokens").and_then(Value::as_u64);
+    let cache_creation = usage
+        .get("cache_write_input_tokens")
+        .and_then(Value::as_u64);
+    let fresh_input = match (total_input, cache_read, cache_creation) {
+        (Some(total), Some(read), Some(created)) => {
+            let cached = read.checked_add(created).ok_or_else(|| {
+                schema_violation("Codex cache token counters overflowed u64")
+            })?;
+            Some(total.checked_sub(cached).ok_or_else(|| {
+                schema_violation("Codex cache token counters exceed total input_tokens")
+            })?)
+        }
+        _ => None,
+    };
+    Ok(ProviderUsage {
+        input_tokens: fresh_input,
+        cache_creation_input_tokens: cache_creation,
+        cache_read_input_tokens: cache_read,
+        output_tokens: usage.get("output_tokens").and_then(Value::as_u64),
+        reasoning_output_tokens: usage
+            .get("reasoning_output_tokens")
+            .and_then(Value::as_u64),
+    })
+}
+
+fn parse_claude_json(stdout: &[u8]) -> Result<ParsedOutput, ProviderError> {
     let value: Value = serde_json::from_slice(stdout).map_err(|error| {
-        ProviderError::new(
-            ProviderFailureClass::SchemaViolation,
-            format!("provider emitted invalid JSON: {error}"),
-        )
+        schema_violation(format!("Claude emitted invalid JSON: {error}"))
     })?;
-    let output = value
-        .get(output_key)
-        .and_then(Value::as_str)
-        .ok_or_else(|| {
-            ProviderError::new(
-                ProviderFailureClass::SchemaViolation,
-                format!("provider JSON is missing string field `{output_key}`"),
-            )
-        })?
-        .to_owned();
-    let mut usage = ProviderUsage::default();
-    merge_usage(&mut usage, &value);
+    let output = required_string(&value, "result", "Claude")?;
+    let usage = value.get("usage").and_then(Value::as_object);
+    let usage = ProviderUsage {
+        input_tokens: usage.and_then(|usage| usage.get("input_tokens")).and_then(Value::as_u64),
+        cache_creation_input_tokens: usage
+            .and_then(|usage| usage.get("cache_creation_input_tokens"))
+            .and_then(Value::as_u64),
+        cache_read_input_tokens: usage
+            .and_then(|usage| usage.get("cache_read_input_tokens"))
+            .and_then(Value::as_u64),
+        output_tokens: usage
+            .and_then(|usage| usage.get("output_tokens"))
+            .and_then(Value::as_u64),
+        reasoning_output_tokens: usage
+            .and_then(|usage| usage.get("output_tokens_details"))
+            .and_then(Value::as_object)
+            .and_then(|details| details.get("thinking_tokens"))
+            .and_then(Value::as_u64),
+    };
+    let mut resolved_models = value
+        .get("modelUsage")
+        .and_then(Value::as_object)
+        .map(|models| models.keys().cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    resolved_models.sort();
+    resolved_models.dedup();
     Ok(ParsedOutput {
         output,
         usage,
+        resolved_models,
+        provider_cost_usd: json_decimal_string(value.get("total_cost_usd")),
+        provider_request_id: value
+            .get("session_id")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
         raw_event_count: 1,
     })
 }
 
-fn merge_usage(usage: &mut ProviderUsage, value: &Value) {
-    if usage.input_tokens.is_none() {
-        usage.input_tokens = find_u64(
-            value,
-            &[
-                "input_tokens",
-                "inputTokens",
-                "prompt_tokens",
-                "promptTokens",
-                "prompt",
-            ],
-        );
+fn parse_gemini_json(stdout: &[u8]) -> Result<ParsedOutput, ProviderError> {
+    let value: Value = serde_json::from_slice(stdout).map_err(|error| {
+        schema_violation(format!("Gemini emitted invalid JSON: {error}"))
+    })?;
+    let output = required_string(&value, "response", "Gemini")?;
+    let Some(models) = value
+        .get("stats")
+        .and_then(Value::as_object)
+        .and_then(|stats| stats.get("models"))
+        .and_then(Value::as_object)
+    else {
+        return Ok(ParsedOutput {
+            output,
+            usage: ProviderUsage::default(),
+            resolved_models: Vec::new(),
+            provider_cost_usd: None,
+            provider_request_id: None,
+            raw_event_count: 1,
+        });
+    };
+
+    let mut resolved_models = models.keys().cloned().collect::<Vec<_>>();
+    resolved_models.sort();
+    resolved_models.dedup();
+    let mut fresh_input = Some(0_u64);
+    let mut cache_read = Some(0_u64);
+    let mut output_tokens = Some(0_u64);
+    let mut reasoning_tokens = Some(0_u64);
+    for model in models.values() {
+        let tokens = model.get("tokens").and_then(Value::as_object);
+        let prompt = tokens
+            .and_then(|tokens| tokens.get("prompt"))
+            .and_then(Value::as_u64);
+        let cached = tokens
+            .and_then(|tokens| tokens.get("cached"))
+            .and_then(Value::as_u64);
+        let candidates = tokens
+            .and_then(|tokens| tokens.get("candidates"))
+            .and_then(Value::as_u64);
+        let thoughts = tokens
+            .and_then(|tokens| tokens.get("thoughts"))
+            .and_then(Value::as_u64);
+        fresh_input = checked_optional_add(
+            fresh_input,
+            match (prompt, cached) {
+                (Some(prompt), Some(cached)) => Some(prompt.checked_sub(cached).ok_or_else(|| {
+                    schema_violation("Gemini cached tokens exceed prompt tokens")
+                })?),
+                _ => None,
+            },
+            "Gemini fresh input token counters overflowed u64",
+        )?;
+        cache_read = checked_optional_add(
+            cache_read,
+            cached,
+            "Gemini cache-read token counters overflowed u64",
+        )?;
+        output_tokens = checked_optional_add(
+            output_tokens,
+            candidates,
+            "Gemini candidate token counters overflowed u64",
+        )?;
+        reasoning_tokens = checked_optional_add(
+            reasoning_tokens,
+            thoughts,
+            "Gemini thought token counters overflowed u64",
+        )?;
     }
-    if usage.output_tokens.is_none() {
-        usage.output_tokens = find_u64(
-            value,
-            &[
-                "output_tokens",
-                "outputTokens",
-                "completion_tokens",
-                "completionTokens",
-            ],
-        );
+    Ok(ParsedOutput {
+        output,
+        usage: ProviderUsage {
+            input_tokens: fresh_input,
+            cache_creation_input_tokens: None,
+            cache_read_input_tokens: cache_read,
+            output_tokens,
+            reasoning_output_tokens: reasoning_tokens,
+        },
+        resolved_models,
+        provider_cost_usd: None,
+        provider_request_id: None,
+        raw_event_count: 1,
+    })
+}
+
+fn required_string(value: &Value, key: &str, provider: &str) -> Result<String, ProviderError> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .map(str::to_owned)
+        .ok_or_else(|| schema_violation(format!("{provider} JSON is missing string field `{key}`")))
+}
+
+fn checked_optional_add(
+    total: Option<u64>,
+    next: Option<u64>,
+    message: &'static str,
+) -> Result<Option<u64>, ProviderError> {
+    match (total, next) {
+        (Some(total), Some(next)) => total
+            .checked_add(next)
+            .map(Some)
+            .ok_or_else(|| schema_violation(message)),
+        _ => Ok(None),
     }
 }
 
-fn find_u64(value: &Value, keys: &[&str]) -> Option<u64> {
+fn json_decimal_string(value: Option<&Value>) -> Option<String> {
     match value {
-        Value::Object(map) => {
-            for key in keys {
-                if let Some(found) = map.get(*key).and_then(Value::as_u64) {
-                    return Some(found);
-                }
-            }
-            map.values().find_map(|child| find_u64(child, keys))
-        }
-        Value::Array(values) => values.iter().find_map(|child| find_u64(child, keys)),
+        Some(Value::Number(number)) => Some(number.to_string()),
+        Some(Value::String(value)) if !value.trim().is_empty() => Some(value.trim().to_owned()),
         _ => None,
     }
+}
+
+fn schema_violation(message: impl Into<String>) -> ProviderError {
+    ProviderError::new(ProviderFailureClass::SchemaViolation, message)
 }
 
 fn classify_failed_process(
@@ -823,9 +981,7 @@ fn run_bounded(
             Stdio::null()
         });
     inherit_safe_provider_environment(&mut command);
-    if executable.eq_ignore_ascii_case(DelegatedProviderKind::Claude.executable()) {
-        command.env("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "1");
-    }
+    apply_provider_environment(&mut command, executable);
 
     let mut child = command
         .spawn()
@@ -1013,6 +1169,13 @@ fn inherit_safe_provider_environment(command: &mut Command) {
     }
 }
 
+fn apply_provider_environment(command: &mut Command, executable: &str) {
+    if executable.eq_ignore_ascii_case(DelegatedProviderKind::Claude.executable()) {
+        command.env("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "1");
+        command.env("CLAUDE_CODE_DISABLE_CLAUDE_MDS", "1");
+    }
+}
+
 #[derive(Debug)]
 pub enum DelegatedProviderError {
     UnknownProvider(String),
@@ -1099,13 +1262,13 @@ impl Error for DelegatedProviderError {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use std::{path::Path, process::Command};
 
     use serde_json::json;
 
     use super::{
         AuthenticationState, DelegatedCliProvider, DelegatedProviderKind, EMPTY_MCP_CONFIG,
-        parse_codex_jsonl, parse_single_json,
+        apply_provider_environment, parse_claude_json, parse_codex_jsonl, parse_gemini_json,
     };
 
     #[test]
@@ -1132,17 +1295,97 @@ mod tests {
     }
 
     #[test]
-    fn codex_jsonl_parser_extracts_final_message_and_usage() {
+    fn codex_jsonl_parser_uses_only_turn_completed_usage() {
         let raw = concat!(
-            "{\"type\":\"thread.started\",\"thread_id\":\"t\"}\n",
-            "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"hello\"}}\n",
-            "{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":12,\"output_tokens\":3}}\n"
+            "{\"type\":\"thread.started\",\"thread_id\":\"thread-123\",\"noise\":{\"input_tokens\":99999}}\n",
+            "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"hello\",\"output_tokens\":88888}}\n",
+            "{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":20,\"cached_input_tokens\":5,\"cache_write_input_tokens\":3,\"output_tokens\":4,\"reasoning_output_tokens\":2}}\n"
         );
         let parsed = parse_codex_jsonl(raw.as_bytes()).expect("parse codex");
         assert_eq!(parsed.output, "hello");
         assert_eq!(parsed.usage.input_tokens, Some(12));
-        assert_eq!(parsed.usage.output_tokens, Some(3));
+        assert_eq!(parsed.usage.cache_read_input_tokens, Some(5));
+        assert_eq!(parsed.usage.cache_creation_input_tokens, Some(3));
+        assert_eq!(parsed.usage.output_tokens, Some(4));
+        assert_eq!(parsed.usage.reasoning_output_tokens, Some(2));
+        assert_eq!(parsed.provider_request_id.as_deref(), Some("thread-123"));
         assert_eq!(parsed.raw_event_count, 3);
+    }
+
+    #[test]
+    fn codex_legacy_total_is_not_mislabeled_as_fresh_input() {
+        let raw = concat!(
+            "{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"hello\"}}\n",
+            "{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":12,\"output_tokens\":3}}\n"
+        );
+        let parsed = parse_codex_jsonl(raw.as_bytes()).expect("parse codex");
+        assert_eq!(parsed.usage.input_tokens, None);
+        assert_eq!(parsed.usage.cache_read_input_tokens, None);
+        assert_eq!(parsed.usage.output_tokens, Some(3));
+    }
+
+    #[test]
+    fn claude_parser_preserves_cache_model_cost_and_request_identity() {
+        let claude = serde_json::to_vec(&json!({
+            "result": "claude answer",
+            "session_id": "session-abc",
+            "total_cost_usd": 0.01234,
+            "modelUsage": {
+                "claude-opus-4-1": {"inputTokens": 1},
+                "claude-sonnet-4-5": {"inputTokens": 2}
+            },
+            "usage": {
+                "input_tokens": 21,
+                "cache_creation_input_tokens": 100,
+                "cache_read_input_tokens": 200,
+                "output_tokens": 55,
+                "output_tokens_details": {"thinking_tokens": 13}
+            },
+            "noise": {"output_tokens": 99999}
+        }))
+        .expect("claude json");
+        let parsed = parse_claude_json(&claude).expect("claude parse");
+        assert_eq!(parsed.output, "claude answer");
+        assert_eq!(parsed.usage.input_tokens, Some(21));
+        assert_eq!(parsed.usage.cache_creation_input_tokens, Some(100));
+        assert_eq!(parsed.usage.cache_read_input_tokens, Some(200));
+        assert_eq!(parsed.usage.output_tokens, Some(55));
+        assert_eq!(parsed.usage.reasoning_output_tokens, Some(13));
+        assert_eq!(
+            parsed.resolved_models,
+            vec![
+                "claude-opus-4-1".to_owned(),
+                "claude-sonnet-4-5".to_owned()
+            ]
+        );
+        assert_eq!(parsed.provider_cost_usd.as_deref(), Some("0.01234"));
+        assert_eq!(parsed.provider_request_id.as_deref(), Some("session-abc"));
+    }
+
+    #[test]
+    fn gemini_parser_aggregates_per_model_usage_without_inventing_cache_writes() {
+        let gemini = serde_json::to_vec(&json!({
+            "response": "gemini answer",
+            "stats": {
+                "models": {
+                    "gemini-a": {"tokens": {"prompt": 100, "cached": 25, "candidates": 12, "thoughts": 7}},
+                    "gemini-b": {"tokens": {"prompt": 50, "cached": 10, "candidates": 8, "thoughts": 3}}
+                }
+            },
+            "noise": {"input_tokens": 99999}
+        }))
+        .expect("gemini json");
+        let parsed = parse_gemini_json(&gemini).expect("gemini parse");
+        assert_eq!(parsed.output, "gemini answer");
+        assert_eq!(parsed.usage.input_tokens, Some(115));
+        assert_eq!(parsed.usage.cache_read_input_tokens, Some(35));
+        assert_eq!(parsed.usage.cache_creation_input_tokens, None);
+        assert_eq!(parsed.usage.output_tokens, Some(20));
+        assert_eq!(parsed.usage.reasoning_output_tokens, Some(10));
+        assert_eq!(
+            parsed.resolved_models,
+            vec!["gemini-a".to_owned(), "gemini-b".to_owned()]
+        );
     }
 
     #[test]
@@ -1171,7 +1414,38 @@ mod tests {
         assert!(args.windows(2).any(|pair| pair == ["--tools", ""]));
         assert!(args.iter().any(|arg| arg == "--disable-slash-commands"));
         assert!(args.iter().any(|arg| arg == "--no-session-persistence"));
+        assert!(
+            args.iter()
+                .any(|arg| arg == "--exclude-dynamic-system-prompt-sections")
+        );
         assert!(!args.iter().any(|arg| arg == "--bare"));
+    }
+
+    #[test]
+    fn claude_process_environment_disables_memory_and_claude_md_loading() {
+        let mut command = Command::new("claude");
+        apply_provider_environment(&mut command, "claude");
+        let environment = command
+            .get_envs()
+            .filter_map(|(name, value)| {
+                value.map(|value| {
+                    (
+                        name.to_string_lossy().into_owned(),
+                        value.to_string_lossy().into_owned(),
+                    )
+                })
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            environment
+                .iter()
+                .any(|(name, value)| name == "CLAUDE_CODE_DISABLE_AUTO_MEMORY" && value == "1")
+        );
+        assert!(
+            environment
+                .iter()
+                .any(|(name, value)| name == "CLAUDE_CODE_DISABLE_CLAUDE_MDS" && value == "1")
+        );
     }
 
     #[test]
@@ -1203,26 +1477,5 @@ mod tests {
                 .count(),
             1
         );
-    }
-
-    #[test]
-    fn single_json_parser_supports_claude_and_gemini_shape() {
-        let claude = serde_json::to_vec(&json!({
-            "result": "claude answer",
-            "usage": {"input_tokens": 21, "output_tokens": 5}
-        }))
-        .expect("claude json");
-        let parsed = parse_single_json(&claude, "result").expect("claude parse");
-        assert_eq!(parsed.output, "claude answer");
-        assert_eq!(parsed.usage.input_tokens, Some(21));
-
-        let gemini = serde_json::to_vec(&json!({
-            "response": "gemini answer",
-            "stats": {"inputTokens": 34, "outputTokens": 8}
-        }))
-        .expect("gemini json");
-        let parsed = parse_single_json(&gemini, "response").expect("gemini parse");
-        assert_eq!(parsed.output, "gemini answer");
-        assert_eq!(parsed.usage.output_tokens, Some(8));
     }
 }
