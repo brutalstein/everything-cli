@@ -18,7 +18,7 @@ use aer_provider::{
 use clap::Parser;
 use serde_json::{Value, json};
 
-const VERSION: &str = "claude-authority-split-acceptance-v1";
+const VERSION: &str = "claude-authority-split-acceptance-v2";
 const EMPTY_MCP: &str = r#"{"mcpServers":{}}"#;
 const TIMEOUT: Duration = Duration::from_secs(300);
 const MAX_OUTPUT: usize = 4 * 1024 * 1024;
@@ -809,6 +809,7 @@ impl ShadowWorkspace {
         let path = root.path.clone();
         let mut stats = CopyStats::default();
         copy_tree(source, source, &path, &mut stats)?;
+        initialize_shadow_repository(&path)?;
         std::mem::forget(root);
         Ok(Self {
             path,
@@ -865,6 +866,64 @@ fn copy_tree(root: &Path, source: &Path, destination: &Path, stats: &mut CopySta
         fs::copy(&source_path, destination_path)?;
     }
     Ok(())
+}
+
+fn initialize_shadow_repository(path: &Path) -> Result<(), LabError> {
+    run_shadow_git(path, &["init", "--quiet"])?;
+    run_shadow_git(path, &["symbolic-ref", "HEAD", "refs/heads/aer-shadow"])?;
+    for (key, value) in [
+        ("core.autocrlf", "false"),
+        ("core.filemode", "false"),
+        ("commit.gpgSign", "false"),
+        ("core.hooksPath", ".git/aer-no-hooks"),
+        ("user.name", "AER Shadow"),
+        ("user.email", "shadow@aer.invalid"),
+    ] {
+        run_shadow_git(path, &["config", key, value])?;
+    }
+    run_shadow_git(
+        path,
+        &["remote", "add", "aer-shadow", "aer-shadow://filtered-workspace"],
+    )?;
+    run_shadow_git(path, &["add", "--all", "--", "."])?;
+
+    let mut command = Command::new("git");
+    command
+        .args([
+            "commit",
+            "--quiet",
+            "--no-gpg-sign",
+            "--message",
+            "AER filtered shadow snapshot",
+        ])
+        .current_dir(path)
+        .env("GIT_AUTHOR_NAME", "AER Shadow")
+        .env("GIT_AUTHOR_EMAIL", "shadow@aer.invalid")
+        .env("GIT_AUTHOR_DATE", "2000-01-01T00:00:00Z")
+        .env("GIT_COMMITTER_NAME", "AER Shadow")
+        .env("GIT_COMMITTER_EMAIL", "shadow@aer.invalid")
+        .env("GIT_COMMITTER_DATE", "2000-01-01T00:00:00Z");
+    let output = command.output()?;
+    if !output.status.success() {
+        return Err(shadow_git_failure("commit", &output));
+    }
+    Ok(())
+}
+
+fn run_shadow_git(path: &Path, args: &[&str]) -> Result<String, LabError> {
+    let output = Command::new("git").args(args).current_dir(path).output()?;
+    if !output.status.success() {
+        return Err(shadow_git_failure(&format!("git {}", args.join(" ")), &output));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+fn shadow_git_failure(label: &str, output: &std::process::Output) -> LabError {
+    LabError::ShadowGit {
+        command: label.to_owned(),
+        exit_code: output.status.code(),
+        detail: preview(&String::from_utf8_lossy(&output.stderr)),
+    }
 }
 
 fn should_exclude(relative: &Path) -> bool {
@@ -1096,6 +1155,7 @@ enum LabError {
     Contaminated(String),
     ShadowEscape(PathBuf),
     ShadowLimit { files: usize, bytes: u64 },
+    ShadowGit { command: String, exit_code: Option<i32>, detail: String },
     Provider { task: &'static str, run: u8, code: Option<i32>, detail: String },
     Truncated(&'static str, u8),
     TimedOut,
@@ -1115,6 +1175,7 @@ impl fmt::Display for LabError {
             Self::Contaminated(path) => write!(formatter, "acceptance measurement contaminated by benchmark harness source: {path}"),
             Self::ShadowEscape(path) => write!(formatter, "shadow workspace path escaped root: {}", path.display()),
             Self::ShadowLimit { files, bytes } => write!(formatter, "shadow workspace exceeded safety limit: {files} files, {bytes} bytes"),
+            Self::ShadowGit { command, exit_code, detail } => write!(formatter, "shadow git command `{command}` failed with {exit_code:?}: {detail}"),
             Self::Provider { task, run, code, detail } => write!(formatter, "Claude failed in task {task} run {run} with {code:?}: {detail}"),
             Self::Truncated(task, run) => write!(formatter, "Claude output truncated in task {task} run {run}"),
             Self::TimedOut => write!(formatter, "Claude call timed out after {} seconds", TIMEOUT.as_secs()),
@@ -1160,6 +1221,32 @@ mod tests {
         ] {
             assert!(is_harness_path(Path::new(path)), "{path}");
         }
+    }
+
+    #[test]
+    fn shadow_workspace_is_git_backed_deterministic_and_harness_free() {
+        let source = TempRoot::new("aer-provider-shadow-fixture").expect("fixture root");
+        fs::create_dir_all(source.path.join("src")).expect("src");
+        fs::write(source.path.join("src/lib.rs"), "pub const VALUE: u8 = 7;\n").expect("source file");
+        let harness = source
+            .path
+            .join("tools/aer-provider-acceptance/acceptance.rs");
+        fs::create_dir_all(harness.parent().expect("harness parent")).expect("harness dir");
+        fs::write(&harness, "answer key\n").expect("harness file");
+
+        let first = ShadowWorkspace::copy_from(&source.path).expect("first shadow");
+        let second = ShadowWorkspace::copy_from(&source.path).expect("second shadow");
+
+        assert!(!first.path.join("tools/aer-provider-acceptance/acceptance.rs").exists());
+        let first_head = run_shadow_git(&first.path, &["rev-parse", "HEAD"]).expect("first head");
+        let second_head = run_shadow_git(&second.path, &["rev-parse", "HEAD"]).expect("second head");
+        assert_eq!(first_head, second_head);
+        assert!(run_shadow_git(&first.path, &["status", "--porcelain"]).expect("status").is_empty());
+        let root = run_shadow_git(&first.path, &["rev-parse", "--show-toplevel"]).expect("root");
+        assert_eq!(
+            PathBuf::from(root).canonicalize().expect("git root"),
+            first.path.canonicalize().expect("shadow root")
+        );
     }
 
     #[test]
