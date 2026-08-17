@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 
 /// Stable constitutional context is deliberately small and cache-friendly. The
 /// task-specific remainder is selected by the existing Context Economy Engine.
-const ARCHITECTURE_POLICY_VERSION: &str = "architecture-context-v2";
+const ARCHITECTURE_POLICY_VERSION: &str = "architecture-context-v3";
 const PROVIDER_CONTEXT_POLICY_VERSION: &str = "provider-context-economy-v1";
 const MAX_STABLE_CORE_ESTIMATED_TOKENS: u32 = 12 * 1024;
 const MAX_AER_CONTEXT_ESTIMATED_TOKENS: u32 = 18 * 1024;
@@ -98,8 +98,9 @@ pub struct ArchitectureContextCapsule {
 
 impl ArchitectureContextCapsule {
     /// Compiles a deterministic, cache-stable constitutional prefix from exact
-    /// authoritative Markdown sections. It never byte-truncates a section: an
-    /// oversized or missing constitution fails closed instead.
+    /// authoritative Markdown sections. Audit-only provenance stays out of the
+    /// provider-visible bytes so line shifts and unrelated file churn cannot
+    /// invalidate a semantically identical prompt prefix.
     pub fn compile(workspace_root: &Path) -> Result<Self, ArchitectureContextError> {
         let root = workspace_root
             .canonicalize()
@@ -152,12 +153,8 @@ impl ArchitectureContextCapsule {
             use fmt::Write as _;
             writeln!(
                 rendered,
-                "## Authority fragment: {}\nsection: {}\nlines: {}-{}\nfragment_sha256: {}\n",
-                source.path,
-                source.section,
-                source.start_line,
-                source.end_line,
-                source.fragment_sha256,
+                "<!-- authority: {} :: {} -->",
+                source.path, source.section,
             )
             .expect("writing to String cannot fail");
             rendered.push_str(&source.text);
@@ -176,7 +173,7 @@ impl ArchitectureContextCapsule {
         }
         let digest = hex_sha256(rendered.as_bytes());
         Ok(Self {
-            version: 2,
+            version: 3,
             policy_version: ARCHITECTURE_POLICY_VERSION.to_owned(),
             digest,
             estimated_tokens,
@@ -199,6 +196,8 @@ impl ArchitectureContextCapsule {
 /// Exact provider context = cache-stable constitutional prefix followed by one
 /// task-specific Context Pack selected by the existing RI2/Context Economy
 /// engine. The stable prefix is always first to maximize provider cache reuse.
+/// Snapshot/package identities remain in the receipt and are deliberately not
+/// injected into model-visible text unless they carry task semantics.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ModelContextEnvelope {
     pub version: u32,
@@ -260,11 +259,8 @@ impl ModelContextEnvelope {
         use fmt::Write as _;
         writeln!(
             rendered,
-            "# Task-specific Context Economy pack\npolicy: {}\npack_id: {}\nrepo_snapshot: {}\nbudget: {} estimated token units\n",
+            "# Task-specific Context Economy pack\npolicy: {}\n",
             task_context.policy_version,
-            task_context.pack_id,
-            task_context.repo_snapshot,
-            task_context.input_token_budget,
         )
         .expect("writing to String cannot fail");
         for item in &task_context.items {
@@ -285,7 +281,7 @@ impl ModelContextEnvelope {
         drop(index);
 
         Ok(Self {
-            version: 1,
+            version: 2,
             digest,
             architecture,
             task_context,
@@ -526,9 +522,11 @@ mod tests {
         let first = ArchitectureContextCapsule::compile(&root).expect("first capsule");
         let second = ArchitectureContextCapsule::compile(&root).expect("second capsule");
         assert_eq!(first.digest, second.digest);
-        assert_eq!(first.version, 2);
+        assert_eq!(first.version, 3);
         assert_eq!(first.source_paths().len(), 3);
         assert!(!first.rendered.contains("unselected mutable prose"));
+        assert!(!first.rendered.contains("fragment_sha256"));
+        assert!(!first.rendered.contains("lines:"));
 
         fs::write(
             root.join("docs/00_READ_ME_FIRST.md"),
@@ -544,6 +542,22 @@ mod tests {
 
         fs::write(
             root.join("docs/00_READ_ME_FIRST.md"),
+            format!(
+                "Unselected preface that shifts source lines.\n\n{}",
+                fs::read_to_string(root.join("docs/00_READ_ME_FIRST.md")).expect("read")
+            ),
+        )
+        .expect("shift selected lines");
+        let shifted = ArchitectureContextCapsule::compile(&root).expect("shifted capsule");
+        assert_ne!(
+            unselected_change.sources[0].start_line,
+            shifted.sources[0].start_line
+        );
+        assert_eq!(unselected_change.rendered, shifted.rendered);
+        assert_eq!(unselected_change.digest, shifted.digest);
+
+        fs::write(
+            root.join("docs/00_READ_ME_FIRST.md"),
             fs::read_to_string(root.join("docs/00_READ_ME_FIRST.md"))
                 .expect("read")
                 .replace(
@@ -553,12 +567,12 @@ mod tests {
         )
         .expect("rewrite selected");
         let selected_change = ArchitectureContextCapsule::compile(&root).expect("selected change");
-        assert_ne!(first.digest, selected_change.digest);
+        assert_ne!(shifted.digest, selected_change.digest);
         fs::remove_dir_all(root).expect("cleanup");
     }
 
     #[test]
-    fn provider_envelope_uses_bounded_ri2_context_after_stable_prefix() {
+    fn provider_envelope_cache_identity_ignores_provenance_only_workspace_churn() {
         let root = fixture_root();
         fs::write(
             root.join("src/auth.rs"),
@@ -571,30 +585,71 @@ mod tests {
         git(&root, &["add", "."]);
         git(&root, &["commit", "-m", "fixture"]);
 
-        let envelope = ModelContextEnvelope::compile(
-            &root,
-            "inspect expired token rejection in src/auth.rs and explain its authority boundary",
-        )
-        .expect("context envelope");
+        let objective =
+            "inspect expired token rejection in src/auth.rs and explain its authority boundary";
+        let first =
+            ModelContextEnvelope::compile(&root, objective).expect("first context envelope");
         assert!(
-            envelope
+            first
                 .rendered
                 .starts_with("# everything/AER constitutional core")
         );
         assert!(
-            envelope
+            first
                 .rendered
                 .contains("# Task-specific Context Economy pack")
         );
-        assert!(envelope.task_context.total_token_cost() <= envelope.dynamic_context_budget);
-        assert!(envelope.estimated_tokens <= MAX_AER_CONTEXT_ESTIMATED_TOKENS);
+        assert!(!first.rendered.contains("repo_snapshot:"));
+        assert!(!first.rendered.contains("pack_id:"));
+        assert!(first.task_context.total_token_cost() <= first.dynamic_context_budget);
+        assert!(first.estimated_tokens <= MAX_AER_CONTEXT_ESTIMATED_TOKENS);
         assert!(
-            envelope
+            first
                 .task_context
                 .items
                 .iter()
                 .any(|item| item.path == "src/auth.rs")
         );
+
+        // Binary/unretrievable workspace churn changes repository provenance,
+        // but cannot become model context. This isolates the exact invariant:
+        // audit identity may change while semantic prompt bytes stay identical.
+        fs::write(
+            root.join("cache-churn.bin"),
+            [0_u8, 0xff, 0x00, 0xfe, 0x01, 0x02, 0x03],
+        )
+        .expect("provenance-only workspace churn");
+        let second = ModelContextEnvelope::compile(&root, objective).expect("second envelope");
+        assert_ne!(
+            first.task_context.repo_snapshot,
+            second.task_context.repo_snapshot
+        );
+        assert_ne!(first.task_context.pack_id, second.task_context.pack_id);
+        assert_eq!(
+            first
+                .task_context
+                .items
+                .iter()
+                .map(|item| (&item.path, &item.rendered_text))
+                .collect::<Vec<_>>(),
+            second
+                .task_context
+                .items
+                .iter()
+                .map(|item| (&item.path, &item.rendered_text))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(first.rendered, second.rendered);
+        assert_eq!(first.digest, second.digest);
+
+        fs::write(
+            root.join("src/auth.rs"),
+            "pub fn reject_expired_token(token: &str) -> bool { !token.is_empty() && token != \"expired\" }\n",
+        )
+        .expect("selected source change");
+        let selected_change =
+            ModelContextEnvelope::compile(&root, objective).expect("selected source envelope");
+        assert_ne!(second.digest, selected_change.digest);
         fs::remove_dir_all(root).expect("cleanup");
     }
 }
