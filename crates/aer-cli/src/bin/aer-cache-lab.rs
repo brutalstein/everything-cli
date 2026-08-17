@@ -1,1 +1,1 @@
-include!("../../../../tools/aer-cache-lab/src/main.rs");
+include!("../../../../tools/aer-cache-lab/lab.rs");
