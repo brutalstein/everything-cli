@@ -23,6 +23,7 @@ const STATUS_TIMEOUT: Duration = Duration::from_secs(20);
 const MAX_PROVIDER_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 const MAX_STATUS_OUTPUT_BYTES: usize = 64 * 1024;
 const EMPTY_MCP_CONFIG: &str = r#"{"mcpServers":{}}"#;
+const GEMINI_DELEGATED_ISOLATION_BLOCK: &str = "current Gemini CLI delegated OAuth keeps authentication and user behavior/configuration under the same user state; its home .gemini/.env fallback can still inject process configuration even with --ignore-env. AER will not copy OAuth credentials or claim isolation it cannot enforce";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DelegatedProviderKind {
@@ -78,6 +79,23 @@ impl DelegatedProviderKind {
                 AuthenticationMethod::DeviceAuthorization,
             ],
             Self::Claude | Self::Gemini => vec![AuthenticationMethod::OAuthPkce],
+        }
+    }
+
+    /// True only when AER can preserve delegated authentication while
+    /// mechanically excluding provider-local behavior sources for the smoke
+    /// transport. Unsupported providers remain discoverable/login-capable but
+    /// cannot enter the production model-call path.
+    #[must_use]
+    pub const fn delegated_smoke_eligible(self) -> bool {
+        matches!(self, Self::Codex | Self::Claude)
+    }
+
+    #[must_use]
+    pub const fn delegated_smoke_block_reason(self) -> Option<&'static str> {
+        match self {
+            Self::Codex | Self::Claude => None,
+            Self::Gemini => Some(GEMINI_DELEGATED_ISOLATION_BLOCK),
         }
     }
 }
@@ -232,7 +250,7 @@ impl DelegatedCliProvider {
                 authentication: AuthenticationState::Unknown,
                 authentication_method: None,
                 account_plan: None,
-                detail: "Gemini CLI does not currently expose a stable non-interactive Google-login status command; a read-only smoke call verifies the cached session".to_owned(),
+                detail: "Gemini CLI delegated authentication remains vendor-owned, but AER smoke is fail-closed until authentication state can be separated from provider-local behavior/configuration state".to_owned(),
             },
         }
     }
@@ -331,6 +349,15 @@ impl DelegatedCliProvider {
         input: &str,
         cancellation: &dyn CancellationSignal,
     ) -> Result<ModelIoTrace, ProviderError> {
+        if let Some(reason) = self.kind.delegated_smoke_block_reason() {
+            return Err(ProviderError::new(
+                ProviderFailureClass::InvalidRequest,
+                format!(
+                    "{} delegated smoke is blocked fail-closed: {reason}",
+                    self.kind.display_name()
+                ),
+            ));
+        }
         if cancellation.is_cancelled() {
             return Err(ProviderError::new(
                 ProviderFailureClass::Cancelled,
@@ -473,7 +500,7 @@ impl ProviderAdapter for DelegatedCliProvider {
                 .clone()
                 .unwrap_or_else(|| "provider-default".to_owned()),
             authentication: self.kind.authentication(),
-            production_ready: true,
+            production_ready: self.kind.delegated_smoke_eligible(),
         }
     }
 
@@ -1266,6 +1293,8 @@ mod tests {
 
     use serde_json::json;
 
+    use crate::{NeverCancelled, ProviderAdapter, ProviderFailureClass};
+
     use super::{
         AuthenticationState, DelegatedCliProvider, DelegatedProviderKind, EMPTY_MCP_CONFIG,
         apply_provider_environment, parse_claude_json, parse_codex_jsonl, parse_gemini_json,
@@ -1292,6 +1321,44 @@ mod tests {
             DelegatedProviderKind::Gemini
         );
         assert_eq!(AuthenticationState::Authenticated.as_str(), "authenticated");
+    }
+
+    #[test]
+    fn production_readiness_is_exactly_behavior_isolation_eligibility() {
+        for kind in [DelegatedProviderKind::Codex, DelegatedProviderKind::Claude] {
+            let adapter = DelegatedCliProvider::new(kind, "architecture", "digest", None);
+            assert!(kind.delegated_smoke_eligible());
+            assert!(kind.delegated_smoke_block_reason().is_none());
+            assert!(adapter.descriptor().production_ready);
+        }
+        let gemini = DelegatedCliProvider::new(
+            DelegatedProviderKind::Gemini,
+            "architecture",
+            "digest",
+            None,
+        );
+        assert!(!DelegatedProviderKind::Gemini.delegated_smoke_eligible());
+        assert!(
+            DelegatedProviderKind::Gemini
+                .delegated_smoke_block_reason()
+                .is_some()
+        );
+        assert!(!gemini.descriptor().production_ready);
+    }
+
+    #[test]
+    fn gemini_delegated_smoke_fails_before_process_dispatch() {
+        let adapter = DelegatedCliProvider::new(
+            DelegatedProviderKind::Gemini,
+            "architecture",
+            "digest",
+            None,
+        );
+        let error = adapter
+            .smoke("never dispatched", &NeverCancelled)
+            .expect_err("Gemini delegated smoke must fail closed");
+        assert_eq!(error.class, ProviderFailureClass::InvalidRequest);
+        assert!(error.message.contains("blocked fail-closed"));
     }
 
     #[test]
@@ -1382,6 +1449,32 @@ mod tests {
         assert_eq!(
             parsed.resolved_models,
             vec!["gemini-a".to_owned(), "gemini-b".to_owned()]
+        );
+    }
+
+    #[test]
+    fn codex_smoke_plan_blocks_provider_local_behavior_sources() {
+        let adapter = DelegatedCliProvider::new(
+            DelegatedProviderKind::Codex,
+            "architecture",
+            "digest",
+            None,
+        );
+        let (args, stdin) = adapter.smoke_plan("prompt", Path::new("scratch"));
+        let args = args
+            .iter()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(stdin, b"prompt");
+        assert!(args.iter().any(|arg| arg == "--ignore-user-config"));
+        assert!(args.iter().any(|arg| arg == "--ephemeral"));
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["--sandbox", "read-only"])
+        );
+        assert!(
+            args.windows(2)
+                .any(|pair| pair == ["--cd", "scratch"])
         );
     }
 
