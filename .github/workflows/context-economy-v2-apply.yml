@@ -5,13 +5,13 @@ on:
     branches:
       - feat/context-economy-v2
     paths:
-      - .aer-dev/context-economy-v2.patch
+      - .aer-dev/apply-context-economy-v2.py
       - .github/workflows/context-economy-v2-apply.yml
   pull_request:
     branches:
       - main
     paths:
-      - .aer-dev/context-economy-v2.patch
+      - .aer-dev/apply-context-economy-v2.py
       - .github/workflows/context-economy-v2-apply.yml
 
 permissions:
@@ -25,12 +25,8 @@ jobs:
         with:
           ref: feat/context-economy-v2
           fetch-depth: 0
-      - name: Apply staged patch
-        shell: bash
-        run: |
-          set -euo pipefail
-          git apply --check --recount .aer-dev/context-economy-v2.patch
-          git apply --recount --whitespace=fix .aer-dev/context-economy-v2.patch
+      - name: Apply fail-closed source transformations
+        run: python3 .aer-dev/apply-context-economy-v2.py
       - name: Format
         run: cargo fmt --all
       - name: Context and repository tests
@@ -41,7 +37,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -f .aer-dev/context-economy-v2.patch
+          rm -rf .aer-dev
           rm -f .github/workflows/context-economy-v2-apply.yml
           git config user.name "aer-context-v2-bot"
           git config user.email "aer-context-v2@users.noreply.github.com"
