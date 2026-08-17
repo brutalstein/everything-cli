@@ -587,7 +587,8 @@ mod tests {
 
         let objective =
             "inspect expired token rejection in src/auth.rs and explain its authority boundary";
-        let first = ModelContextEnvelope::compile(&root, objective).expect("first context envelope");
+        let first =
+            ModelContextEnvelope::compile(&root, objective).expect("first context envelope");
         assert!(
             first
                 .rendered
@@ -616,7 +617,10 @@ mod tests {
         )
         .expect("unselected workspace churn");
         let second = ModelContextEnvelope::compile(&root, objective).expect("second envelope");
-        assert_ne!(first.task_context.repo_snapshot, second.task_context.repo_snapshot);
+        assert_ne!(
+            first.task_context.repo_snapshot,
+            second.task_context.repo_snapshot
+        );
         assert_ne!(first.task_context.pack_id, second.task_context.pack_id);
         assert_eq!(
             first
