@@ -13,6 +13,8 @@ use aer_provider::{
 };
 use clap::{Parser, Subcommand};
 
+mod economics;
+
 const GEMINI_DELEGATED_ISOLATION_BLOCK: &str = "current Gemini CLI delegated OAuth keeps authentication and user behavior/configuration under the same user state; its home .gemini/.env fallback can still inject process configuration even with --ignore-env. AER will not copy OAuth credentials or claim isolation it cannot enforce";
 
 #[derive(Parser, Debug)]
@@ -71,6 +73,16 @@ enum ProviderCommand {
         #[arg(long)]
         show_input: bool,
     },
+    /// Measure repeated provider input-cache economics with a canonical bounded probe.
+    Benchmark {
+        provider: String,
+        #[arg(long)]
+        model: Option<String>,
+        #[arg(long, default_value_t = 3)]
+        runs: u8,
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 /// Intercepts only provider-specific commands so the ordinary CLI path remains
@@ -108,6 +120,12 @@ pub(crate) fn try_run_provider_surface() -> Result<bool, Box<dyn Error>> {
                 json,
                 show_input,
             } => provider_smoke(&workspace, &provider, model, &prompt, json, show_input)?,
+            ProviderCommand::Benchmark {
+                provider,
+                model,
+                runs,
+                json,
+            } => economics::run(&workspace, &provider, model, runs, json)?,
         },
     }
     Ok(true)
@@ -198,8 +216,9 @@ pub(crate) fn print_providers(path: &Path, json: bool) -> Result<(), Box<dyn Err
             println!("           smoke blocked · {reason}");
         }
     }
-    println!("\nconnect  everything provider login <codex|claude|gemini>");
-    println!("verify   everything provider smoke <provider> --show-input --prompt <text>");
+    println!("\nconnect   everything provider login <codex|claude|gemini>");
+    println!("verify    everything provider smoke <provider> --show-input --prompt <text>");
+    println!("benchmark everything provider benchmark <provider> --runs 3");
     Ok(())
 }
 
