@@ -198,7 +198,7 @@ The correction landed inside the existing pipeline:
 
 Deterministic regression coverage lives in `crates/aer-context/tests/exact_definition.rs`, `crates/aer-repo/src/lib.rs` and `crates/aer-core/src/model_context.rs`. The fixture reproduces the production shape — a long file whose lexical anchor sits far above the assignment, plus a second same-named definition with a different value — and an ignored baseline test records that unqualified retrieval misses the assignment on that fixture.
 
-This satisfies step 1 and step 2 of §11. Steps 5 onward still require the live rerun on the target machine.
+This satisfies steps 1–4 of §11: the repair merged to `main` as `a7c1219` after canonical Windows verification passed and `foundation-ci` run `32042953709` / #322 was green on both the Linux and Windows jobs. Steps 5 onward still require the live rerun on the target machine.
 
 ## 11. Production-promotion sequence
 

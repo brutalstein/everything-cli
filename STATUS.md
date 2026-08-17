@@ -5,9 +5,9 @@
 **Internal architecture terminology:** AER  
 **Current phase:** Inter-step Provider Runtime Productization Gate  
 **Current numbered position:** Steps 01–13 COMPLETE; Step 14 BLOCKED  
-**Verified runtime baseline before this documentation refresh:** `d6e3d8ef17597e237a86171d819ba21723ef4980`  
-**Verified repository CI before this documentation refresh:** `foundation-ci` run `32029479851` / #314 — SUCCESS on merged `main`  
-**Repository health at this documentation refresh:** CI GREEN; no open pull requests or open issues before the documentation PR  
+**Verified runtime baseline:** `a7c1219f423de16bd4dcc604cefb5a64e6cec4bc` (merge of the exact-definition retrieval repair)  
+**Verified repository CI:** `foundation-ci` run `32042953709` / #322 — SUCCESS on merged `main`, Linux and Windows jobs both green  
+**Repository health:** CI GREEN; no open pull requests or open issues  
 **Provider gate:** OPEN  
 **Immediate engineering blocker:** none in repository correctness. The exact-identifier / exact-definition retrieval defect is repaired with deterministic regressions; the live Claude authority-split matrix must now be rerun on the target Windows machine before production promotion can be considered.
 
@@ -213,7 +213,7 @@ Pack sizes stayed within the dynamic budget (5.4k–6.0k estimated units against
 1. ~~Fix exact-identifier / exact-definition source-span retrieval in the existing RI2 + Context Economy path.~~ **Done.**
 2. ~~Add deterministic regression coverage for required defining-span inclusion and fail-closed abstention.~~ **Done.**
 3. ~~Run workspace format, `-D warnings` Clippy, full tests, RI2/Context Economy benches, provider runtime tests, docs checks and canonical Windows verification.~~ **Done — canonical Windows verification PASS.**
-4. Merge only if Linux and Windows authoritative CI are green.
+4. ~~Merge only if Linux and Windows authoritative CI are green.~~ **Done — merged as `a7c1219`; `foundation-ci` run `32042953709` / #322 green on both jobs.**
 5. Re-run the full live Claude authority-split matrix on the target Windows machine.
 6. Promote authority split to production Claude delegated transport only if every candidate measurement is valid, every acceptance contract passes, the adversarial task passes and there is no current-pass → candidate-fail regression.
 7. Re-run the canonical provider economics benchmark after the production-candidate transport change.
