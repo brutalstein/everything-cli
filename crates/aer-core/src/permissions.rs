@@ -77,10 +77,91 @@ impl PermissionDecision {
     }
 }
 
+/// Duration of the requested prompt grant. This is prompt-policy scope only;
+/// it never widens the capability ceiling or the target authority of the run.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum GrantScope {
     Once,
     Session,
+}
+
+impl GrantScope {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Once => "once",
+            Self::Session => "session",
+        }
+    }
+}
+
+/// Deterministic security classification derived by AER from the requested
+/// side effect and reversibility. The proposer does not get to self-report a
+/// lower risk class.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum PermissionRiskClass {
+    Low,
+    Moderate,
+    High,
+    Critical,
+}
+
+impl PermissionRiskClass {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Moderate => "moderate",
+            Self::High => "high",
+            Self::Critical => "critical",
+        }
+    }
+
+    #[must_use]
+    pub const fn derive(side_effect: SideEffectClass, reversible: bool) -> Self {
+        match side_effect {
+            SideEffectClass::PureRead => Self::Low,
+            SideEffectClass::WorkspaceWrite
+            | SideEffectClass::ProcessExecution
+            | SideEffectClass::NetworkRead => Self::Moderate,
+            SideEffectClass::NetworkWrite => Self::High,
+            SideEffectClass::ExternalMutation => {
+                if reversible {
+                    Self::High
+                } else {
+                    Self::Critical
+                }
+            }
+            SideEffectClass::CredentialUse | SideEffectClass::Privileged => Self::Critical,
+        }
+    }
+}
+
+/// Explicitly records whether a lower-authority route was considered. `NoneKnown`
+/// is not equivalent to an omitted field: it is an auditable assertion that no
+/// concrete lower-authority alternative is known for this request.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum LeastAuthorityAlternative {
+    NoneKnown,
+    Available(String),
+}
+
+impl LeastAuthorityAlternative {
+    pub fn available(value: impl Into<String>) -> Result<Self, PermissionError> {
+        let value = value.into();
+        if value.trim().is_empty() {
+            return Err(PermissionError::EmptyLeastAuthorityAlternative);
+        }
+        Ok(Self::Available(value))
+    }
+
+    #[must_use]
+    pub fn description(&self) -> Option<&str> {
+        match self {
+            Self::NoneKnown => None,
+            Self::Available(value) => Some(value.as_str()),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -89,9 +170,13 @@ pub struct PermissionRequest {
     pub target: String,
     pub reason: String,
     pub reversible: bool,
+    pub grant_scope: GrantScope,
+    pub least_authority_alternative: LeastAuthorityAlternative,
 }
 
 impl PermissionRequest {
+    /// Creates the least-persistent request by default. Callers must opt into a
+    /// session-duration prompt grant explicitly.
     #[must_use]
     pub fn new(
         side_effect: SideEffectClass,
@@ -104,7 +189,30 @@ impl PermissionRequest {
             target: target.into(),
             reason: reason.into(),
             reversible,
+            grant_scope: GrantScope::Once,
+            least_authority_alternative: LeastAuthorityAlternative::NoneKnown,
         }
+    }
+
+    #[must_use]
+    pub const fn risk_class(&self) -> PermissionRiskClass {
+        PermissionRiskClass::derive(self.side_effect, self.reversible)
+    }
+
+    /// Opts into a broader prompt duration without changing technical authority.
+    #[must_use]
+    pub fn with_grant_scope(mut self, grant_scope: GrantScope) -> Self {
+        self.grant_scope = grant_scope;
+        self
+    }
+
+    #[must_use]
+    pub fn with_least_authority_alternative(
+        mut self,
+        alternative: LeastAuthorityAlternative,
+    ) -> Self {
+        self.least_authority_alternative = alternative;
+        self
     }
 }
 
@@ -240,6 +348,7 @@ impl PermissionController {
 pub enum PermissionError {
     UnknownMode(String),
     UnknownSideEffect(String),
+    EmptyLeastAuthorityAlternative,
     OutsideCapabilityCeiling(SideEffectClass),
 }
 
@@ -250,6 +359,9 @@ impl fmt::Display for PermissionError {
             Self::UnknownSideEffect(value) => {
                 write!(formatter, "unknown side-effect class `{value}`")
             }
+            Self::EmptyLeastAuthorityAlternative => formatter.write_str(
+                "least-authority alternative must be non-empty when an alternative is declared",
+            ),
             Self::OutsideCapabilityCeiling(effect) => write!(
                 formatter,
                 "{effect:?} is outside the current runtime capability ceiling"
@@ -261,7 +373,12 @@ impl fmt::Display for PermissionError {
 impl std::error::Error for PermissionError {}
 
 pub fn parse_side_effect(value: &str) -> Result<SideEffectClass, PermissionError> {
-    match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+    match value
+        .trim()
+        .to_ascii_lowercase()
+        .replace('-', "_")
+        .as_str()
+    {
         "read" | "pure_read" => Ok(SideEffectClass::PureRead),
         "write" | "workspace_write" => Ok(SideEffectClass::WorkspaceWrite),
         "exec" | "command" | "process_execution" => Ok(SideEffectClass::ProcessExecution),
@@ -278,10 +395,66 @@ pub fn parse_side_effect(value: &str) -> Result<SideEffectClass, PermissionError
 mod tests {
     use aer_exec::SideEffectClass;
 
-    use super::{PermissionController, PermissionDecision, PermissionMode, PermissionRequest};
+    use super::{
+        GrantScope, LeastAuthorityAlternative, PermissionController, PermissionDecision,
+        PermissionMode, PermissionRequest, PermissionRiskClass,
+    };
 
     fn request(side_effect: SideEffectClass) -> PermissionRequest {
         PermissionRequest::new(side_effect, "fixture", "test", true)
+    }
+
+    #[test]
+    fn permission_request_defaults_to_least_persistent_grant_and_explicit_no_alternative() {
+        let request = request(SideEffectClass::NetworkWrite);
+        assert_eq!(request.grant_scope, GrantScope::Once);
+        assert_eq!(
+            request.least_authority_alternative,
+            LeastAuthorityAlternative::NoneKnown
+        );
+        assert_eq!(request.risk_class(), PermissionRiskClass::High);
+    }
+
+    #[test]
+    fn risk_is_derived_from_effect_and_reversibility_not_proposer_input() {
+        assert_eq!(
+            PermissionRequest::new(SideEffectClass::PureRead, "x", "r", true).risk_class(),
+            PermissionRiskClass::Low
+        );
+        assert_eq!(
+            PermissionRequest::new(SideEffectClass::ProcessExecution, "x", "r", true)
+                .risk_class(),
+            PermissionRiskClass::Moderate
+        );
+        assert_eq!(
+            PermissionRequest::new(SideEffectClass::ExternalMutation, "x", "r", true)
+                .risk_class(),
+            PermissionRiskClass::High
+        );
+        assert_eq!(
+            PermissionRequest::new(SideEffectClass::ExternalMutation, "x", "r", false)
+                .risk_class(),
+            PermissionRiskClass::Critical
+        );
+        assert_eq!(
+            PermissionRequest::new(SideEffectClass::CredentialUse, "x", "r", true).risk_class(),
+            PermissionRiskClass::Critical
+        );
+    }
+
+    #[test]
+    fn least_authority_alternative_is_explicit_and_nonempty() {
+        assert!(LeastAuthorityAlternative::available("  ").is_err());
+        let alternative = LeastAuthorityAlternative::available("use read-only metadata endpoint")
+            .expect("valid alternative");
+        let request = request(SideEffectClass::NetworkWrite)
+            .with_grant_scope(GrantScope::Session)
+            .with_least_authority_alternative(alternative);
+        assert_eq!(request.grant_scope, GrantScope::Session);
+        assert_eq!(
+            request.least_authority_alternative.description(),
+            Some("use read-only metadata endpoint")
+        );
     }
 
     #[test]
