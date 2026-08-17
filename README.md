@@ -1,49 +1,101 @@
+<div align="center">
+
 # everything
 
 **One CLI for work that spans everything.**
 
-`everything` is a local-first, model-agnostic engineering runtime. The public executable is **`everything`**; **AER** remains the internal architecture name.
+A local-first, model-agnostic engineering runtime that owns context, authority and evidence — and treats models as replaceable compute.
 
-Architecture lives in `docs/`, current implementation truth lives in [`STATUS.md`](STATUS.md), and the model-sized build sequence lives in [`DEVELOPMENT_PLAN.md`](DEVELOPMENT_PLAN.md).
+[![foundation-ci](https://github.com/brutalstein/everything-cli/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/brutalstein/everything-cli/actions/workflows/ci.yml)
+![Rust 2024](https://img.shields.io/badge/rust-2024%20edition-000000?logo=rust&logoColor=white)
+![Toolchain 1.97](https://img.shields.io/badge/toolchain-1.97%20pinned-555555)
+![Windows verified](https://img.shields.io/badge/windows-canonically%20verified-2b5797)
+![Status](https://img.shields.io/badge/sequence-13%20of%2018%20complete-6a5acd)
+
+[Architecture](docs/) · [Implementation truth](STATUS.md) · [Build sequence](DEVELOPMENT_PLAN.md)
+
+</div>
+
+---
+
+## What this is
+
+`everything` is the public executable. **AER** — Adaptive Engineering Runtime — is the internal architecture name.
+
+It is not a chat wrapper around a coding model. It is a control plane: it decides what a model sees, what a model may do, what counts as evidence, and what may be accepted as project truth. Providers plug into that plane. They do not define it.
+
+> **models are replaceable compute; AER owns context, authority, resource budgets, execution boundaries, evidence and acceptance.**
+
+Passing visible tests, generating more tokens, using more agents or obtaining a cheaper provider call is not sufficient by itself. The project optimizes **verified engineering outcome per unit cost**.
+
+---
+
+## The authority boundary
+
+Every delegated model request is built from two layers that never mix. The separation is enforced by types, not by string convention — there is no constructor that accepts a pre-merged prompt, so retrieved repository text cannot be concatenated into system authority.
+
+```mermaid
+flowchart LR
+    subgraph AUTH["SYSTEM AUTHORITY — AER owned"]
+        A1["Constitutional core<br/><i>verbatim, cache-stable</i>"]
+        A2["Delegated transport policy<br/><i>stable, read-only, tool-free</i>"]
+    end
+
+    subgraph DATA["USER / DATA — untrusted"]
+        D1["RI2 + Context Economy evidence<br/><i>snapshot-bound, provenanced</i>"]
+        D2["User objective"]
+    end
+
+    AUTH -->|--system-prompt| P["Delegated provider CLI"]
+    DATA -->|stdin| P
+    P --> R["Typed receipt<br/><i>usage · cost · provenance</i>"]
+```
+
+Repository content, retrieved code, tool output, user text and mutable project state stay in the data layer on every provider — including providers that expose no separate system channel. Quoted instructions inside evidence are data. They cannot grant permissions, widen the capability ceiling or override the core.
+
+Authority size is bounded, and exceeding the bound **fails closed** rather than truncating authority or spilling it into the data layer.
+
+---
 
 ## Current state
 
-Steps 01–13 of the 18-step architecture sequence are complete. Work is currently inside the non-numbered **Provider Runtime Productization Gate** between Step 13 and Step 14. Step 14 is intentionally blocked until that gate closes.
+| | |
+|---|---|
+| **Sequence position** | Steps 01–13 complete of 18 |
+| **Active work** | Provider Runtime Productization Gate (non-numbered, between 13 and 14) |
+| **Step 14** | Intentionally blocked until that gate closes |
+| **Authoritative CI** | `foundation-ci` — Linux and Windows jobs, both required |
 
 The merged runtime includes:
 
-- executable Draft 2020-12 contracts and semantic validation;
-- crash-safe SQLite WAL state, append-only events, content-addressed objects and deterministic replay;
-- runtime state machines, leases, cancellation, bounded queues and hard resource admission;
-- exact workspace identity, dirty-state capture and AER-owned isolated Git worktrees;
-- typed bounded process execution and environment fingerprinting;
-- Intent + Research + Engineering IR;
-- Repository Intelligence 2.0 and Context Economy;
-- proof-carrying independent verification;
-- provider resilience, cost routing and truthful provider telemetry;
-- long-horizon engineering state and recovery;
-- bounded parallel execution with isolated worktrees and integration verification;
-- delegated provider onboarding/smoke surfaces for Codex, Claude Code and Gemini CLI;
-- AER-owned permission policy and typed ToolBroker foundations;
-- provider context-economics and Claude authority-split acceptance diagnostics.
+| Layer | Capability |
+|---|---|
+| **Contracts** | Executable Draft 2020-12 contracts with semantic validation |
+| **State** | Crash-safe SQLite WAL, append-only events, content-addressed objects, deterministic replay |
+| **Runtime** | State machines, leases, cancellation, bounded queues, hard resource admission |
+| **Workspace** | Exact identity, dirty-state capture, AER-owned isolated Git worktrees |
+| **Execution** | Typed bounded process execution and environment fingerprinting |
+| **Engineering** | Intent + Research + Engineering IR |
+| **Knowledge** | Repository Intelligence 2.0 and the Context Economy Engine |
+| **Verification** | Proof-carrying independent verification |
+| **Providers** | Resilience, cost routing, truthful telemetry, delegated onboarding |
+| **Horizon** | Long-horizon engineering state and recovery |
+| **Parallelism** | Bounded parallel execution with isolated worktrees and integration verification |
+| **Authority** | AER-owned permission policy and typed ToolBroker foundations |
 
-The repository is not claiming that the provider gate is complete. An earlier live Claude acceptance matrix exposed an exact-definition retrieval defect: a task asking for `ArchitectureContextCapsule::compile`'s `version` received a Context Pack that stopped before the actual `version: 3` assignment.
-
-That defect is repaired inside RI2 + Context Economy: symbols carry their enclosing definition scope so a qualified `Container::name` resolves exactly, identifiers a task names explicitly are reserved as mandatory verbatim coverage before discretionary selection, and coverage that cannot be established fails closed instead of shipping a partial span. The rerun live matrix passed all six tasks on both profiles, and the AER authority split was promoted to the production delegated Claude transport.
-
-The gate nevertheless stays open: delegated provider calls still run as ordinary host processes, which is not the strong sandbox the provider contract requires.
-
-See:
-
-- [`docs/45_PROVIDER_AUTH_CONTEXT_PERMISSION_AND_TOOL_RUNTIME.md`](docs/45_PROVIDER_AUTH_CONTEXT_PERMISSION_AND_TOOL_RUNTIME.md)
-- [`docs/46_PROVIDER_CONTEXT_ECONOMICS_BENCHMARK.md`](docs/46_PROVIDER_CONTEXT_ECONOMICS_BENCHMARK.md)
-- [`docs/47_PROVIDER_AUTHORITY_SPLIT_ACCEPTANCE.md`](docs/47_PROVIDER_AUTHORITY_SPLIT_ACCEPTANCE.md)
+---
 
 ## Provider runtime
 
-Provider authentication and transport are deliberately separated from AER authority.
+Authentication, transport, model context and tool authority are four separate trust decisions. AER keeps them separate.
 
-Available product commands include:
+| Provider | Posture |
+|---|---|
+| **Claude Code** | Delegated authenticated calls supported under AER isolation controls. Current target-machine live-validation provider. |
+| **Codex** | Delegated adapter, login and smoke implemented. Executable and account availability is machine-dependent. |
+| **Gemini CLI** | Discovery and login supported. Delegated calls **fail closed** — its OAuth/user-state boundary cannot yet be separated from provider-local behavior strongly enough. |
+
+Vendor-owned login stays vendor-owned. `everything` does not scrape or copy consumer OAuth refresh secrets, and it does not treat a provider's own configuration as AER authority.
 
 ```text
 everything providers
@@ -56,32 +108,57 @@ everything provider smoke <provider> --json --prompt "..."
 everything provider benchmark <provider> --runs 3 --json
 ```
 
-Current posture:
+### Authority split — in production for Claude
 
-- **Claude Code:** delegated authenticated smoke is supported under AER isolation controls and is the current target-machine live-validation provider.
-- **Codex:** delegated adapter/login/smoke support is implemented; executable/account availability is local-machine dependent.
-- **Gemini CLI:** discovery/login is supported, but delegated smoke currently fails closed because its delegated OAuth/user-state boundary cannot yet be separated from provider-local behavior/configuration state strongly enough.
+A controlled cache-attribution lab rejected the obvious explanation first: stabilizing the scratch working directory did **not** materially improve cache reuse. What did was replacing the vendor's generic coding-agent preset with an AER-owned constitutional authority while keeping evidence in the data layer.
 
-Vendor-owned login remains vendor-owned. `everything` does not scrape or copy consumer OAuth refresh secrets.
+That split is now how every production delegated Claude request is built. Tools stay disabled, permission mode stays `plan`, provider-local settings, hooks, skills, memory and MCP are not inherited, and sessions are not persisted. `--bare` is deliberately unused: it would bypass vendor-owned delegated authentication and hand the session shell and edit tools.
 
-### Authority split, in production for Claude
+It was promoted because the live acceptance matrix passed on **correctness, adversarial authority defense and measurement validity** — not because it is cheaper.
 
-A controlled Claude cache-attribution lab showed that merely stabilizing the scratch working directory did not materially improve cache reuse. Replacing the generic Claude Code preset with an AER-owned constitutional system authority, while keeping repository/task evidence in the user/data layer, substantially reduced provider input and cost.
+**Measured, same canonical probe, target Windows:**
 
-That split is now how every production delegated Claude request is built:
+| Dimension | Retired vendor preset | Production authority split |
+|---|---|---|
+| Exact main-loop input | ~11.2k tokens | **7,144 tokens** (spread 0) |
+| Fresh input | near zero | 2 tokens |
+| Cache creation | ~6.9–7.1k | 4,272 |
+| Cache read | ~4.2k | 2,870 |
+| Provider-reported cost | ~$0.0466–0.0536 / call | **$0.029039 / call** |
+| Model-visible digest | stable | stable |
 
-```text
-SYSTEM   stable AER constitutional core + delegated transport policy
-USER     RI2 / Context Economy evidence + user objective
+Cache-read tokens fell alongside everything else because the whole request is smaller. A lower cache-read count is not a regression when more total input was removed than was lost from reads — and cache ratios are never treated as an engineering-quality score.
+
+---
+
+## Quickstart
+
+**Prerequisites** — Git · `rustup` · MSVC build tools with the native x64 C++ toolchain.
+
+```powershell
+git pull --ff-only
+.\scripts\verify-windows.ps1 -SkipToolchainInstall
 ```
 
-The two layers are separate typed values, so retrieved repository text cannot be concatenated into system authority. Tools stay disabled, permission mode stays `plan`, provider-local settings/hooks/skills/memory/MCP are not inherited, and sessions are not persisted.
+The verifier pins the repository's Windows MSVC toolchain, neutralizes conflicting Cargo/Rust/linker overrides, runs the locked correctness gates in an isolated target directory and builds the product. Success ends with exactly one line:
 
-It was promoted because the live acceptance matrix passed on correctness, adversarial authority defense and measurement validity — not because it is cheaper. Against the retired preset the production transport measures roughly 4.0k fewer main-loop input tokens and about 40% lower provider-reported cost per comparable call.
+```text
+everything Windows verification: PASS
+```
 
-## Interactive CLI
+Then launch it:
 
-There is no full-screen TUI. A bare interactive launch starts the deliberately small line-oriented shell:
+```powershell
+& ".\target\verify-windows-msvc\x86_64-pc-windows-msvc\debug\everything.exe"
+```
+
+---
+
+## Using it
+
+### Interactive
+
+There is no full-screen TUI, and that is deliberate. A bare launch starts a small line-oriented shell that avoids alternate-screen rendering and does no eager architecture or provider work.
 
 ```text
 everything
@@ -91,9 +168,10 @@ type /help for available commands
 ❯
 ```
 
-The shell avoids alternate-screen rendering and eager architecture/provider work. Provider discovery occurs only when provider functionality is requested.
+<table>
+<tr><td valign="top">
 
-Representative commands include:
+**Inspect**
 
 ```text
 /status
@@ -106,7 +184,13 @@ Representative commands include:
 /doctor
 /permission
 /provider ...
+```
 
+</td><td valign="top">
+
+**Shape the work**
+
+```text
 /goal <text>
 /non-goal <text>
 /constraint <text>
@@ -115,79 +199,49 @@ Representative commands include:
 /quality <text>
 /decision <text>
 /research-import <artifact.json>
-
-/help
-/quit
 ```
 
-The interface projects existing application/runtime state; it does not maintain a second UI-specific authority model.
+</td></tr>
+</table>
 
-## Headless use
+The shell projects existing application and runtime state. It does not maintain a second UI-specific authority model.
 
-The same binary supports scriptable inspection:
+### Headless
+
+The same binary is scriptable, and every inspection command speaks JSON.
 
 ```powershell
 $everything = ".\target\verify-windows-msvc\x86_64-pc-windows-msvc\debug\everything.exe"
 
-& $everything status
 & $everything status --json
 & $everything workspace --json
 & $everything intent --json
 & $everything ir --json
 & $everything research --json
 & $everything runs --json
-& $everything providers
 & $everything provider status claude --json
 & $everything doctor --json
 ```
 
-Use another repository without changing directory:
+Point it at another repository without changing directory:
 
 ```powershell
 & $everything --workspace C:\path\to\repo status
 ```
 
-## Run and verify on Windows
+---
 
-Prerequisites:
+## Verification discipline
 
-- Git;
-- `rustup`;
-- Microsoft Visual Studio Build Tools / Visual Studio with the native x64 C++ toolchain.
+Deterministic CI proves parsers, policy, context construction, permission and tool invariants, resource bounds and fail-closed behavior — with no credentials and no paid calls.
 
-Canonical verification:
-
-```powershell
-cd C:\Users\cenke\OneDrive\Desktop\everything
-git pull --ff-only
-.\scripts\verify-windows.ps1 -SkipToolchainInstall
-```
-
-The verifier pins the repository's Windows MSVC toolchain, neutralizes conflicting Cargo/Rust/linker overrides, runs the locked correctness gates and builds the product.
-
-Success ends with:
-
-```text
-everything Windows verification: PASS
-```
-
-Launch the verified binary:
-
-```powershell
-& ".\target\verify-windows-msvc\x86_64-pc-windows-msvc\debug\everything.exe"
-```
-
-## Provider acceptance on Windows
-
-The Claude authority-split matrix is intentionally separate from deterministic CI because it makes real provider calls.
-
-Inspect retrieval first without provider calls:
+Live provider acceptance is a **separate** product gate, because it makes real provider calls. Inspect what retrieval selected before paying for anything:
 
 ```powershell
 .\scripts\run-provider-acceptance-windows.ps1 -Runs 2
 ```
 
-Then, only when retrieval is valid:
+Then, only when the selected evidence is valid:
 
 ```powershell
 $out = Join-Path $env:TEMP "aer-provider-acceptance.json"
@@ -196,26 +250,40 @@ $out = Join-Path $env:TEMP "aer-provider-acceptance.json"
     Tee-Object -FilePath $out
 ```
 
-The live matrix compares the production AER authority-split transport with a retained non-production reproduction of the retired Claude preset, on repository facts, architecture authority and an adversarial repository prompt-injection case. Economic improvement alone cannot promote a transport.
+The matrix runs repository facts, architecture authority and an adversarial repository prompt-injection case against the production transport and against a retained, clearly labelled non-production reproduction of the retired preset. Economic improvement alone cannot promote a transport, and a failing matrix is grounds for rollback, not for relabelling.
 
-## What is not claimed yet
+---
 
-`everything` does **not** currently claim:
+## What is not claimed
+
+Honesty about the boundary is part of the contract. `everything` does **not** currently claim:
 
 - Provider Runtime Productization Gate completion;
+- a strong sandbox for unrestricted provider-native agentic process execution — delegated calls still run as ordinary host processes;
 - universal exact semantic understanding for every programming language;
-- a strong sandbox for unrestricted provider-native agentic process execution;
 - that provider prompt-cache ratios are an engineering-quality score;
 - that Step 14 has started.
 
-Current blockers and the exact next action order are maintained in [`STATUS.md`](STATUS.md).
+Current blockers and the exact next-action order live in [`STATUS.md`](STATUS.md).
 
-## Architecture authority
+---
 
-Implementation follows the precedence and change discipline in `docs/00_READ_ME_FIRST.md`.
+## Architecture map
 
-High-level rule:
+Implementation follows the precedence and change discipline in [`docs/00_READ_ME_FIRST.md`](docs/00_READ_ME_FIRST.md). Documents are normative; this README is not.
 
-> models are replaceable compute; AER owns context, authority, resource budgets, execution boundaries, evidence and acceptance.
+| Document | Owns |
+|---|---|
+| [`docs/00_READ_ME_FIRST.md`](docs/00_READ_ME_FIRST.md) | Authority order and change discipline |
+| [`docs/02_ARCHITECTURE_PRINCIPLES.md`](docs/02_ARCHITECTURE_PRINCIPLES.md) | Standing architectural principles |
+| [`docs/06_REPOSITORY_INTELLIGENCE.md`](docs/06_REPOSITORY_INTELLIGENCE.md) | Repository knowledge, source and provenance model |
+| [`docs/07_CONTEXT_ECONOMY_ENGINE.md`](docs/07_CONTEXT_ECONOMY_ENGINE.md) | Bounded selection and progressive disclosure |
+| [`docs/45_PROVIDER_AUTH_CONTEXT_PERMISSION_AND_TOOL_RUNTIME.md`](docs/45_PROVIDER_AUTH_CONTEXT_PERMISSION_AND_TOOL_RUNTIME.md) | Provider authority, isolation and runtime semantics |
+| [`docs/46_PROVIDER_CONTEXT_ECONOMICS_BENCHMARK.md`](docs/46_PROVIDER_CONTEXT_ECONOMICS_BENCHMARK.md) | Context, cache and cost measurement contract |
+| [`docs/47_PROVIDER_AUTHORITY_SPLIT_ACCEPTANCE.md`](docs/47_PROVIDER_AUTHORITY_SPLIT_ACCEPTANCE.md) | Claude authority-split acceptance gate |
+| [`STATUS.md`](STATUS.md) | Current implementation truth and blockers |
+| [`DEVELOPMENT_PLAN.md`](DEVELOPMENT_PLAN.md) | The 18-step sequence and the provider gate |
 
-Passing visible tests, generating more tokens, using more agents or obtaining a cheaper provider call is not sufficient by itself. The project optimizes verified engineering outcome per unit cost.
+<div align="center">
+<sub>Built as an independent project. Not affiliated with, endorsed by, or a product of any model vendor.</sub>
+</div>
