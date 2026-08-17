@@ -604,6 +604,54 @@ impl DelegatedCliProvider {
             args.push(OsString::from(model));
         }
     }
+
+    /// The exact argv and stdin `smoke` would dispatch, for measurement only.
+    ///
+    /// Benchmarks sometimes need to spawn the vendor executable themselves — to
+    /// apply a vendor cache-policy environment variable that production
+    /// deliberately does not inherit, for instance. Exposing the production
+    /// request builder keeps such a measurement honest: the bytes under test
+    /// are the shipped ones, not a harness reconstruction that can drift.
+    /// This performs no dispatch and grants no capability of its own.
+    #[must_use]
+    pub fn measured_request_plan(
+        &self,
+        objective: &str,
+        scratch: &Path,
+    ) -> (Vec<OsString>, Vec<u8>) {
+        let plan = self.request_plan(objective, scratch);
+        (plan.args, plan.stdin)
+    }
+
+    /// Parses vendor machine output into a trace using the production parser.
+    ///
+    /// Companion to [`Self::measured_request_plan`] for the same reason: a
+    /// measurement that spawned the process itself must still be read by the
+    /// shipped parser, so telemetry semantics cannot diverge between what the
+    /// benchmark reports and what production records.
+    pub fn trace_from_machine_output(
+        &self,
+        input: &str,
+        stdout: &[u8],
+        duration_ms: u128,
+    ) -> Result<ModelIoTrace, ProviderError> {
+        let parsed = parse_provider_output(self.kind, stdout)?;
+        Ok(ModelIoTrace {
+            provider: self.kind.id().to_owned(),
+            transport: self.kind.transport().to_owned(),
+            requested_model: self.model.clone(),
+            resolved_models: parsed.resolved_models,
+            per_model_usage: parsed.per_model_usage,
+            provider_cost_usd: parsed.provider_cost_usd,
+            provider_request_id: parsed.provider_request_id,
+            architecture_context_digest: self.context.digest.clone(),
+            input: input.to_owned(),
+            output: parsed.output,
+            usage: parsed.usage,
+            duration_ms,
+            raw_event_count: parsed.raw_event_count,
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -1509,6 +1557,72 @@ mod tests {
         args.windows(2)
             .find(|pair| pair[0] == flag)
             .map(|pair| pair[1].as_str())
+    }
+
+    #[test]
+    fn the_measured_plan_is_the_dispatched_plan() {
+        // A measurement that reconstructed the request itself could quietly
+        // drift from production and publish a number about nothing shipped.
+        let adapter = DelegatedCliProvider::new(
+            DelegatedProviderKind::Claude,
+            context(),
+            Some("claude-sonnet-5".to_owned()),
+        );
+        let dispatched = adapter.request_plan("objective", Path::new("scratch"));
+        let (args, stdin) = adapter.measured_request_plan("objective", Path::new("scratch"));
+        assert_eq!(
+            args, dispatched.args,
+            "measured argv must equal dispatched argv"
+        );
+        assert_eq!(
+            stdin, dispatched.stdin,
+            "measured stdin must equal dispatched stdin"
+        );
+
+        let rendered: Vec<String> = args
+            .iter()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            flag_value(&rendered, "--system-prompt"),
+            Some(context().authority())
+        );
+        assert_eq!(flag_value(&rendered, "--model"), Some("claude-sonnet-5"));
+        assert_eq!(
+            String::from_utf8(stdin).expect("stdin is utf-8"),
+            context().user_layer("objective"),
+        );
+    }
+
+    #[test]
+    fn a_measured_trace_carries_the_same_telemetry_as_a_dispatched_one() {
+        let adapter = DelegatedCliProvider::new(
+            DelegatedProviderKind::Claude,
+            context(),
+            Some("claude-sonnet-5".to_owned()),
+        );
+        let stdout = json!({
+            "result": "answer",
+            "usage": {
+                "input_tokens": 2,
+                "cache_creation_input_tokens": 4272,
+                "cache_read_input_tokens": 2870,
+                "output_tokens": 11,
+            },
+            "total_cost_usd": 0.029_039,
+            "modelUsage": { "claude-sonnet-5": { "inputTokens": 2, "outputTokens": 11 } },
+        })
+        .to_string();
+        let trace = adapter
+            .trace_from_machine_output("objective", stdout.as_bytes(), 3_149)
+            .expect("production parser accepts production output");
+        assert_eq!(trace.provider, "claude");
+        assert_eq!(trace.requested_model.as_deref(), Some("claude-sonnet-5"));
+        assert_eq!(trace.resolved_models, vec!["claude-sonnet-5".to_owned()]);
+        assert_eq!(trace.usage.exact_observed_input_tokens(), Some(7_144));
+        assert_eq!(trace.architecture_context_digest, "digest");
+        assert_eq!(trace.duration_ms, 3_149);
+        assert_eq!(trace.input, "objective");
     }
 
     #[test]

@@ -3,6 +3,18 @@
 version = 4
 
 [[package]]
+name = "aer-bench"
+version = "0.0.1"
+dependencies = [
+ "aer-context",
+ "aer-core",
+ "aer-provider",
+ "clap",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
 name = "aer-context"
 version = "0.0.1"
 dependencies = [

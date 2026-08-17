@@ -99,7 +99,7 @@ try {
         throw "Pinned host invariant failed: expected x86_64-pc-windows-msvc.`n$RustcInfo"
     }
 
-    & $CargoPath build --quiet --locked --target $Target -p everything --bin aer-provider-acceptance
+    & $CargoPath build --quiet --locked --target $Target -p aer-bench --bin aer-provider-acceptance
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to build aer-provider-acceptance with canonical MSVC toolchain."
     }

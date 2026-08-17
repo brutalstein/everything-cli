@@ -150,7 +150,7 @@ The authority split is the production delegated Claude transport. Every producti
 - `--tools ""`, `--permission-mode plan`, `--setting-sources ""`, `--strict-mcp-config` with an empty MCP config, `--disable-slash-commands` and `--no-session-persistence` keep the call inference-only and isolated from provider-local behavior;
 - `--bare` is deliberately not used: it would bypass the vendor-owned delegated authentication architecture and grant built-in Bash/edit tools.
 
-No provider-native execution tool is exposed by this path. The retired preset framing exists only inside `tools/aer-provider-acceptance` as a labelled non-production comparator, so paired economics stay measurable without a second production request builder.
+No provider-native execution tool is exposed by this path. The retired preset framing exists only inside `tools/aer-bench` as a labelled non-production comparator, so paired economics stay measurable without a second production request builder.
 
 ### Live end-to-end product evidence
 
@@ -174,6 +174,26 @@ A repeated short-output probe (5 runs) returned an identical answer, identical m
 Canonical `provider-context-economics-v1`, 3 runs, production transport: exact main-loop input **7144** tokens (spread 0), fresh input **2**, cache creation **4272**, cache read **2870**, output 17, provider cost **$0.029039** per call, latency 3149–3202 ms, digest and resolved-model set stable, `valid: true`.
 
 Pre-promotion baseline for the same probe was ~11.2k exact input, ~4.2k cache read, ~6.9–7.1k cache creation and ~$0.0466–0.0536 per call. Cache-read tokens fell along with everything else because the request is smaller overall.
+
+### Claude Code parity pilot
+
+First cross-product measurement against the vendor Claude Code runtime on the same pinned model. Contract and full result: `docs/48_CLAUDE_CODE_PARITY_BENCHMARK.md`.
+
+36 real provider calls, `claude-sonnet-5`, Claude CLI 2.1.234, cache-on, commit `3b7ffe0`, 0 invalid samples, $1.5292 total reported cost.
+
+| Profile | Verified | Main input (median) | Cost/task | Cost/verified success |
+|---|---|---|---|---|
+| Claude Code native | 10/12 | 70,702 | $0.04372 | $0.05247 |
+| Claude Code, AER payload | 11/12 | 15,957 | $0.05273 | $0.05753 |
+| AER production | 11/12 | 7,214 | $0.03097 | **$0.03379** |
+
+Three findings that constrain what may be claimed:
+
+- in steady state the native product was **cheaper per task** than AER production ($0.02874 vs $0.02973); AER leads only on cost per verified success;
+- 4.4× fewer input tokens did not make the controlled profile cheaper than the native one, because cache writes bill above base rate and cache reads far below it — **token reduction does not imply cost reduction**;
+- the AER transport rewrites per-task evidence on every call and reuses only its 2,870-token constitutional core, so it pays full cache-write price for bytes it will send again.
+
+The pilot is 12 samples per profile in one cache mode. No statistical significance is claimed. The adversarial family did not meaningfully test the native profile, which answered two tasks with zero tool calls and therefore never read the hostile fixture. Three benchmark defects the pilot exposed are repaired in the current suite, which has not yet been rerun; `docs/48` §12 records exactly what changed.
 
 ## Closed correctness defect: exact-definition retrieval
 
@@ -238,6 +258,7 @@ Pack sizes stayed within the dynamic budget (5.4k–6.0k estimated units against
 | Production default promotion | DONE | authority split is the production delegated Claude transport |
 | Live end-to-end product validation | PASS | six real `everything provider smoke claude` scenarios, including retrieved adversarial repository evidence |
 | Post-promotion provider economics | RECORDED | `provider-context-economics-v1`, `valid: true`, 7144-token exact main-loop input, $0.029039/call |
+| Claude Code parity pilot | RECORDED, INSUFFICIENT | `claude-parity-benchmark-v1`, 36 real calls, 0 invalid; AER lowest cost per verified success; native product cheaper per task in steady state; 12 samples per profile supports no general claim |
 | Strong sandbox for provider-native agentic tool execution | **OPEN** | direct host process is not a strong sandbox |
 | Provider Productization Gate | **OPEN** | blockers above |
 | Step 14 | **BLOCKED** | gate must close first |
@@ -251,9 +272,10 @@ Pack sizes stayed within the dynamic budget (5.4k–6.0k estimated units against
 5. ~~Re-run the full live Claude authority-split matrix on the target Windows machine.~~ **Done — `claude-authority-split-acceptance-v3`, all six production contracts pass.**
 6. ~~Promote authority split to production Claude delegated transport.~~ **Done — one production request builder; the retired preset survives only as a harness comparator.**
 7. ~~Re-run the canonical provider economics benchmark after the transport change.~~ **Done — post-promotion baseline recorded above and in `docs/46` §7.2.**
-8. Establish the strong sandbox boundary required by `docs/45` §5.2 for the intended agentic surface. Direct host-process execution does not satisfy it.
-9. Close the Provider Runtime Productization Gate only after that and any other remaining acceptance requirements are satisfied.
-10. Start Step 14 only after the gate is formally closed.
+8. Rerun `claude-parity-benchmark-v1` under the revised suite (`docs/48` §12) at `--suite standard` and in both cache modes, and force the native profile to read the adversarial fixture before that family is scored. The pilot's numbers stand only for the revision that produced them.
+9. Establish the strong sandbox boundary required by `docs/45` §5.2 for the intended agentic surface. Direct host-process execution does not satisfy it.
+10. Close the Provider Runtime Productization Gate only after that and any other remaining acceptance requirements are satisfied.
+11. Start Step 14 only after the gate is formally closed.
 
 Do not skip from the present evidence directly to ContextSizer tuning, learned routing or Step 14.
 

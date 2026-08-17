@@ -231,7 +231,8 @@ Steps 1–6 are complete: exact-identifier defining-span retrieval was repaired 
 Remaining:
 
 1. calibrate ContextSizer/retrieval budgets from the §7.2 production baseline rather than from the retired §7.1 plateau;
-2. establish the strong sandbox boundary required by `45_PROVIDER_AUTH_CONTEXT_PERMISSION_AND_TOOL_RUNTIME.md` before any tool-capable delegated path is considered.
+2. establish the strong sandbox boundary required by `45_PROVIDER_AUTH_CONTEXT_PERMISSION_AND_TOOL_RUNTIME.md` before any tool-capable delegated path is considered;
+3. address the cache-reuse finding recorded in `48_CLAUDE_CODE_PARITY_BENCHMARK.md` §9.3. The production transport rewrites per-task evidence on every call, paying full cache-write price for bytes it will send again. The same document's §9.2 shows that reducing token count does not by itself reduce cost, so budget calibration must be validated against reported cost, not token count alone.
 
 Do not tune the old ~7k cache-write plateau as if it were current: it belongs to the retired vendor-preset transport.
 
@@ -239,4 +240,5 @@ Do not tune the old ~7k cache-write plateau as if it were current: it belongs to
 
 - `45_PROVIDER_AUTH_CONTEXT_PERMISSION_AND_TOOL_RUNTIME.md` — normative provider authority/runtime contract.
 - `47_PROVIDER_AUTHORITY_SPLIT_ACCEPTANCE.md` — production-candidate correctness and adversarial acceptance.
+- `48_CLAUDE_CODE_PARITY_BENCHMARK.md` — cross-product comparison against the vendor Claude Code runtime on the same model.
 - root `STATUS.md` — current implementation/gate truth.

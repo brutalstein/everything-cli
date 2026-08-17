@@ -225,7 +225,7 @@ The accepted sequence, and its outcome:
 4. merge the clean repair — done (`a7c1219`);
 5. rerun this entire live target-Windows matrix — done (§7);
 6. inspect every task's selected evidence and raw provider measurements — done;
-7. promote the authority-split transport — done; `DelegatedCliProvider` builds every production Claude request from an AER-owned system authority layer, and the retired preset survives only as a labelled non-production comparator inside `tools/aer-provider-acceptance`;
+7. promote the authority-split transport — done; `DelegatedCliProvider` builds every production Claude request from an AER-owned system authority layer, and the retired preset survives only as a labelled non-production comparator inside `tools/aer-bench`;
 8. rerun the canonical provider context-economics benchmark on the production transport — done (`46_PROVIDER_CONTEXT_ECONOMICS_BENCHMARK.md` §7.2);
 9. close the Provider Runtime Productization Gate only when all remaining normative requirements are satisfied — **not done**. The strong sandbox boundary required by `45_PROVIDER_AUTH_CONTEXT_PERMISSION_AND_TOOL_RUNTIME.md` is still open: delegated calls execute as ordinary host processes, which is not a strong sandbox.
 

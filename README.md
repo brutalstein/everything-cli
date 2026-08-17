@@ -129,6 +129,23 @@ It was promoted because the live acceptance matrix passed on **correctness, adve
 
 Cache-read tokens fell alongside everything else because the whole request is smaller. A lower cache-read count is not a regression when more total input was removed than was lost from reads — and cache ratios are never treated as an engineering-quality score.
 
+### Against Claude Code itself — pilot, not a verdict
+
+A benchmark built to be able to lose was run against the vendor Claude Code runtime on the same pinned model, with deterministic verifiers and no judge model. **36 real provider calls, 12 per profile.** That is a pilot; it settles nothing on its own.
+
+| Profile | Verified | Main input, median | Cost/task | Cost per **verified** success |
+|---|---|---|---|---|
+| Claude Code, native | 10/12 | 70,702 | $0.04372 | $0.05247 |
+| Claude Code, given AER's payload | 11/12 | 15,957 | $0.05273 | $0.05753 |
+| AER production | 11/12 | **7,214** | $0.03097 | **$0.03379** |
+
+What the same run shows against AER, recorded because it is true:
+
+- once its cache is warm, **native Claude Code was cheaper per task** than AER production ($0.02874 vs $0.02973); AER leads only per verified success;
+- the middle profile processed 4.4× fewer tokens than the native one and still cost more, because cache writes bill above base rate and reads far below it. **Sending less context does not by itself cost less** — and AER's own transport rewrites its per-task evidence on every call.
+
+Full contract, per-family results, the three benchmark defects this pilot exposed, and the reasons it cannot support a general cost claim: [`docs/48`](docs/48_CLAUDE_CODE_PARITY_BENCHMARK.md). Raw receipt: [`benchmarks/claude-parity`](benchmarks/claude-parity).
+
 ---
 
 ## Quickstart
@@ -262,6 +279,9 @@ Honesty about the boundary is part of the contract. `everything` does **not** cu
 - a strong sandbox for unrestricted provider-native agentic process execution — delegated calls still run as ordinary host processes;
 - universal exact semantic understanding for every programming language;
 - that provider prompt-cache ratios are an engineering-quality score;
+- that it is cheaper than Claude Code in general — a 12-sample pilot in one cache mode cannot carry that, and the native product won a metric in it;
+- that fewer input tokens implies lower cost — the same pilot shows it does not;
+- that it resists prompt injection better than Claude Code — that comparison was not validly measured;
 - that Step 14 has started.
 
 Current blockers and the exact next-action order live in [`STATUS.md`](STATUS.md).
@@ -281,6 +301,7 @@ Implementation follows the precedence and change discipline in [`docs/00_READ_ME
 | [`docs/45_PROVIDER_AUTH_CONTEXT_PERMISSION_AND_TOOL_RUNTIME.md`](docs/45_PROVIDER_AUTH_CONTEXT_PERMISSION_AND_TOOL_RUNTIME.md) | Provider authority, isolation and runtime semantics |
 | [`docs/46_PROVIDER_CONTEXT_ECONOMICS_BENCHMARK.md`](docs/46_PROVIDER_CONTEXT_ECONOMICS_BENCHMARK.md) | Context, cache and cost measurement contract |
 | [`docs/47_PROVIDER_AUTHORITY_SPLIT_ACCEPTANCE.md`](docs/47_PROVIDER_AUTHORITY_SPLIT_ACCEPTANCE.md) | Claude authority-split acceptance gate |
+| [`docs/48_CLAUDE_CODE_PARITY_BENCHMARK.md`](docs/48_CLAUDE_CODE_PARITY_BENCHMARK.md) | Cross-product comparison against Claude Code |
 | [`STATUS.md`](STATUS.md) | Current implementation truth and blockers |
 | [`DEVELOPMENT_PLAN.md`](DEVELOPMENT_PLAN.md) | The 18-step sequence and the provider gate |
 

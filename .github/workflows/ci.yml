@@ -105,6 +105,10 @@ jobs:
             echo "retired TUI dependency returned to the everything dependency graph" >&2
             exit 1
           fi
+          if cargo +1.97.1 tree --locked -p everything | grep -E '^\S*aer-bench'; then
+            echo "measurement harness entered the shipped binary's dependency graph" >&2
+            exit 1
+          fi
           test ! -e crates/aer-cli/src/ui.rs
           test ! -e crates/aer-cli/src/app.rs
           test ! -e crates/aer-cli/src/launcher.rs

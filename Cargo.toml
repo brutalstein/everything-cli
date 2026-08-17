@@ -13,6 +13,7 @@ members = [
     "crates/aer-context",
     "crates/aer-core",
     "crates/aer-cli",
+    "tools/aer-bench",
     "tools/aer-doc-check",
     "tools/aer-phase0-check",
 ]

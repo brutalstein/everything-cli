@@ -295,6 +295,6 @@ mod tests {
         assert_eq!(report.accepted_adrs, 9);
         assert_eq!(report.core_schemas, 15);
         assert_eq!(report.examples, 3);
-        assert_eq!(report.manifest_entries, 75);
+        assert_eq!(report.manifest_entries, 76);
     }
 }
