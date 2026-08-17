@@ -7,6 +7,12 @@ on:
     paths:
       - .aer-dev/context-economy-v2.patch
       - .github/workflows/context-economy-v2-apply.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .aer-dev/context-economy-v2.patch
+      - .github/workflows/context-economy-v2-apply.yml
 
 permissions:
   contents: write
