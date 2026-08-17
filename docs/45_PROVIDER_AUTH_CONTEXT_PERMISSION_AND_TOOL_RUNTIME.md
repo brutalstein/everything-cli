@@ -1,13 +1,13 @@
 # Provider Authentication, Model Context, Permission and Tool Runtime
 
 **Status:** Normative product/runtime specification  
-**Scope:** production model onboarding, delegated OAuth sessions, provider transports, architecture context, tool authority, permission UX, model I/O evidence, and live smoke verification.
+**Scope:** production model onboarding, delegated OAuth sessions, provider transports, architecture context, tool authority, permission UX, model I/O evidence and live acceptance.
 
 ## 1. Objective
 
-`everything` must be able to use real coding-model subscriptions and APIs without turning provider CLIs into the product architecture.
+`everything` uses real coding-model subscriptions and APIs without turning provider CLIs into product architecture.
 
-The system therefore separates four concerns that are often incorrectly collapsed:
+AER keeps four concerns separate:
 
 ```text
 authentication session
@@ -19,379 +19,366 @@ model context
 tool / side-effect authority
 ```
 
-A provider can authenticate the user and generate model output while AER still owns what repository state the model sees, which tools exist, what side effects are possible, and what evidence is required before acceptance.
+A provider may authenticate the user and produce model output. AER still owns what repository state the model sees, which tools exist, what side effects are possible, which resource budget applies and what evidence is required before acceptance.
 
-The first production target is OpenAI Codex, Anthropic Claude Code, and Google Gemini CLI. Provider-specific behavior lives behind adapters and MUST NOT leak into Engineering IR, task state, verification, or permission semantics.
+Provider-specific behavior MUST NOT leak into Engineering IR, task state, verification or permission semantics.
 
----
+## 2. Delegated authentication: vendor owns the secret
 
-## 2. Delegated OAuth: vendor owns the secret
-
-For consumer/developer subscription login, prefer the provider's documented login implementation rather than copying its OAuth token into AER.
-
-```text
-user
-  │
-  ├─ everything provider login codex
-  │      └─ official Codex ChatGPT OAuth / device-code flow
-  │
-  ├─ everything provider login claude
-  │      └─ official Claude Code browser auth flow
-  │
-  └─ everything provider login gemini
-         └─ official Gemini CLI Sign in with Google flow
-```
+For subscription login, prefer the provider's supported authentication implementation instead of copying its OAuth secret into AER.
 
 Rules:
 
-1. The vendor process owns browser authorization, refresh, expiry handling and its credential cache/keychain entry.
-2. AER MUST NOT scrape browser cookies, reverse-engineer consumer OAuth endpoints, copy refresh tokens, or parse undocumented credential databases.
-3. AER stores only non-secret provider/profile observations that are needed for routing/audit.
-4. An authentication-status command is advisory. The smallest real model call is the authoritative local connectivity check because a cached credential can still be invalid server-side.
-5. API-key/direct-API profiles remain valid future transports, but are separate credential sources and never silently replace a requested subscription login.
-6. Provider logout/revocation behavior is exposed only when the vendor has a supported operation. Unsupported operations are reported, not fabricated.
+1. the vendor process owns browser authorization, refresh, expiry and credential/keychain storage;
+2. AER MUST NOT scrape browser cookies, reverse-engineer consumer OAuth endpoints, copy refresh tokens or parse undocumented credential stores;
+3. AER stores only non-secret provider/profile observations required for routing/audit;
+4. authentication status is advisory; the smallest allowed real model call is the authoritative connectivity check;
+5. API-key/direct-API profiles are distinct credential sources and never silently replace a requested delegated subscription flow;
+6. unsupported logout/revocation operations are reported rather than fabricated.
 
-### 2.1 Current provider login semantics
+Current login surface:
 
-| Provider | Local login entry | Headless alternative | Secret owner |
-|---|---|---|---|
-| Codex | ChatGPT browser OAuth | official device-code login | Codex |
-| Claude Code | browser `auth login` | provider-supported non-interactive credentials where explicitly configured | Claude Code |
-| Gemini CLI | interactive `Sign in with Google` browser flow | API key / Vertex credentials when explicitly selected | Gemini CLI / Google |
-
-Gemini currently requires its interactive authentication selector for Google-account sign-in. `everything provider login gemini` launches that official UX rather than pretending a separate stable login command exists.
-
----
+```text
+everything provider login codex
+everything provider login codex --device
+everything provider login claude
+everything provider login gemini
+```
 
 ## 3. Provider transport is independent of authentication
 
-Authentication answers **who may call the provider**. Transport answers **how AER exchanges typed model events**.
+Authentication answers who may call the provider. Transport answers how AER exchanges typed model events.
 
-Target transport order:
+Current delegated vertical slice:
 
-1. structured provider control protocol / SDK that allows AER to mediate tools and approvals;
-2. supported headless machine-readable CLI mode;
-3. direct provider API when explicitly configured and policy-eligible.
-
-Current productization vertical slice:
-
-| Provider | Initial transport | Machine output | Smoke authority |
+| Provider | Initial transport | Machine output | Current smoke posture |
 |---|---|---|---|
-| Codex | `codex exec` | JSONL events | ephemeral, read-only sandbox, headless approval-never |
-| Claude Code | `claude -p` | JSON | built-in tools removed, plan mode, no session persistence |
-| Gemini CLI | headless prompt | JSON | plan/read-only mode in an empty AER temp workspace |
+| Codex | `codex exec` | JSONL | read-only/headless AER-controlled call when local executable/auth is available |
+| Claude Code | `claude -p` | JSON | delegated smoke supported under AER isolation controls |
+| Gemini CLI | headless prompt capability | JSON | delegated smoke currently blocked fail-closed |
 
-Longer-term preferred transports are Codex app-server, Claude Agent SDK, and Gemini ACP because those protocols expose richer structured session/tool/approval control. The headless CLI slice exists to produce a small real working product now; it MUST NOT become a permanent reason to parse decorative terminal text.
+Gemini remains discoverable/login-capable, but its current delegated OAuth/user state is not separable enough from provider-local behavior/configuration state for AER to claim a production-safe delegated smoke. AER does not work around that by copying OAuth secrets.
 
-All vendor subprocesses use fixed AER-constructed argv. Model output never supplies the executable or provider-control flags.
+Longer-term structured provider protocols/SDKs remain preferred when they improve tool/approval/session mediation. A headless CLI is a transport adapter, not an architecture authority.
+
+All vendor subprocesses use AER-constructed argv. Model output does not choose provider-control flags.
 
 ### 3.1 Provider-local behavior isolation
 
-Delegated authentication and delegated behavior are different trust decisions. AER MAY reuse a vendor-owned authenticated session, but it MUST NOT silently inherit user-level provider hooks, skills, memory, project instructions, permission bypasses or other behavioral configuration as control-plane authority.
+Delegated authentication and delegated behavior are different trust decisions.
 
-A real provider call is acceptable only when the effective behavior is attributable to the AER request envelope and AER policy. If a headless CLI cannot provide that isolation reliably, the adapter MUST move to an isolated provider configuration/profile or the provider's structured SDK/control protocol before agentic execution is accepted. A provider-local hook blocking or redirecting a read-only AER smoke is a typed isolation failure, not a successful model answer.
+AER MAY reuse a vendor-owned authenticated session, but MUST NOT silently inherit user-level/provider-local:
 
----
+- hooks;
+- skills;
+- memory;
+- project instructions;
+- MCP configuration;
+- permission bypasses;
+- behavioral configuration;
 
-## 4. Every model receives the same architecture identity
+as control-plane authority.
 
-Provider-native files (`AGENTS.md`, `CLAUDE.md`, `GEMINI.md`) are compatibility/bootstrap surfaces. They are useful but not sufficient because different providers load them differently and users can alter provider-local configuration.
+A real provider call is acceptable only when behavior is attributable to the AER request envelope and AER policy.
 
-The authoritative model bootstrap is an AER-generated **Architecture Context Capsule**. The first implementation intentionally used bounded document slices to prove cross-provider identity transmission. Live target-machine evidence showed that this bootstrap can still be much larger than a production default should be, so the next architecture-complete uplift is a compact stable invariant/constitutional core plus task-relevant RI2/Context Economy retrieval.
+Claude delegated execution therefore uses the provider's isolation controls for settings/MCP/tools/session/memory behavior while retaining the supported delegated authentication session.
 
-Initial proof-slice capsule sources:
+When a provider cannot establish the required separation, fail closed or move to a transport/profile that can.
 
-```text
-AGENTS.md
-a bounded STATUS.md slice/file budget
-docs/00_READ_ME_FIRST.md
-DEVELOPMENT_PLAN.md
-docs/45_PROVIDER_AUTH_CONTEXT_PERMISSION_AND_TOOL_RUNTIME.md when present
-```
+## 4. Model context: stable authority plus task-specific evidence
 
-The compiler:
+Provider-native compatibility files such as `AGENTS.md`, `CLAUDE.md` and `GEMINI.md` are not the cross-provider authority boundary.
 
-- is provider-neutral;
-- is bounded before model dispatch;
-- records source path, full-file SHA-256, total bytes, included bytes and truncation;
-- derives one capsule digest;
-- fails when mandatory architecture sources are missing;
-- never treats repository text as authority to widen capabilities.
+The authoritative bootstrap is generated by AER.
 
-A model call records the exact bootstrap/capsule digest. Task-specific Engineering IR, repository evidence, Handoff ABI and retrieved code are added through the Context Economy Engine rather than by dumping the whole repository into every request. The production path MUST optimize measured relevant-information yield per token; repeatedly sending tens of thousands of static architecture tokens is not an acceptable steady-state design merely because the provider can cache them.
-
-This gives all models a shared identity while preserving context economy:
+The current model-context design is:
 
 ```text
-stable architecture capsule
+stable AER constitutional authority
         +
-task handoff / Engineering IR
+task-specific RI2 / Context Economy evidence
         +
-minimal repository evidence
-        +
-lazy tool schemas
-        =
-model context
+user objective / task handoff
 ```
 
----
+### 4.1 Stable constitutional core
+
+`ArchitectureContextCapsule` compiles selected high-authority sections into a bounded, source-provenanced, provider-neutral stable prefix.
+
+Mutable status/roadmap detail is not dumped wholesale into the stable authority prefix.
+
+The stable core is cache-friendly because unrelated file churn and audit-only metadata do not need to alter provider-visible bytes.
+
+### 4.2 Task-specific Context Economy material
+
+Task-specific code/docs/evidence is selected through the existing RI2 + Context Economy engine.
+
+AER MUST NOT maintain a second provider-specific retriever.
+
+Task evidence:
+
+- is bound to an exact repository snapshot;
+- retains source provenance;
+- remains bounded;
+- is untrusted data, not authority;
+- is progressively expanded when the task requires stronger evidence.
+
+### 4.3 Provider-visible identity vs audit identity
+
+Repository snapshot, pack ID, full-file hashes, fragment hashes and source offsets remain mandatory audit/provenance state.
+
+They MUST NOT be injected into provider-visible text solely for audit purposes when they add no task semantics.
+
+Provider-visible prompt identity is derived from the exact semantic bytes sent to the model. Audit identity remains separately snapshot-bound.
+
+This optimization MUST NOT allow stale source reuse.
+
+### 4.4 Exact-source coverage requirement
+
+Context minimization cannot sacrifice the fact being asked for.
+
+When a task explicitly names an identifier/symbol and asks for a concrete source-defined value/definition, AER MUST either:
+
+1. include the exact defining source span that contains the requested fact; or
+2. fail closed/abstain because required semantic coverage cannot be established.
+
+A nearby structural span in the correct file is not sufficient merely because path/symbol relevance is high.
+
+Required exact evidence must not be evicted by lower-value context candidates once the task declares that coverage necessary.
+
+The 2026-08-17 authority-split acceptance matrix exposed this requirement concretely: a capsule-version query selected `model_context.rs` but omitted the actual `version: 3` assignment. This retrieval defect must be repaired in RI2/Context Economy before the provider gate closes.
 
 ## 5. AER owns tools; providers are intelligence resources
 
 Provider-native file/shell tools MUST NOT become an alternate authority path around AER.
 
-The internal Tool ABI in `14_TOOLS_MCP_A2A_AND_SKILLS.md` remains canonical. MCP, provider tool formats and agent protocols are adapters.
+The internal Tool ABI remains canonical; provider tool formats, MCP and agent protocols are adapters.
 
-### 5.1 Premium tool-runtime principles
+Implemented initial hot-path capabilities include bounded:
 
-The runtime should be faster and more precise than a generic “give the model a shell” loop:
+- `fs.read`;
+- `fs.list`;
+- `exec.run`;
+- `tool.search`;
+- `tool.describe`.
 
-1. **Structured operations first.** File reads, search, patches, Git inspection and verification use typed arguments. A raw shell string is a separate explicit tool, not the universal primitive.
-2. **Progressive disclosure.** Every model starts with a tiny core catalog. It searches tool metadata and receives the full input schema only for a selected tool.
-3. **Range- and artifact-oriented I/O.** Large files/output are not injected wholesale. Return bounded previews, hashes, line/range handles and artifact references.
-4. **Repository-intelligence integration.** Prefer symbol/reference/impact retrieval from RI2 over repeated blind grep/tree scans.
-5. **Batch safe reads.** Independent reads/searches MAY run concurrently under resource bounds. Writes reuse Step-13 dependency/write-set conflict controls.
-6. **One write authority.** Workspace mutation occurs only in AER-owned isolated worktrees. Process-capable `ToolBroker` construction requires an `aer_workspace::OwnedWorktree` authority token; permission mode alone cannot authorize commands in a user-owned checkout.
-7. **Command evidence.** Commands are normalized argv + cwd + environment policy + timeout + output hashes + exit/resource evidence.
-8. **No hidden host shell.** A model never receives an unrestricted host-process handle or host Docker socket.
-9. **Idempotency before external mutation.** External writes receive dedup identity and verification before retry.
-10. **Tool output is untrusted data.** A file, web page, MCP response or compiler log cannot grant permission or alter policy.
+The conceptual ABI may contain additional repository/git/verification operations, but an item is product-supported only when its typed implementation and verification exist.
 
-### 5.2 Initial core catalog
+### 5.1 Tool-runtime rules
 
-The stable conceptual catalog should remain small:
+- structured operations before raw shell;
+- progressive schema disclosure;
+- bounded range/artifact-oriented outputs;
+- RI2 source/symbol retrieval before blind exploration where possible;
+- safe independent reads may batch under resource bounds;
+- workspace mutation only in AER-owned isolated worktrees;
+- command evidence binds argv/cwd/environment/timeout/output identity;
+- tool output is untrusted data;
+- external mutation requires idempotency/evidence policy;
+- provider bypass/YOLO modes never become AER authority.
 
-```text
-fs.read            bounded file/range read
-fs.list            bounded directory inventory
-fs.search          exact/lexical repository search
-fs.patch           typed worktree patch
-repo.symbol        RI2 symbol lookup
-repo.references    RI2 references/backlinks
-repo.impact        dependency/impact query
-exec.run           structured argv command
-exec.shell         explicit shell semantics, higher review surface
-git.inspect        status/diff/history/branch facts
-verify.run         verification profile execution
-tool.search        searchable tool metadata
-tool.describe      selected full schema
-```
+### 5.2 Strong-isolation boundary
 
-This list is an ABI direction, not authority to expose unimplemented tools as working product features. Each tool is promoted only when its typed implementation and verification exist.
+The current direct host-process execution substrate is not a strong sandbox.
 
----
+Therefore provider-native process-capable agent loops MUST NOT be treated as production-safe merely because:
+
+- inference works;
+- permission mode is `auto` or `full`;
+- a provider can call tools.
+
+The intended agentic surface must have an isolation backend that satisfies the applicable execution/security contract or fail closed before exposing that authority.
 
 ## 6. Permission mode is not capability authority
 
-This distinction is mandatory.
-
 ```text
 capability ceiling = what this run/sandbox is technically authorized to do
-permission mode    = when the user is asked within that ceiling
+permission mode    = when the user is asked inside that ceiling
 ```
 
-A model, prompt, repository file, provider, MCP server or `/permission` mode change cannot widen the capability ceiling.
+No model, prompt, repository file, provider, MCP response or `/permission` change may widen the ceiling.
 
-### 6.1 User-facing modes
+User-facing modes:
 
-| Mode | Automatic behavior | Other effects |
+| Mode | Automatic behavior | Remaining behavior |
 |---|---|---|
 | `plan` | pure reads | non-read actions denied |
-| `default` | pure reads | every other eligible effect asks |
-| `auto` | reads + isolated worktree edits + local commands | network/external/credential effects ask |
-| `full` | every effect already inside the current capability ceiling | no prompt-driven privilege elevation |
+| `default` | pure reads | other eligible effects ask |
+| `auto` | reads + isolated-worktree edits + eligible local commands | higher-impact effects ask |
+| `full` | all effects already inside the existing ceiling | no prompt-driven privilege elevation |
 
-The default interactive mode is `default`.
+`full` is maximum autonomy inside established authority, not “disable security”.
 
-`full` means **maximum autonomy inside the established sandbox/run authority**, not “disable security”. The ordinary developer ceiling intentionally excludes `privileged`; selecting `full` cannot acquire it.
+Explicit session deny overrides every mode.
 
-Explicit session deny rules override every mode, including `full`.
-
-### 6.2 Interactive command
-
-```text
-/permission
-/permission plan
-/permission default
-/permission auto
-/permission full
-/permission allow <effect>
-/permission deny <effect>
-/permission reset <effect>
-```
-
-The first implementation is session-local. Durable project/organization defaults belong in the Configuration and Policy Model after schema/policy promotion; they MUST NOT be persisted ad hoc in shell history or provider config.
-
-### 6.3 Permission request object
-
-A non-read action that needs a decision must produce a typed request containing at least:
-
-```text
-side_effect_class
-target
-reason
-reversible
-risk class
-scope / duration
-least-authority alternative when one exists
-```
-
-The normal UI may be concise, but this object is the audit truth.
-
----
+The typed `PermissionRequest` audit contract records side-effect class, target, reason, reversibility/risk, grant scope/duration and least-authority alternative state. Model prose does not define these security facts.
 
 ## 7. Model-call I/O receipt
 
-A user should be able to prove which intelligence resource was actually used without exposing secrets or hidden reasoning.
+A live call receipt records, when the provider reports them:
 
-A live call receipt records:
+- provider and transport;
+- requested/resolved model;
+- architecture/model-context digest;
+- task input identity;
+- final visible output;
+- fresh/uncached input tokens;
+- cache-creation tokens;
+- cache-read tokens;
+- output tokens;
+- reasoning/thinking token count;
+- provider-reported cost;
+- duration;
+- provider request/session identity.
+
+Do not log OAuth tokens, API keys, credential files or hidden chain-of-thought content.
+
+Unknown dimensions remain unknown.
+
+### 7.1 Internal budget units are not provider tokens
+
+Existing AER `estimated_tokens`, `token_cost` and `selected_token_cost` are deterministic Context Economy budget units.
+
+They are not exact provider token counts.
+
+Live economics and cost accounting use provider-reported usage where available. Do not advertise a ratio between the internal estimator and provider tokenization as if it were calibrated unless a dedicated calibration policy has actually been accepted.
+
+## 8. Product surface
+
+Current provider commands include:
 
 ```text
-provider
-transport
-requested/resolved model when known
-architecture_context_digest
-user/task input identity
-final output
-uncached input token usage when provider reports it
-cache-creation and cache-read token usage when provider reports it
-output token usage and thinking/reasoning token usage when separately reported
-resolved model identity and provider-reported cost when available
-duration
-raw structured-event count/provider request id when available
-```
-
-Rules:
-
-- do not log OAuth tokens, API keys, provider credential files or secret environment values;
-- do not expose chain-of-thought or provider-internal hidden reasoning;
-- raw provider JSON MAY be retained only as bounded/redacted diagnostic evidence under explicit inspection policy;
-- normal terminal output shows the final answer plus concise usage/latency/context identity;
-- `--json` emits machine-readable receipt data.
-
-The initial real call surface is:
-
-```text
+everything providers
 everything provider status [codex|claude|gemini]
 everything provider login <provider>
 everything provider login codex --device
+everything provider logout <provider>
 everything provider smoke <provider> --show-input --prompt "..."
 everything provider smoke <provider> --json --prompt "..."
+everything provider benchmark <provider> --runs 3 --json
 ```
 
-Core CI never performs these live calls.
+Provider functionality remains lazy; ordinary `everything` startup does not eagerly spawn provider processes.
 
----
+## 9. Live smoke and live acceptance are product gates, not unit tests
 
-## 8. Live smoke is a product acceptance layer, not a unit test
+Deterministic CI verifies parsers, policy, context construction, permission/tool invariants, resource bounds and fail-closed behavior without live credentials or paid calls.
 
-Deterministic CI tests:
+Target-machine live smoke verifies:
 
-- provider alias/descriptor mapping;
-- machine-output parsers;
-- bounded capture/timeout behavior;
-- context capsule digest/bounds;
-- permission lattice and explicit-deny precedence;
-- CLI parsing;
-- no secret material in deterministic fixtures.
+1. official provider executable is available;
+2. delegated session works;
+3. provider accepts the model request;
+4. AER context reaches the provider;
+5. machine output parses;
+6. response follows AER request rather than provider-local behavior;
+7. available provider usage/model/cost dimensions remain truthful.
 
-Target-machine live smoke verifies what mocks cannot:
+A failed live call is evidence about that provider/profile/machine and must not corrupt project state.
 
-1. official vendor executable is installed;
-2. delegated OAuth/session really works on that machine;
-3. the provider accepts a model request;
-4. the architecture capsule is transmitted;
-5. machine output parses into a final answer and usage receipt;
-6. the answer is responsive to the AER request rather than redirected by provider-local hooks/skills/configuration;
-7. provider-reported cache/input/output/model/cost dimensions needed for truthful accounting are preserved when available.
+A transport-architecture candidate additionally requires the multi-task acceptance gate in `47_PROVIDER_AUTHORITY_SPLIT_ACCEPTANCE.md`.
 
-Authentication status alone cannot satisfy this gate.
+## 10. Context and cost measurement discipline
 
-A failed live smoke is evidence about the local provider/auth/transport and MUST NOT corrupt project state.
+`46_PROVIDER_CONTEXT_ECONOMICS_BENCHMARK.md` defines the canonical economics probe.
 
----
-
-## 9. Performance model
-
-Provider support must not slow ordinary local CLI interaction.
-
-- no provider process at normal `everything` startup;
-- no auth/model discovery unless a provider capability is requested;
-- no loading all provider schemas into every model call;
-- no reading all architecture docs into every prompt; the stable bootstrap should be compact and task-specific detail should come from RI2/Context Economy retrieval;
-- smoke/process output hard-bounded;
-- provider subprocess timeout hard-bounded;
-- architecture capsule compiled once per relevant source snapshot and eligible for exact-digest caching later;
-- future long-running provider protocol processes MAY be pooled only after benchmark evidence shows startup savings exceed lifecycle complexity.
-
-The first slice prefers a process-per-smoke call because it is simpler, auditable and correct. Persistent app-server/ACP/SDK sessions become the optimization path for actual agent loops.
-
----
-
-## 10. Security invariants
-
-- Vendor OAuth secrets remain outside AER normal state/context.
-- Secret environment variables are not inherited by delegated smoke subprocesses by default.
-- The model cannot alter permission mode or capability ceiling through text.
-- Provider-native tools cannot bypass the AER Tool ABI in accepted agentic execution.
-- Provider-local hooks, skills, memory and behavioral configuration cannot silently become AER authority merely because AER reuses the vendor's authenticated session.
-- Smoke runs are non-mutating and occur in an AER temp workspace.
-- External side effects require the AER side-effect classifier regardless of provider permission semantics.
-- A provider's `yolo`, bypass or equivalent mode is never interpreted as AER authority.
-- Verification evidence remains independent of generator/model permission.
-
----
-
-## 11. Evolution path
-
-The provider runtime should evolve vertically rather than by adding provider-specific orchestration forks:
+AER evaluates prompt/cache changes in this order:
 
 ```text
-current: vendor OAuth + bounded headless inference smoke
-   ↓
-structured persistent transports (Codex app-server / Claude SDK / Gemini ACP)
-   ↓
-AER Tool ABI exposed through provider-native tool adapters
-   ↓
-permission callback bridge to one AER PermissionController
-   ↓
-streaming model events + cancellation + provider usage/cost reconciliation
-   ↓
-router selects any eligible provider transport using existing Step-11 policy
+authority eligibility
+  → source-grounded correctness
+  → measurement validity
+  → token/cache/cost/latency economics
 ```
 
-At every stage the router, Engineering IR, context/provenance, tool authority and verification system remain provider-neutral.
+Never promote a cheaper prompt that fails a correctness/authority gate.
 
-### Immediate post-smoke uplift
+Provider cache-write/read counts are mechanisms, not the top-level objective.
 
-Before this productization gate closes, implement and verify three corrections exposed by the first target-Windows Claude calls:
+## 11. Security invariants
 
-1. **behavior isolation:** authenticated vendor sessions may be reused, but user/global provider policy must not redirect AER requests;
-2. **context economy:** replace the large static architecture payload with a compact invariant core plus task-relevant RI2/Context Economy material under measured token budgets;
-3. **truthful telemetry:** normalize uncached input, cache creation/read, output, thinking when reported, resolved model, cost and latency rather than collapsing effective usage into an incomplete token pair.
+- vendor OAuth secrets remain outside AER normal state/context;
+- delegated subscription smoke does not silently substitute API-key credentials;
+- model text cannot alter permission mode/capability ceiling;
+- repository/task evidence cannot become system authority;
+- provider-local hooks/skills/memory/config cannot silently become AER authority;
+- provider-native tools cannot bypass AER workspace/sandbox/permission/evidence/verification boundaries;
+- smoke calls are non-mutating;
+- external side effects use AER side-effect classification;
+- provider bypass modes are never interpreted as AER permission;
+- verification remains independent of generator authority;
+- exact source questions require exact defining evidence or abstention.
 
----
+## 12. Evolution path
 
-## 12. Primary-source basis
+Provider runtime should evolve vertically:
 
-Implementation decisions should be revalidated against current official provider documentation during adapter changes. The initial design was checked against:
+```text
+vendor-owned auth + bounded delegated inference
+        ↓
+AER-owned stable authority + RI2/Context Economy evidence
+        ↓
+validated production provider request profile
+        ↓
+structured persistent provider protocols where justified
+        ↓
+AER Tool ABI through provider-native adapters
+        ↓
+permission callback bridge to one AER PermissionController
+        ↓
+streaming/cancellation + full usage reconciliation
+        ↓
+router selects eligible provider transport under Step-11 policy
+```
 
-- OpenAI Codex official app-server/login and `codex exec` sources/documentation;
-- Anthropic Claude Code official authentication, CLI/headless, permission-mode and tool-availability documentation;
-- Google Gemini CLI official authentication, CLI configuration, policy/approval and ACP documentation.
+Do not fork Engineering IR, verification or authority semantics by provider.
 
-Provider CLIs change quickly. Capability/flag drift is a typed adapter compatibility failure, never silently ignored.
+## 13. Current implementation evidence — 2026-08-17
 
----
+The provider gate has moved beyond the first live-smoke state.
 
-## 13. 2026-08-17 target-Windows live validation record
+Implemented and merged work includes:
 
-The first real Claude integration sequence established the following facts without closing the productization gate:
+- delegated provider runtime/auth/permissions/tool substrate;
+- Windows provider/runtime fixture repairs;
+- Claude turn-limit repair;
+- hardened Claude provider-local behavior isolation;
+- compact constitutional core + RI2/Context Economy provider context;
+- schema-specific truthful provider telemetry;
+- complete typed PermissionRequest audit fields;
+- Gemini delegated smoke fail-closed isolation decision;
+- provider-visible cache identity separated from audit-only provenance;
+- canonical context-economics benchmark;
+- controlled Claude cache-attribution lab;
+- Claude authority-split multi-task acceptance matrix;
+- deterministic Git-backed shadow workspace for uncontaminated acceptance retrieval.
 
-- Claude Code `2.1.233` was discovered as authenticated through a Claude.ai Pro session.
-- A first Opus 5 call reached the provider and reported approximately `21861 ms` API duration, `32563` cache-creation input tokens, `1536` output tokens and `156` thinking tokens, but AER's redundant `--max-turns 1` caused Claude Code to terminate with `terminal_reason=max_turns`; PR #8 removed that cap.
-- After the repair, a target-Windows Claude print-mode call completed and AER parsed a final machine-readable answer; the observed AER trace reported `43321 ms`, `2576` output tokens and one raw event.
-- The answer was not acceptable: user/global Claude Code DeepWork behavior redirected the explanatory AER prompt into its own gate response. This proves transport/authentication/inference/parsing but fails provider-behavior isolation and response-relevance acceptance.
-- Codex discovery currently resolves a local PATH entry that fails as a Win32 executable (`os error 193`); Gemini CLI was unavailable on that target machine. These are local provider-availability findings, not fabricated provider failures.
+The controlled cache-attribution lab rejected rotating CWD as the primary cache-write cause and showed a large input/cost reduction when AER owns the Claude system authority.
 
-Therefore the gate remains OPEN. Step 14 stays blocked until behavior isolation, compact contextual bootstrap and complete usage telemetry are implemented and a clean target-machine real-model call satisfies the normative acceptance criteria above.
+The latest live acceptance matrix then passed five of six tasks for both profiles and passed the adversarial authority case. The sixth task failed for both profiles because Context Economy selected the correct source file but omitted the exact defining `version: 3` span.
+
+Therefore:
+
+- authority split remains the leading Claude production candidate;
+- it is not production-default yet;
+- exact-definition retrieval is the immediate correctness blocker;
+- the full live matrix must be rerun after that repair;
+- Step 14 remains blocked;
+- strong sandbox work remains necessary before process-capable provider-native agentic execution is accepted.
+
+## 14. Primary-source revalidation
+
+Provider adapters depend on fast-moving external CLIs/protocols. During adapter changes, revalidate behavior against current official provider documentation/source.
+
+Flag/capability drift is a typed compatibility failure and must not be silently ignored.
+
+## 15. Related contracts
+
+- `06_REPOSITORY_INTELLIGENCE.md` — repository knowledge and source/provenance model.
+- `07_CONTEXT_ECONOMY_ENGINE.md` — bounded selection and progressive disclosure.
+- `13_EXECUTION_SANDBOX_AND_TOOL_RUNTIME.md` — execution isolation.
+- `14_TOOLS_MCP_A2A_AND_SKILLS.md` — Tool ABI and external adapters.
+- `20_OBSERVABILITY_AND_COST_ACCOUNTING.md` — observability/cost semantics.
+- `46_PROVIDER_CONTEXT_ECONOMICS_BENCHMARK.md` — context/cache measurement.
+- `47_PROVIDER_AUTHORITY_SPLIT_ACCEPTANCE.md` — Claude production-candidate acceptance.
+- root `STATUS.md` — current implementation/gate truth.
