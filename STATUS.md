@@ -6,8 +6,8 @@
 **Current phase:** Inter-step Provider Runtime Productization Gate  
 **Current numbered position:** Steps 01–13 COMPLETE; Step 14 BLOCKED  
 **Verified runtime baseline before this documentation refresh:** `d6e3d8ef17597e237a86171d819ba21723ef4980`  
-**Latest authoritative repository CI:** `foundation-ci` run `32029479851` / #314 — SUCCESS on merged `main`  
-**Repository health:** CI GREEN; no open pull requests or open issues at this status refresh  
+**Verified repository CI before this documentation refresh:** `foundation-ci` run `32029479851` / #314 — SUCCESS on merged `main`  
+**Repository health at this documentation refresh:** CI GREEN; no open pull requests or open issues before the documentation PR  
 **Provider gate:** OPEN  
 **Immediate engineering blocker:** exact-identifier / exact-definition retrieval can select a nearby source span while omitting the defining value; production Claude authority-split promotion is therefore NOT yet accepted.
 
