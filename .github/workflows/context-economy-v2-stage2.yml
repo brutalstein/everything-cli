@@ -1,0 +1,46 @@
+name: Context Economy V2 Stage2
+
+on:
+  push:
+    branches:
+      - agent/context-economy-v2-stage2
+    paths:
+      - crates/aer-provider/src/context_assembly.rs
+      - crates/aer-provider/src/cognitive.rs
+      - crates/aer-core/src/edit_abi.rs
+      - crates/aer-core/src/task_working_set.rs
+      - crates/aer-repo/src/ri2/capsule.rs
+      - .aer-dev/stage2-export.py
+      - .github/workflows/context-economy-v2-stage2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/context-economy-v2-stage2
+          fetch-depth: 0
+      - name: Export staged modules
+        run: python3 .aer-dev/stage2-export.py
+      - name: Format
+        run: cargo +1.97.1 fmt --all
+      - name: Lint focused packages
+        run: cargo +1.97.1 clippy --locked -p aer-provider -p aer-core -p aer-repo --all-targets -- -D warnings
+      - name: Test focused packages
+        run: cargo +1.97.1 test --locked -p aer-provider -p aer-core -p aer-repo --all-targets
+      - name: Commit validated exports
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .aer-dev
+          rm -f .github/workflows/context-economy-v2-stage2.yml
+          git config user.name "aer-context-v2-bot"
+          git config user.email "aer-context-v2@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "feat(context): add assembly capsules working set and compact edits"
+          git push origin HEAD:agent/context-economy-v2-stage2
