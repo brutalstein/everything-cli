@@ -5,7 +5,7 @@
 **Internal architecture terminology:** AER  
 **Current phase:** Inter-step Provider Runtime Productization Gate  
 **Current numbered position:** Steps 01–13 COMPLETE; Step 14 BLOCKED  
-**Current `main`:** `d6e3d8ef17597e237a86171d819ba21723ef4980`  
+**Verified runtime baseline before this documentation refresh:** `d6e3d8ef17597e237a86171d819ba21723ef4980`  
 **Latest authoritative repository CI:** `foundation-ci` run `32029479851` / #314 — SUCCESS on merged `main`  
 **Repository health:** CI GREEN; no open pull requests or open issues at this status refresh  
 **Provider gate:** OPEN  
