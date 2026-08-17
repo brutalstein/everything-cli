@@ -330,7 +330,11 @@ pub(crate) fn provider_smoke(
             serde_json::to_string_pretty(&serde_json::json!({
                 "provider": trace.provider,
                 "transport": trace.transport,
-                "model": trace.requested_model,
+                "model": trace.requested_model.as_deref(),
+                "requested_model": trace.requested_model.as_deref(),
+                "resolved_models": &trace.resolved_models,
+                "provider_cost_usd": trace.provider_cost_usd.as_deref(),
+                "provider_request_id": trace.provider_request_id.as_deref(),
                 "model_context_digest": trace.architecture_context_digest,
                 "model_context_estimated_tokens": context.estimated_tokens,
                 "architecture_core": {
@@ -368,8 +372,12 @@ pub(crate) fn provider_smoke(
                 "input": trace.input,
                 "output": trace.output,
                 "usage": {
-                    "input_tokens": trace.usage.input_tokens,
+                    "fresh_input_tokens": trace.usage.input_tokens,
+                    "cache_creation_input_tokens": trace.usage.cache_creation_input_tokens,
+                    "cache_read_input_tokens": trace.usage.cache_read_input_tokens,
                     "output_tokens": trace.usage.output_tokens,
+                    "reasoning_output_tokens": trace.usage.reasoning_output_tokens,
+                    "exact_observed_input_tokens": trace.usage.exact_observed_input_tokens(),
                 },
                 "duration_ms": trace.duration_ms,
                 "raw_event_count": trace.raw_event_count,
@@ -381,17 +389,26 @@ pub(crate) fn provider_smoke(
     println!("\noutput\n------\n{}", trace.output.trim());
     println!("\ntrace");
     println!("  duration   {} ms", trace.duration_ms);
+    if !trace.resolved_models.is_empty() {
+        println!("  models     {}", trace.resolved_models.join(", "));
+    }
     println!(
-        "  tokens     in {} · out {}",
-        trace
-            .usage
-            .input_tokens
-            .map_or_else(|| "unknown".to_owned(), |value| value.to_string()),
-        trace
-            .usage
-            .output_tokens
-            .map_or_else(|| "unknown".to_owned(), |value| value.to_string())
+        "  tokens     fresh {} · cache-write {} · cache-read {} · out {} · reasoning {}",
+        display_u64(trace.usage.input_tokens),
+        display_u64(trace.usage.cache_creation_input_tokens),
+        display_u64(trace.usage.cache_read_input_tokens),
+        display_u64(trace.usage.output_tokens),
+        display_u64(trace.usage.reasoning_output_tokens),
     );
+    if let Some(total) = trace.usage.exact_observed_input_tokens() {
+        println!("  observed   {total} exact input tokens");
+    }
+    if let Some(cost) = &trace.provider_cost_usd {
+        println!("  cost       ${cost}");
+    }
+    if let Some(request_id) = &trace.provider_request_id {
+        println!("  request    {request_id}");
+    }
     println!("  events     {}", trace.raw_event_count);
     println!(
         "  context    {}",
@@ -406,6 +423,10 @@ fn parse_provider(value: &str) -> Result<DelegatedProviderKind, Box<dyn Error>> 
 
 fn short_id(value: &str) -> &str {
     value.get(..12).unwrap_or(value)
+}
+
+fn display_u64(value: Option<u64>) -> String {
+    value.map_or_else(|| "unknown".to_owned(), |value| value.to_string())
 }
 
 #[cfg(test)]

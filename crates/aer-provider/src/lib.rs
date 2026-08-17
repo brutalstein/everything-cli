@@ -46,10 +46,31 @@ pub struct ProviderRequest {
     pub response_schema: Option<serde_json::Value>,
 }
 
+/// Provider-neutral usage accounting.
+///
+/// `input_tokens` is deliberately normalized to *fresh / uncached* input. Cache
+/// creation and cache reads are separate dimensions because providers price and
+/// report them differently. Unknown values remain `None`; adapters must never
+/// fabricate zeroes or fold unrelated provider counters into these fields.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct ProviderUsage {
     pub input_tokens: Option<u64>,
+    pub cache_creation_input_tokens: Option<u64>,
+    pub cache_read_input_tokens: Option<u64>,
     pub output_tokens: Option<u64>,
+    pub reasoning_output_tokens: Option<u64>,
+}
+
+impl ProviderUsage {
+    /// Returns the observed input total only when every input dimension needed
+    /// for an exact total is known. This avoids presenting a partial counter as
+    /// total context consumption.
+    #[must_use]
+    pub fn exact_observed_input_tokens(&self) -> Option<u64> {
+        self.input_tokens?
+            .checked_add(self.cache_creation_input_tokens?)?
+            .checked_add(self.cache_read_input_tokens?)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -441,7 +462,7 @@ impl ProviderAdapter for ReferenceProvider {
 mod tests {
     use super::{
         AtomicCancellation, GatewayError, NeverCancelled, ProviderError, ProviderFailureClass,
-        ProviderGateway, ProviderRequest, ReferenceProvider, RetryPolicy,
+        ProviderGateway, ProviderRequest, ProviderUsage, ReferenceProvider, RetryPolicy,
     };
 
     fn request() -> ProviderRequest {
@@ -452,6 +473,26 @@ mod tests {
             input: "fix the fixture".to_owned(),
             response_schema: None,
         }
+    }
+
+    #[test]
+    fn usage_total_is_only_exposed_when_all_input_dimensions_are_known() {
+        let complete = ProviderUsage {
+            input_tokens: Some(11),
+            cache_creation_input_tokens: Some(7),
+            cache_read_input_tokens: Some(13),
+            output_tokens: Some(5),
+            reasoning_output_tokens: Some(3),
+        };
+        assert_eq!(complete.exact_observed_input_tokens(), Some(31));
+
+        let partial = ProviderUsage {
+            input_tokens: Some(11),
+            cache_creation_input_tokens: None,
+            cache_read_input_tokens: Some(13),
+            ..ProviderUsage::default()
+        };
+        assert_eq!(partial.exact_observed_input_tokens(), None);
     }
 
     #[test]
