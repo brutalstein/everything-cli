@@ -6,12 +6,14 @@ on:
       - agent/context-economy-v2-stage2
     paths:
       - .aer-dev/stage3-runtime-assembly.py
+      - .aer-dev/fix-stage3-transformer.py
       - .github/workflows/context-economy-v2-stage3.yml
   pull_request:
     branches:
       - feat/context-economy-v2
     paths:
       - .aer-dev/stage3-runtime-assembly.py
+      - .aer-dev/fix-stage3-transformer.py
       - .github/workflows/context-economy-v2-stage3.yml
 
 permissions:
@@ -27,6 +29,8 @@ jobs:
           fetch-depth: 0
       - name: Install pinned Rust toolchain
         run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+      - name: Narrow Stage-3 transformer boundary
+        run: python3 .aer-dev/fix-stage3-transformer.py
       - name: Apply fail-closed Stage-3 integration
         run: python3 .aer-dev/stage3-runtime-assembly.py
       - name: Format
