@@ -1,15 +1,17 @@
 use std::{
-    env,
     error::Error,
     ffi::OsString,
-    fmt, fs,
-    io::{self, Read, Write},
+    fmt, fs, io,
     path::{Path, PathBuf},
-    process::{Command, ExitStatus, Stdio},
-    thread,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant},
 };
 
+use aer_bench::{
+    HarnessError,
+    process::{ProcessSpec, executable_version, resolve_executable, run_bounded, stderr_preview},
+    shadow::TempRoot,
+    short,
+};
 use aer_core::model_context::ModelContextEnvelope;
 use clap::Parser;
 use serde_json::{Value, json};
@@ -105,7 +107,9 @@ struct Usage {
 
 impl Usage {
     fn exact_input(&self) -> Option<u64> {
-        self.fresh?.checked_add(self.write?)?.checked_add(self.read?)
+        self.fresh?
+            .checked_add(self.write?)?
+            .checked_add(self.read?)
     }
 
     fn to_json(&self) -> Value {
@@ -145,7 +149,10 @@ struct ModelUsage {
 
 impl Sample {
     fn model_names(&self) -> Vec<&str> {
-        self.models.iter().map(|model| model.name.as_str()).collect()
+        self.models
+            .iter()
+            .map(|model| model.name.as_str())
+            .collect()
     }
 
     fn pipeline(&self) -> Usage {
@@ -255,8 +262,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     let claude = resolve_executable("claude")?;
-    let claude_version = version(&claude)?;
-    let root = TempRoot::new()?;
+    let claude_version = executable_version(&claude)?;
+    let root = TempRoot::new("everything-cache-lab")?;
     let mut reports = Vec::with_capacity(SCENARIOS.len());
     for scenario in SCENARIOS {
         reports.push(run_scenario(
@@ -302,21 +309,24 @@ fn run_scenario(
                 path
             }
         };
-        let (argv, stdin) = command_plan(
-            scenario.prompt,
-            model,
-            &current,
-            &split_system,
-            &split_user,
-        );
+        let (argv, stdin) =
+            command_plan(scenario.prompt, model, &current, &split_system, &split_user);
         let started = Instant::now();
-        let output = run_bounded(claude, &argv, &cwd, stdin.as_bytes())?;
+        let output = run_bounded(&ProcessSpec {
+            executable: claude,
+            args: &argv,
+            cwd: &cwd,
+            stdin: stdin.as_bytes(),
+            env: &[],
+            timeout: TIMEOUT,
+            max_output: MAX_OUTPUT,
+        })?;
         if !output.status.success() {
             return Err(LabError::Provider {
                 scenario: scenario.name,
                 run,
                 code: output.status.code(),
-                detail: preview(&String::from_utf8_lossy(&output.stderr)),
+                detail: stderr_preview(&output),
             }
             .into());
         }
@@ -566,7 +576,9 @@ fn collect_complete<T>(
 }
 
 fn median_complete<T>(values: &[T], projection: impl FnMut(&T) -> Option<u64>) -> Option<u64> {
-    collect_complete(values, projection).as_deref().and_then(median)
+    collect_complete(values, projection)
+        .as_deref()
+        .and_then(median)
 }
 
 fn median(values: &[u64]) -> Option<u64> {
@@ -600,232 +612,9 @@ fn show(value: Option<u64>) -> String {
     value.map_or_else(|| "unknown".to_owned(), |value| value.to_string())
 }
 
-fn short(value: &str) -> &str {
-    value.get(..12).unwrap_or(value)
-}
-
-struct TempRoot {
-    path: PathBuf,
-}
-
-impl TempRoot {
-    fn new() -> Result<Self, LabError> {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|_| LabError::Clock)?
-            .as_nanos();
-        let path = env::temp_dir().join(format!(
-            "everything-cache-lab-{}-{nonce}",
-            std::process::id()
-        ));
-        fs::create_dir_all(&path)?;
-        Ok(Self { path })
-    }
-}
-
-impl Drop for TempRoot {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.path);
-    }
-}
-
-#[derive(Debug)]
-struct ProcessOutput {
-    status: ExitStatus,
-    stdout: Vec<u8>,
-    stderr: Vec<u8>,
-    truncated: bool,
-}
-
-fn run_bounded(
-    executable: &Path,
-    args: &[OsString],
-    cwd: &Path,
-    stdin: &[u8],
-) -> Result<ProcessOutput, LabError> {
-    let mut command = Command::new(executable);
-    command
-        .args(args)
-        .current_dir(cwd)
-        .env_clear()
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    inherit_environment(&mut command);
-    command.env("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "1");
-    command.env("CLAUDE_CODE_DISABLE_CLAUDE_MDS", "1");
-
-    let mut child = command.spawn()?;
-    let mut input = child.stdin.take().ok_or(LabError::MissingPipe("stdin"))?;
-    let stdout = child.stdout.take().ok_or(LabError::MissingPipe("stdout"))?;
-    let stderr = child.stderr.take().ok_or(LabError::MissingPipe("stderr"))?;
-    let stdin = stdin.to_vec();
-    let input_worker = thread::spawn(move || -> io::Result<()> {
-        input.write_all(&stdin)?;
-        input.flush()
-    });
-    let stdout_worker = thread::spawn(move || capture(stdout));
-    let stderr_worker = thread::spawn(move || capture(stderr));
-
-    let started = Instant::now();
-    let mut timed_out = false;
-    let status = loop {
-        if let Some(status) = child.try_wait()? {
-            break status;
-        }
-        if started.elapsed() >= TIMEOUT {
-            timed_out = true;
-            let _ = child.kill();
-            break child.wait()?;
-        }
-        thread::sleep(Duration::from_millis(20));
-    };
-    match input_worker.join() {
-        Ok(Ok(())) => {}
-        Ok(Err(error)) if timed_out && error.kind() == io::ErrorKind::BrokenPipe => {}
-        Ok(Err(error)) => return Err(LabError::Io(error)),
-        Err(_) => return Err(LabError::Worker("stdin")),
-    }
-    let stdout = join_capture(stdout_worker, "stdout")?;
-    let stderr = join_capture(stderr_worker, "stderr")?;
-    if timed_out {
-        return Err(LabError::TimedOut);
-    }
-    Ok(ProcessOutput {
-        status,
-        stdout: stdout.bytes,
-        stderr: stderr.bytes,
-        truncated: stdout.truncated || stderr.truncated,
-    })
-}
-
-struct Capture {
-    bytes: Vec<u8>,
-    truncated: bool,
-}
-
-fn capture(mut reader: impl Read) -> io::Result<Capture> {
-    let mut bytes = Vec::with_capacity(64 * 1024);
-    let mut buffer = [0_u8; 8192];
-    let mut truncated = false;
-    loop {
-        let count = reader.read(&mut buffer)?;
-        if count == 0 {
-            break;
-        }
-        let remaining = MAX_OUTPUT.saturating_sub(bytes.len());
-        let keep = count.min(remaining);
-        bytes.extend_from_slice(&buffer[..keep]);
-        truncated |= keep < count;
-    }
-    Ok(Capture { bytes, truncated })
-}
-
-fn join_capture(
-    worker: thread::JoinHandle<io::Result<Capture>>,
-    stream: &'static str,
-) -> Result<Capture, LabError> {
-    worker
-        .join()
-        .map_err(|_| LabError::Worker(stream))?
-        .map_err(LabError::Io)
-}
-
-fn inherit_environment(command: &mut Command) {
-    for key in [
-        "PATH",
-        "PATHEXT",
-        "HOME",
-        "USERPROFILE",
-        "SYSTEMROOT",
-        "COMSPEC",
-        "APPDATA",
-        "LOCALAPPDATA",
-        "TEMP",
-        "TMP",
-        "SHELL",
-        "XDG_CONFIG_HOME",
-        "XDG_DATA_HOME",
-        "CLAUDE_CONFIG_DIR",
-        "CLAUDE_CODE_GIT_BASH_PATH",
-        "LANG",
-        "LC_ALL",
-        "TERM",
-        "NO_COLOR",
-    ] {
-        if let Some(value) = env::var_os(key) {
-            command.env(key, value);
-        }
-    }
-}
-
-fn resolve_executable(name: &str) -> Result<PathBuf, LabError> {
-    let path = env::var_os("PATH").ok_or_else(|| LabError::Executable(name.to_owned()))?;
-    #[cfg(windows)]
-    let suffixes = windows_suffixes(name);
-    #[cfg(not(windows))]
-    let suffixes = vec![String::new()];
-    for directory in env::split_paths(&path) {
-        for suffix in &suffixes {
-            let candidate = directory.join(format!("{name}{suffix}"));
-            if candidate.is_file() {
-                return Ok(candidate);
-            }
-        }
-    }
-    Err(LabError::Executable(name.to_owned()))
-}
-
-#[cfg(windows)]
-fn windows_suffixes(name: &str) -> Vec<String> {
-    if Path::new(name).extension().is_some() {
-        return vec![String::new()];
-    }
-    let mut values = vec![String::new()];
-    let pathext = env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_owned());
-    for suffix in pathext
-        .split(';')
-        .filter(|suffix| !suffix.trim().is_empty())
-    {
-        let suffix = suffix.trim();
-        let suffix = if suffix.starts_with('.') {
-            suffix.to_owned()
-        } else {
-            format!(".{suffix}")
-        };
-        if !values
-            .iter()
-            .any(|value| value.eq_ignore_ascii_case(&suffix))
-        {
-            values.push(suffix);
-        }
-    }
-    values
-}
-
-fn version(executable: &Path) -> Result<String, LabError> {
-    let output = Command::new(executable).arg("--version").output()?;
-    if !output.status.success() {
-        return Err(LabError::Version(output.status.code()));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
-}
-
-fn preview(value: &str) -> String {
-    value
-        .lines()
-        .take(12)
-        .collect::<Vec<_>>()
-        .join(" | ")
-        .chars()
-        .take(1200)
-        .collect()
-}
-
 #[derive(Debug)]
 enum LabError {
-    Executable(String),
-    Version(Option<i32>),
+    Harness(HarnessError),
     Provider {
         scenario: &'static str,
         run: u8,
@@ -833,19 +622,14 @@ enum LabError {
         detail: String,
     },
     Truncated(&'static str, u8),
-    TimedOut,
-    MissingPipe(&'static str),
-    Worker(&'static str),
     Schema(String),
     Io(io::Error),
-    Clock,
 }
 
 impl fmt::Display for LabError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Executable(name) => write!(formatter, "{name} executable not found on PATH"),
-            Self::Version(code) => write!(formatter, "claude --version failed with {code:?}"),
+            Self::Harness(error) => error.fmt(formatter),
             Self::Provider {
                 scenario,
                 run,
@@ -858,21 +642,19 @@ impl fmt::Display for LabError {
             Self::Truncated(scenario, run) => {
                 write!(formatter, "Claude output truncated in {scenario} run {run}")
             }
-            Self::TimedOut => write!(
-                formatter,
-                "Claude call timed out after {} seconds",
-                TIMEOUT.as_secs()
-            ),
-            Self::MissingPipe(pipe) => write!(formatter, "missing child {pipe} pipe"),
-            Self::Worker(worker) => write!(formatter, "{worker} worker panicked"),
             Self::Schema(message) => formatter.write_str(message),
             Self::Io(error) => write!(formatter, "{error}"),
-            Self::Clock => formatter.write_str("system clock is before UNIX_EPOCH"),
         }
     }
 }
 
 impl Error for LabError {}
+
+impl From<HarnessError> for LabError {
+    fn from(error: HarnessError) -> Self {
+        Self::Harness(error)
+    }
+}
 
 impl From<io::Error> for LabError {
     fn from(error: io::Error) -> Self {

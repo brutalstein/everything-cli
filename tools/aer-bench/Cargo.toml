@@ -1,0 +1,31 @@
+[package]
+name = "aer-bench"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+# Non-production diagnostics. Nothing in the shipped `everything` binary may
+# depend on this package: it exists to measure the product, not to be part of it.
+
+[dependencies]
+aer-context = { path = "../../crates/aer-context" }
+aer-core = { path = "../../crates/aer-core" }
+aer-provider = { path = "../../crates/aer-provider" }
+clap.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+
+[[bin]]
+name = "aer-cache-lab"
+path = "src/bin/aer-cache-lab.rs"
+
+[[bin]]
+name = "aer-provider-acceptance"
+path = "src/bin/aer-provider-acceptance.rs"
+
+[[bin]]
+name = "aer-parity-benchmark"
+path = "src/bin/aer-parity-benchmark.rs"
+
+[lints]
+workspace = true

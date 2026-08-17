@@ -400,7 +400,7 @@ The post-repair live acceptance matrix then passed all six tasks for both profil
 Therefore:
 
 - every production delegated Claude request now carries an AER-owned system authority layer; there is no second Claude request builder in the product;
-- the retired vendor-preset framing survives only as a labelled non-production comparator inside `tools/aer-provider-acceptance`, used to produce paired economics;
+- the retired vendor-preset framing survives only as a labelled non-production comparator inside `tools/aer-bench`, used to produce paired economics;
 - Step 14 remains blocked;
 - the Provider Runtime Productization Gate remains open: strong sandbox work is still necessary before process-capable provider-native agentic execution is accepted, and running delegated calls as ordinary host processes does not satisfy §5.2.
 

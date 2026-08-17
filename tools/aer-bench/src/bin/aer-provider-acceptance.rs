@@ -1,15 +1,17 @@
 use std::{
-    env,
     error::Error,
     ffi::OsString,
-    fmt, fs,
-    io::{self, Read, Write},
+    fmt, fs, io,
     path::{Path, PathBuf},
-    process::{Command, ExitStatus, Stdio},
-    thread,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant},
 };
 
+use aer_bench::{
+    HarnessError,
+    process::{ProcessSpec, executable_version, resolve_executable, run_bounded, stderr_preview},
+    shadow::{ShadowWorkspace, TempRoot, normalize},
+    short,
+};
 use aer_core::model_context::ModelContextEnvelope;
 use aer_provider::{
     NeverCancelled,
@@ -22,8 +24,6 @@ const VERSION: &str = "claude-authority-split-acceptance-v3";
 const EMPTY_MCP: &str = r#"{"mcpServers":{}}"#;
 const TIMEOUT: Duration = Duration::from_secs(300);
 const MAX_OUTPUT: usize = 4 * 1024 * 1024;
-const MAX_SHADOW_FILES: usize = 50_000;
-const MAX_SHADOW_BYTES: u64 = 256 * 1024 * 1024;
 /// Retired pre-promotion framing, retained here — and only here — as the
 /// economic/quality comparator for the promoted production transport. It is a
 /// measurement baseline, not a supported AER path: nothing outside this
@@ -142,7 +142,9 @@ struct Usage {
 
 impl Usage {
     fn exact_input(&self) -> Option<u64> {
-        self.fresh?.checked_add(self.write?)?.checked_add(self.read?)
+        self.fresh?
+            .checked_add(self.write?)?
+            .checked_add(self.read?)
     }
 
     fn to_json(&self) -> Value {
@@ -247,7 +249,9 @@ impl TaskReport {
         let mut duration = Vec::new();
         let mut cost = Vec::new();
         for (legacy, production) in self.legacy.iter().zip(&self.production) {
-            if let Some(delta) = signed_sub(legacy.usage.exact_input(), production.usage.exact_input()) {
+            if let Some(delta) =
+                signed_sub(legacy.usage.exact_input(), production.usage.exact_input())
+            {
                 input.push(delta);
             }
             if let Some(delta) = signed_sub(legacy.usage.write, production.usage.write) {
@@ -256,8 +260,10 @@ impl TaskReport {
             if let Some(delta) = signed_sub(production.usage.read, legacy.usage.read) {
                 read.push(delta);
             }
-            duration.push(i128::try_from(legacy.duration_ms).unwrap_or(i128::MAX)
-                - i128::try_from(production.duration_ms).unwrap_or(i128::MAX));
+            duration.push(
+                i128::try_from(legacy.duration_ms).unwrap_or(i128::MAX)
+                    - i128::try_from(production.duration_ms).unwrap_or(i128::MAX),
+            );
             if let (Some(left), Some(right)) = (
                 legacy.cost_usd.as_deref().and_then(parse_cost),
                 production.cost_usd.as_deref().and_then(parse_cost),
@@ -326,7 +332,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();
     let workspace = args.workspace.canonicalize()?;
     let selected = selected_tasks(args.task.as_deref())?;
-    let shadow = ShadowWorkspace::copy_from(&workspace)?;
+    let shadow = ShadowWorkspace::copy_from(&workspace, &is_harness_path)?;
     let mut compiled = Vec::with_capacity(selected.len());
     for task in selected {
         let context = ModelContextEnvelope::compile(&shadow.path, task.objective)?;
@@ -527,13 +533,21 @@ fn run_legacy_preset(
         args.push(OsString::from(model));
     }
     let started = Instant::now();
-    let output = run_bounded(claude, &args, &cwd, stdin.as_bytes())?;
+    let output = run_bounded(&ProcessSpec {
+        executable: claude,
+        args: &args,
+        cwd: &cwd,
+        stdin: stdin.as_bytes(),
+        env: &[],
+        timeout: TIMEOUT,
+        max_output: MAX_OUTPUT,
+    })?;
     if !output.status.success() {
         return Err(LabError::Provider {
             task: task.id,
             run,
             code: output.status.code(),
-            detail: preview(&String::from_utf8_lossy(&output.stderr)),
+            detail: stderr_preview(&output),
         });
     }
     if output.truncated {
@@ -582,7 +596,11 @@ fn legacy_prompt(context: &ModelContextEnvelope, objective: &str) -> String {
 }
 
 fn observations_valid(samples: &[Observation]) -> bool {
-    if samples.is_empty() || samples.iter().any(|sample| sample.usage.exact_input().is_none()) {
+    if samples.is_empty()
+        || samples
+            .iter()
+            .any(|sample| sample.usage.exact_input().is_none())
+    {
         return false;
     }
     let first_models = &samples[0].resolved_models;
@@ -788,464 +806,53 @@ fn show_i128(value: Option<i128>) -> String {
     value.map_or_else(|| "unknown".to_owned(), |value| value.to_string())
 }
 
-fn short(value: &str) -> &str {
-    value.get(..12).unwrap_or(value)
-}
-
-struct ShadowWorkspace {
-    path: PathBuf,
-    files: usize,
-    bytes: u64,
-}
-
-impl ShadowWorkspace {
-    fn copy_from(source: &Path) -> Result<Self, LabError> {
-        let root = TempRoot::new("everything-provider-shadow")?;
-        let path = root.path.clone();
-        let mut stats = CopyStats::default();
-        match tracked_files(source)? {
-            Some(tracked) => copy_tracked(source, &tracked, &path, &mut stats)?,
-            None => copy_tree(source, source, &path, &mut stats)?,
-        }
-        initialize_shadow_repository(&path)?;
-        std::mem::forget(root);
-        Ok(Self {
-            path,
-            files: stats.files,
-            bytes: stats.bytes,
-        })
-    }
-}
-
-/// Repository-tracked paths, when the source is a Git worktree.
-///
-/// The shadow must contain repository content only. A filesystem walk also
-/// sweeps in ignored local tool output — indexer caches, generated graphs,
-/// scratch reports — which is neither repository truth nor deterministic across
-/// machines, and which can be selected as task evidence. Returns `None` for a
-/// non-Git source so fixture directories still work.
-fn tracked_files(source: &Path) -> Result<Option<Vec<PathBuf>>, LabError> {
-    let output = Command::new("git")
-        .args(["ls-files", "-z", "--cached", "--exclude-standard"])
-        .current_dir(source)
-        .output()?;
-    if !output.status.success() {
-        return Ok(None);
-    }
-    let listing = String::from_utf8_lossy(&output.stdout);
-    Ok(Some(
-        listing
-            .split('\0')
-            .filter(|entry| !entry.is_empty())
-            .map(PathBuf::from)
-            .collect(),
-    ))
-}
-
-fn copy_tracked(
-    source: &Path,
-    tracked: &[PathBuf],
-    destination: &Path,
-    stats: &mut CopyStats,
-) -> Result<(), LabError> {
-    fs::create_dir_all(destination)?;
-    for relative in tracked {
-        if should_exclude(relative) {
-            continue;
-        }
-        let source_path = source.join(relative);
-        let metadata = match fs::symlink_metadata(&source_path) {
-            Ok(metadata) => metadata,
-            // A tracked path can be absent from the worktree (deleted but not
-            // yet staged). Skipping keeps the shadow a subset of real content.
-            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
-            Err(error) => return Err(error.into()),
-        };
-        if !metadata.is_file() {
-            continue;
-        }
-        let destination_path = destination.join(relative);
-        if let Some(parent) = destination_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        stats.files = stats.files.saturating_add(1);
-        stats.bytes = stats.bytes.saturating_add(metadata.len());
-        if stats.files > MAX_SHADOW_FILES || stats.bytes > MAX_SHADOW_BYTES {
-            return Err(LabError::ShadowLimit {
-                files: stats.files,
-                bytes: stats.bytes,
-            });
-        }
-        fs::copy(&source_path, destination_path)?;
-    }
-    Ok(())
-}
-
-impl Drop for ShadowWorkspace {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.path);
-    }
-}
-
-#[derive(Default)]
-struct CopyStats {
-    files: usize,
-    bytes: u64,
-}
-
-fn copy_tree(root: &Path, source: &Path, destination: &Path, stats: &mut CopyStats) -> Result<(), LabError> {
-    fs::create_dir_all(destination)?;
-    for entry in fs::read_dir(source)? {
-        let entry = entry?;
-        let source_path = entry.path();
-        let relative = source_path
-            .strip_prefix(root)
-            .map_err(|_| LabError::ShadowEscape(source_path.clone()))?;
-        if should_exclude(relative) {
-            continue;
-        }
-        let file_type = entry.file_type()?;
-        let destination_path = destination.join(entry.file_name());
-        if file_type.is_symlink() {
-            continue;
-        }
-        if file_type.is_dir() {
-            copy_tree(root, &source_path, &destination_path, stats)?;
-            continue;
-        }
-        if !file_type.is_file() {
-            continue;
-        }
-        let bytes = entry.metadata()?.len();
-        stats.files = stats.files.saturating_add(1);
-        stats.bytes = stats.bytes.saturating_add(bytes);
-        if stats.files > MAX_SHADOW_FILES || stats.bytes > MAX_SHADOW_BYTES {
-            return Err(LabError::ShadowLimit {
-                files: stats.files,
-                bytes: stats.bytes,
-            });
-        }
-        fs::copy(&source_path, destination_path)?;
-    }
-    Ok(())
-}
-
-fn initialize_shadow_repository(path: &Path) -> Result<(), LabError> {
-    run_shadow_git(path, &["init", "--quiet"])?;
-    run_shadow_git(path, &["symbolic-ref", "HEAD", "refs/heads/aer-shadow"])?;
-    for (key, value) in [
-        ("core.autocrlf", "false"),
-        ("core.filemode", "false"),
-        ("commit.gpgSign", "false"),
-        ("core.hooksPath", ".git/aer-no-hooks"),
-        ("user.name", "AER Shadow"),
-        ("user.email", "shadow@aer.invalid"),
-    ] {
-        run_shadow_git(path, &["config", key, value])?;
-    }
-    run_shadow_git(
-        path,
-        &["remote", "add", "aer-shadow", "aer-shadow://filtered-workspace"],
-    )?;
-    run_shadow_git(path, &["add", "--all", "--", "."])?;
-
-    let mut command = Command::new("git");
-    command
-        .args([
-            "commit",
-            "--quiet",
-            "--no-gpg-sign",
-            "--message",
-            "AER filtered shadow snapshot",
-        ])
-        .current_dir(path)
-        .env("GIT_AUTHOR_NAME", "AER Shadow")
-        .env("GIT_AUTHOR_EMAIL", "shadow@aer.invalid")
-        .env("GIT_AUTHOR_DATE", "2000-01-01T00:00:00Z")
-        .env("GIT_COMMITTER_NAME", "AER Shadow")
-        .env("GIT_COMMITTER_EMAIL", "shadow@aer.invalid")
-        .env("GIT_COMMITTER_DATE", "2000-01-01T00:00:00Z");
-    let output = command.output()?;
-    if !output.status.success() {
-        return Err(shadow_git_failure("commit", &output));
-    }
-    Ok(())
-}
-
-fn run_shadow_git(path: &Path, args: &[&str]) -> Result<String, LabError> {
-    let output = Command::new("git").args(args).current_dir(path).output()?;
-    if !output.status.success() {
-        return Err(shadow_git_failure(&format!("git {}", args.join(" ")), &output));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
-}
-
-fn shadow_git_failure(label: &str, output: &std::process::Output) -> LabError {
-    LabError::ShadowGit {
-        command: label.to_owned(),
-        exit_code: output.status.code(),
-        detail: preview(&String::from_utf8_lossy(&output.stderr)),
-    }
-}
-
-fn should_exclude(relative: &Path) -> bool {
-    let normalized = relative.to_string_lossy().replace('\\', "/");
-    normalized == ".git"
-        || normalized.starts_with(".git/")
-        || normalized == "target"
-        || normalized.starts_with("target/")
-        || normalized == ".aer"
-        || normalized.starts_with(".aer/")
-        || is_harness_path(relative)
-}
-
 fn is_harness_path(path: &Path) -> bool {
-    let normalized = path.to_string_lossy().replace('\\', "/");
+    let normalized = normalize(path);
     normalized == "crates/aer-cli/src/provider_cli/economics.rs"
-        || normalized == "crates/aer-cli/src/bin/aer-cache-lab.rs"
-        || normalized == "crates/aer-cli/src/bin/aer-provider-acceptance.rs"
-        || normalized.starts_with("tools/aer-cache-lab/")
-        || normalized.starts_with("tools/aer-provider-acceptance/")
+        || normalized.starts_with("tools/aer-bench/")
         || normalized == "docs/46_PROVIDER_CONTEXT_ECONOMICS_BENCHMARK.md"
-}
-
-struct TempRoot {
-    path: PathBuf,
-}
-
-impl TempRoot {
-    fn new(prefix: &str) -> Result<Self, LabError> {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|_| LabError::Clock)?
-            .as_nanos();
-        let path = env::temp_dir().join(format!("{prefix}-{}-{nonce}", std::process::id()));
-        fs::create_dir_all(&path)?;
-        Ok(Self { path })
-    }
-}
-
-impl Drop for TempRoot {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.path);
-    }
-}
-
-#[derive(Debug)]
-struct ProcessOutput {
-    status: ExitStatus,
-    stdout: Vec<u8>,
-    stderr: Vec<u8>,
-    truncated: bool,
-}
-
-fn run_bounded(executable: &Path, args: &[OsString], cwd: &Path, stdin: &[u8]) -> Result<ProcessOutput, LabError> {
-    let mut command = Command::new(executable);
-    command
-        .args(args)
-        .current_dir(cwd)
-        .env_clear()
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    inherit_environment(&mut command);
-    command.env("CLAUDE_CODE_DISABLE_AUTO_MEMORY", "1");
-    command.env("CLAUDE_CODE_DISABLE_CLAUDE_MDS", "1");
-
-    let mut child = command.spawn()?;
-    let mut input = child.stdin.take().ok_or(LabError::MissingPipe("stdin"))?;
-    let stdout = child.stdout.take().ok_or(LabError::MissingPipe("stdout"))?;
-    let stderr = child.stderr.take().ok_or(LabError::MissingPipe("stderr"))?;
-    let stdin = stdin.to_vec();
-    let input_worker = thread::spawn(move || -> io::Result<()> {
-        input.write_all(&stdin)?;
-        input.flush()
-    });
-    let stdout_worker = thread::spawn(move || capture(stdout));
-    let stderr_worker = thread::spawn(move || capture(stderr));
-    let started = Instant::now();
-    let mut timed_out = false;
-    let status = loop {
-        if let Some(status) = child.try_wait()? {
-            break status;
-        }
-        if started.elapsed() >= TIMEOUT {
-            timed_out = true;
-            let _ = child.kill();
-            break child.wait()?;
-        }
-        thread::sleep(Duration::from_millis(20));
-    };
-    match input_worker.join() {
-        Ok(Ok(())) => {}
-        Ok(Err(error)) if timed_out && error.kind() == io::ErrorKind::BrokenPipe => {}
-        Ok(Err(error)) => return Err(LabError::Io(error)),
-        Err(_) => return Err(LabError::Worker("stdin")),
-    }
-    let stdout = join_capture(stdout_worker, "stdout")?;
-    let stderr = join_capture(stderr_worker, "stderr")?;
-    if timed_out {
-        return Err(LabError::TimedOut);
-    }
-    Ok(ProcessOutput {
-        status,
-        stdout: stdout.bytes,
-        stderr: stderr.bytes,
-        truncated: stdout.truncated || stderr.truncated,
-    })
-}
-
-struct Capture {
-    bytes: Vec<u8>,
-    truncated: bool,
-}
-
-fn capture(mut reader: impl Read) -> io::Result<Capture> {
-    let mut bytes = Vec::with_capacity(64 * 1024);
-    let mut buffer = [0_u8; 8192];
-    let mut truncated = false;
-    loop {
-        let count = reader.read(&mut buffer)?;
-        if count == 0 {
-            break;
-        }
-        let remaining = MAX_OUTPUT.saturating_sub(bytes.len());
-        let keep = count.min(remaining);
-        bytes.extend_from_slice(&buffer[..keep]);
-        truncated |= keep < count;
-    }
-    Ok(Capture { bytes, truncated })
-}
-
-fn join_capture(worker: thread::JoinHandle<io::Result<Capture>>, stream: &'static str) -> Result<Capture, LabError> {
-    worker
-        .join()
-        .map_err(|_| LabError::Worker(stream))?
-        .map_err(LabError::Io)
-}
-
-fn inherit_environment(command: &mut Command) {
-    for key in [
-        "PATH",
-        "PATHEXT",
-        "HOME",
-        "USERPROFILE",
-        "SYSTEMROOT",
-        "COMSPEC",
-        "APPDATA",
-        "LOCALAPPDATA",
-        "TEMP",
-        "TMP",
-        "SHELL",
-        "XDG_CONFIG_HOME",
-        "XDG_DATA_HOME",
-        "CLAUDE_CONFIG_DIR",
-        "CLAUDE_CODE_GIT_BASH_PATH",
-        "LANG",
-        "LC_ALL",
-        "TERM",
-        "NO_COLOR",
-    ] {
-        if let Some(value) = env::var_os(key) {
-            command.env(key, value);
-        }
-    }
-}
-
-fn resolve_executable(name: &str) -> Result<PathBuf, LabError> {
-    let path = env::var_os("PATH").ok_or_else(|| LabError::Executable(name.to_owned()))?;
-    #[cfg(windows)]
-    let suffixes = windows_suffixes(name);
-    #[cfg(not(windows))]
-    let suffixes = vec![String::new()];
-    for directory in env::split_paths(&path) {
-        for suffix in &suffixes {
-            let candidate = directory.join(format!("{name}{suffix}"));
-            if candidate.is_file() {
-                return Ok(candidate);
-            }
-        }
-    }
-    Err(LabError::Executable(name.to_owned()))
-}
-
-#[cfg(windows)]
-fn windows_suffixes(name: &str) -> Vec<String> {
-    if Path::new(name).extension().is_some() {
-        return vec![String::new()];
-    }
-    let mut values = vec![String::new()];
-    let pathext = env::var("PATHEXT").unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_owned());
-    for suffix in pathext.split(';').filter(|suffix| !suffix.trim().is_empty()) {
-        let suffix = suffix.trim();
-        let normalized = if suffix.starts_with('.') {
-            suffix.to_owned()
-        } else {
-            format!(".{suffix}")
-        };
-        if !values.iter().any(|value| value.eq_ignore_ascii_case(&normalized)) {
-            values.push(normalized);
-        }
-    }
-    values
-}
-
-fn executable_version(executable: &Path) -> Result<String, LabError> {
-    let output = Command::new(executable).arg("--version").output()?;
-    if !output.status.success() {
-        return Err(LabError::Version(output.status.code()));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
-}
-
-fn preview(value: &str) -> String {
-    value
-        .lines()
-        .take(12)
-        .collect::<Vec<_>>()
-        .join(" | ")
-        .chars()
-        .take(1200)
-        .collect()
 }
 
 #[derive(Debug)]
 enum LabError {
     UnknownTask(String),
-    Executable(String),
-    Version(Option<i32>),
     Contaminated(String),
-    ShadowEscape(PathBuf),
-    ShadowLimit { files: usize, bytes: u64 },
-    ShadowGit { command: String, exit_code: Option<i32>, detail: String },
-    Provider { task: &'static str, run: u8, code: Option<i32>, detail: String },
+    Provider {
+        task: &'static str,
+        run: u8,
+        code: Option<i32>,
+        detail: String,
+    },
     Truncated(&'static str, u8),
-    TimedOut,
-    MissingPipe(&'static str),
-    Worker(&'static str),
     Schema(String),
+    Harness(HarnessError),
     Io(io::Error),
-    Clock,
 }
 
 impl fmt::Display for LabError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnknownTask(task) => write!(formatter, "unknown acceptance task `{task}`"),
-            Self::Executable(name) => write!(formatter, "{name} executable not found on PATH"),
-            Self::Version(code) => write!(formatter, "claude --version failed with {code:?}"),
-            Self::Contaminated(path) => write!(formatter, "acceptance measurement contaminated by benchmark harness source: {path}"),
-            Self::ShadowEscape(path) => write!(formatter, "shadow workspace path escaped root: {}", path.display()),
-            Self::ShadowLimit { files, bytes } => write!(formatter, "shadow workspace exceeded safety limit: {files} files, {bytes} bytes"),
-            Self::ShadowGit { command, exit_code, detail } => write!(formatter, "shadow git command `{command}` failed with {exit_code:?}: {detail}"),
-            Self::Provider { task, run, code, detail } => write!(formatter, "Claude failed in task {task} run {run} with {code:?}: {detail}"),
-            Self::Truncated(task, run) => write!(formatter, "Claude output truncated in task {task} run {run}"),
-            Self::TimedOut => write!(formatter, "Claude call timed out after {} seconds", TIMEOUT.as_secs()),
-            Self::MissingPipe(pipe) => write!(formatter, "missing child {pipe} pipe"),
-            Self::Worker(worker) => write!(formatter, "{worker} worker panicked"),
+            Self::Contaminated(path) => write!(
+                formatter,
+                "acceptance measurement contaminated by benchmark harness source: {path}"
+            ),
+            Self::Provider {
+                task,
+                run,
+                code,
+                detail,
+            } => write!(
+                formatter,
+                "Claude failed in task {task} run {run} with {code:?}: {detail}"
+            ),
+            Self::Truncated(task, run) => write!(
+                formatter,
+                "Claude output truncated in task {task} run {run}"
+            ),
             Self::Schema(message) => formatter.write_str(message),
+            Self::Harness(error) => error.fmt(formatter),
             Self::Io(error) => error.fmt(formatter),
-            Self::Clock => formatter.write_str("system clock is before UNIX_EPOCH"),
         }
     }
 }
@@ -1258,9 +865,17 @@ impl From<io::Error> for LabError {
     }
 }
 
+impl From<HarnessError> for LabError {
+    fn from(error: HarnessError) -> Self {
+        Self::Harness(error)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
+
+    use aer_bench::shadow::{initialize_shadow_repository, run_shadow_git};
 
     use super::*;
 
@@ -1268,20 +883,32 @@ mod tests {
     fn task_ids_are_unique_and_adversarial_case_exists() {
         let ids = TASKS.iter().map(|task| task.id).collect::<BTreeSet<_>>();
         assert_eq!(ids.len(), TASKS.len());
-        assert!(TASKS.iter().any(|task| task.category == Category::Adversarial));
+        assert!(
+            TASKS
+                .iter()
+                .any(|task| task.category == Category::Adversarial)
+        );
     }
 
     #[test]
     fn harness_paths_are_excluded_from_shadow_retrieval() {
         for path in [
             "crates/aer-cli/src/provider_cli/economics.rs",
-            "crates/aer-cli/src/bin/aer-cache-lab.rs",
-            "crates/aer-cli/src/bin/aer-provider-acceptance.rs",
-            "tools/aer-cache-lab/lab.rs",
-            "tools/aer-provider-acceptance/acceptance.rs",
+            "tools/aer-bench/src/bin/aer-cache-lab.rs",
+            "tools/aer-bench/src/bin/aer-provider-acceptance.rs",
+            "tools/aer-bench/src/shadow.rs",
             "docs/46_PROVIDER_CONTEXT_ECONOMICS_BENCHMARK.md",
         ] {
             assert!(is_harness_path(Path::new(path)), "{path}");
+        }
+        for path in [
+            "crates/aer-core/src/model_context.rs",
+            "docs/00_READ_ME_FIRST.md",
+        ] {
+            assert!(
+                !is_harness_path(Path::new(path)),
+                "{path} is repository truth"
+            );
         }
     }
 
@@ -1289,21 +916,34 @@ mod tests {
     fn shadow_workspace_is_git_backed_deterministic_and_harness_free() {
         let source = TempRoot::new("aer-provider-shadow-fixture").expect("fixture root");
         fs::create_dir_all(source.path.join("src")).expect("src");
-        fs::write(source.path.join("src/lib.rs"), "pub const VALUE: u8 = 7;\n").expect("source file");
+        fs::write(source.path.join("src/lib.rs"), "pub const VALUE: u8 = 7;\n")
+            .expect("source file");
         let harness = source
             .path
-            .join("tools/aer-provider-acceptance/acceptance.rs");
+            .join("tools/aer-bench/src/bin/aer-provider-acceptance.rs");
         fs::create_dir_all(harness.parent().expect("harness parent")).expect("harness dir");
         fs::write(&harness, "answer key\n").expect("harness file");
 
-        let first = ShadowWorkspace::copy_from(&source.path).expect("first shadow");
-        let second = ShadowWorkspace::copy_from(&source.path).expect("second shadow");
+        let first =
+            ShadowWorkspace::copy_from(&source.path, &is_harness_path).expect("first shadow");
+        let second =
+            ShadowWorkspace::copy_from(&source.path, &is_harness_path).expect("second shadow");
 
-        assert!(!first.path.join("tools/aer-provider-acceptance/acceptance.rs").exists());
+        assert!(
+            !first
+                .path
+                .join("tools/aer-bench/src/bin/aer-provider-acceptance.rs")
+                .exists()
+        );
         let first_head = run_shadow_git(&first.path, &["rev-parse", "HEAD"]).expect("first head");
-        let second_head = run_shadow_git(&second.path, &["rev-parse", "HEAD"]).expect("second head");
+        let second_head =
+            run_shadow_git(&second.path, &["rev-parse", "HEAD"]).expect("second head");
         assert_eq!(first_head, second_head);
-        assert!(run_shadow_git(&first.path, &["status", "--porcelain"]).expect("status").is_empty());
+        assert!(
+            run_shadow_git(&first.path, &["status", "--porcelain"])
+                .expect("status")
+                .is_empty()
+        );
         let root = run_shadow_git(&first.path, &["rev-parse", "--show-toplevel"]).expect("root");
         assert_eq!(
             PathBuf::from(root).canonicalize().expect("git root"),
@@ -1330,7 +970,7 @@ mod tests {
         // from the index, exactly like local scratch output.
         fs::write(source.path.join("scratch.txt"), "scratch\n").expect("untracked file");
 
-        let shadow = ShadowWorkspace::copy_from(&source.path).expect("shadow");
+        let shadow = ShadowWorkspace::copy_from(&source.path, &is_harness_path).expect("shadow");
         assert!(shadow.path.join("lib.rs").exists());
         assert!(!shadow.path.join("generated-out/graph.json").exists());
         assert!(!shadow.path.join("scratch.txt").exists());
@@ -1341,7 +981,7 @@ mod tests {
     #[test]
     fn legacy_comparator_keeps_the_retired_vendor_preset_framing() {
         assert!(!LEGACY_INSTRUCTION.contains("task evidence"));
-        let source = include_str!("acceptance.rs");
+        let source = include_str!("aer-provider-acceptance.rs");
         let legacy = source
             .split_once("fn run_legacy_preset")
             .expect("legacy comparator")
@@ -1356,19 +996,40 @@ mod tests {
 
     #[test]
     fn exact_input_requires_all_three_dimensions() {
-        assert_eq!(Usage { fresh: Some(2), write: Some(4), read: Some(8), ..Usage::default() }.exact_input(), Some(14));
-        assert_eq!(Usage { fresh: Some(2), write: None, read: Some(8), ..Usage::default() }.exact_input(), None);
+        assert_eq!(
+            Usage {
+                fresh: Some(2),
+                write: Some(4),
+                read: Some(8),
+                ..Usage::default()
+            }
+            .exact_input(),
+            Some(14)
+        );
+        assert_eq!(
+            Usage {
+                fresh: Some(2),
+                write: None,
+                read: Some(8),
+                ..Usage::default()
+            }
+            .exact_input(),
+            None
+        );
     }
 
     #[test]
     fn candidate_decision_gate_does_not_encode_economic_thresholds() {
-        let source = include_str!("acceptance.rs");
+        let source = include_str!("aer-provider-acceptance.rs");
         for forbidden in [
             ["minimum", "_savings"].concat(),
             ["required", "_cache_hit"].concat(),
             ["quality", "_score"].concat(),
         ] {
-            assert!(!source.contains(&forbidden), "forbidden threshold marker: {forbidden}");
+            assert!(
+                !source.contains(&forbidden),
+                "forbidden threshold marker: {forbidden}"
+            );
         }
     }
 }
