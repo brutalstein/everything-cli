@@ -260,9 +260,30 @@ Pack sizes stayed within the dynamic budget (5.4k–6.0k estimated units against
 | Post-promotion provider economics | RECORDED | `provider-context-economics-v1`, `valid: true`, 7144-token exact main-loop input, $0.029039/call |
 | Claude Code parity pilot | RECORDED, INSUFFICIENT | `claude-parity-benchmark-v1`, 36 real calls, 0 invalid; AER lowest cost per verified success; native product cheaper per task in steady state; 12 samples per profile supports no general claim |
 | Terminal user-experience contract | PARTIAL | `docs/23` §5 compact interactive line mode implemented in `crates/aer-cli/src/surface.rs`; the full-screen rung is deliberately not shipped |
-| Strong sandbox for provider-native agentic tool execution | **OPEN** | direct host process is not a strong sandbox |
-| Provider Productization Gate | **OPEN** | blockers above |
-| Step 14 | **BLOCKED** | gate must close first |
+| Isolation boundary for model-directed execution | PASS as fail-closed | `exec.run` is refused by the substrate under owned-worktree authority and `full` permission mode; refusal names the trust level, network class and all six unenforced dimensions |
+| Strong isolation backend | **ABSENT** | the only substrate is a direct host process, which enforces none of the six dimensions; process-capable agentic execution stays unavailable rather than running under it |
+| Provider Productization Gate | CLOSED for the exposed surfaces | delegated inference and read-only tools; explicitly does not cover process-capable agentic execution |
+| Step 14 | UNBLOCKED | gate closed for what the product exposes |
+
+## Isolation boundary for model-directed execution
+
+`docs/13` names six isolation dimensions a substrate must control before it may be called a sandbox: filesystem, network, credentials, process resources, host control sockets and verifier assets. The only substrate available today is a direct host child process, which controls **none** of them. Confining the working directory and clearing inherited environment variables is real hygiene and is implemented, but a child process can still write anywhere the user can, open any socket and read any credential file.
+
+The boundary now separates two execution paths by who authored the argv:
+
+| Path | Argv author | Behavior |
+|---|---|---|
+| AER-authored tooling — Git, provider CLI, verification commands | AER | runs, with bounded timeout, capture limits, cwd containment, environment allowlist and argv/output-hash evidence |
+| Model-directed execution — the `exec.run` tool | the model | fails closed, naming the trust level, the network class and every unenforced dimension |
+
+Two properties are asserted by test rather than asserted in prose:
+
+- the refusal is produced with owned-worktree authority and `full` permission mode, so the substrate — not the prompt, the mode or the caller — decides it;
+- `exec.run` stays in the tool catalog carrying the reason it is unavailable, so a caller discovers the refusal before making the call.
+
+This satisfies `docs/45` §5.2, which requires an isolation backend that meets the contract **or** a fail-closed refusal before that authority is exposed. It is not a substitute for a sandbox. Adding a strong backend means adding a substrate that can prove dimensions; the same policy then stops failing closed with no change to the tool runtime.
+
+Types added to `crates/aer-exec`: `TrustLevel`, `NetworkClass`, `IsolationDimension`, `IsolationReport`. Only the trust levels and network classes a policy path actually selects are defined; the rest of the `docs/13` vocabulary arrives with the code that selects it.
 
 ## Terminal user-experience surface
 
@@ -291,11 +312,12 @@ What it deliberately does not give:
 6. ~~Promote authority split to production Claude delegated transport.~~ **Done — one production request builder; the retired preset survives only as a harness comparator.**
 7. ~~Re-run the canonical provider economics benchmark after the transport change.~~ **Done — post-promotion baseline recorded above and in `docs/46` §7.2.**
 8. Rerun `claude-parity-benchmark-v1` under the revised suite (`docs/48` §12) at `--suite standard` and in both cache modes, and force the native profile to read the adversarial fixture before that family is scored. The pilot's numbers stand only for the revision that produced them.
-9. Establish the strong sandbox boundary required by `docs/45` §5.2 for the intended agentic surface. Direct host-process execution does not satisfy it.
-10. Close the Provider Runtime Productization Gate only after that and any other remaining acceptance requirements are satisfied.
-11. Start Step 14 only after the gate is formally closed.
+9. ~~Establish the strong sandbox boundary required by `docs/45` §5.2 for the intended agentic surface.~~ **Done in its fail-closed form.** See below; a strong backend is still absent.
+10. ~~Close the Provider Runtime Productization Gate.~~ **Done for the surfaces the product exposes.** It does not cover process-capable agentic execution, which remains unavailable.
+11. Step 14, the Architecture Health Controller.
+12. Add a strong isolation backend when one can be verified on both target platforms. Until then, `exec.run` stays refused. Do not weaken the policy to make the tool appear to work.
 
-Do not skip from the present evidence directly to ContextSizer tuning, learned routing or Step 14.
+Do not skip from the present evidence directly to ContextSizer tuning or learned routing.
 
 ## Canonical Windows verification
 

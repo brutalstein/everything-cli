@@ -8,7 +8,8 @@ use std::{
 };
 
 use aer_exec::{
-    CommandSpec, ExecutionError, ExecutionPolicy, LocalProcessExecutor, SideEffectClass,
+    CommandSpec, ExecutionError, ExecutionPolicy, LocalProcessExecutor, NetworkClass,
+    SideEffectClass, TrustLevel,
 };
 use aer_workspace::OwnedWorktree;
 use sha2::{Digest, Sha256};
@@ -27,7 +28,21 @@ pub struct ToolDescriptor {
     pub summary: &'static str,
     pub side_effect: SideEffectClass,
     pub schema: &'static str,
+    /// Why this tool cannot currently run, or `None` when it can.
+    ///
+    /// A catalog that advertises a capability the runtime always refuses is a
+    /// lie told to whatever reads it, model or human. The reason travels with
+    /// the descriptor so the refusal is discoverable before the call.
+    pub unavailable_because: Option<&'static str>,
 }
+
+/// Why `exec.run` is listed but refuses every call.
+///
+/// Model-directed process execution is the authority that most needs a real
+/// isolation boundary, and the only substrate available today is a direct host
+/// process, which enforces none of the required dimensions.
+const EXEC_RUN_UNAVAILABLE: &str = "model-directed process execution requires a substrate that enforces every isolation \
+dimension; the only available substrate is a direct host process, so this tool fails closed";
 
 const TOOLS: [ToolDescriptor; 5] = [
     ToolDescriptor {
@@ -35,30 +50,35 @@ const TOOLS: [ToolDescriptor; 5] = [
         summary: "Read a bounded UTF-8 line range from one workspace file",
         side_effect: SideEffectClass::PureRead,
         schema: r#"{"path":"string","start_line":"u32?","end_line":"u32?"}"#,
+        unavailable_because: None,
     },
     ToolDescriptor {
         id: "fs.list",
         summary: "List a bounded workspace directory deterministically",
         side_effect: SideEffectClass::PureRead,
         schema: r#"{"path":"string?","limit":"u32?"}"#,
+        unavailable_because: None,
     },
     ToolDescriptor {
         id: "exec.run",
         summary: "Run one structured argv command inside the current workspace",
         side_effect: SideEffectClass::ProcessExecution,
         schema: r#"{"program":"string","args":"string[]","cwd":"string?","reason":"string"}"#,
+        unavailable_because: Some(EXEC_RUN_UNAVAILABLE),
     },
     ToolDescriptor {
         id: "tool.search",
         summary: "Search concise tool metadata without loading every tool schema",
         side_effect: SideEffectClass::PureRead,
         schema: r#"{"query":"string","limit":"u32?"}"#,
+        unavailable_because: None,
     },
     ToolDescriptor {
         id: "tool.describe",
         summary: "Return the full schema for one selected tool",
         side_effect: SideEffectClass::PureRead,
         schema: r#"{"tool_id":"string"}"#,
+        unavailable_because: None,
     },
 ];
 
@@ -210,6 +230,24 @@ pub struct ToolSummary {
     pub summary: String,
     pub side_effect: String,
     pub schema: Option<String>,
+    /// Present when the runtime will refuse every call to this tool.
+    pub unavailable_because: Option<String>,
+}
+
+impl ToolSummary {
+    /// Projects a catalog entry, disclosing the schema only when asked.
+    ///
+    /// Progressive disclosure is the reason this exists: a search result should
+    /// not carry every schema, but it must still carry whether the tool works.
+    fn project(tool: &ToolDescriptor, include_schema: bool) -> Self {
+        Self {
+            id: tool.id.to_owned(),
+            summary: tool.summary.to_owned(),
+            side_effect: format!("{:?}", tool.side_effect),
+            schema: include_schema.then(|| tool.schema.to_owned()),
+            unavailable_because: tool.unavailable_because.map(str::to_owned),
+        }
+    }
 }
 
 pub struct ToolBroker {
@@ -249,12 +287,7 @@ impl ToolBroker {
     pub fn core_catalog() -> Vec<ToolSummary> {
         TOOLS
             .iter()
-            .map(|tool| ToolSummary {
-                id: tool.id.to_owned(),
-                summary: tool.summary.to_owned(),
-                side_effect: format!("{:?}", tool.side_effect),
-                schema: None,
-            })
+            .map(|tool| ToolSummary::project(tool, false))
             .collect()
     }
 
@@ -410,7 +443,13 @@ impl ToolBroker {
         if !cwd.is_dir() {
             return Err(ToolError::NotDirectory(cwd.to_string_lossy().into_owned()));
         }
-        let policy = ExecutionPolicy::trusted_workspace(
+        // Model-directed argv is not AER-authored argv. This path therefore
+        // demands a substrate that enforces every isolation dimension, and
+        // fails closed while none does, rather than inheriting whatever
+        // authority the host process happens to hold.
+        let policy = ExecutionPolicy::sandboxed(
+            TrustLevel::WorkspaceWrite,
+            NetworkClass::None,
             &self.workspace_root,
             COMMAND_TIMEOUT,
             COMMAND_CAPTURE_BYTES,
@@ -465,12 +504,7 @@ fn tool_search(query: &str, limit: Option<u32>) -> Result<Vec<ToolSummary>, Tool
                 || tool.summary.to_ascii_lowercase().contains(&query)
         })
         .take(limit)
-        .map(|tool| ToolSummary {
-            id: tool.id.to_owned(),
-            summary: tool.summary.to_owned(),
-            side_effect: format!("{:?}", tool.side_effect),
-            schema: None,
-        })
+        .map(|tool| ToolSummary::project(tool, false))
         .collect())
 }
 
@@ -479,12 +513,7 @@ fn tool_describe(tool_id: &str) -> Result<ToolSummary, ToolError> {
         .iter()
         .find(|tool| tool.id == tool_id)
         .ok_or_else(|| ToolError::UnknownTool(tool_id.to_owned()))?;
-    Ok(ToolSummary {
-        id: tool.id.to_owned(),
-        summary: tool.summary.to_owned(),
-        side_effect: format!("{:?}", tool.side_effect),
-        schema: Some(tool.schema.to_owned()),
-    })
+    Ok(ToolSummary::project(tool, true))
 }
 
 fn workspace_relative(root: &Path, path: &Path) -> Result<String, ToolError> {
@@ -685,11 +714,14 @@ mod tests {
     }
 
     #[test]
-    fn auto_mode_executes_structured_local_command_with_bounded_evidence() {
+    fn even_full_authority_cannot_execute_without_an_isolating_substrate() {
         let root = fixture();
         let broker = ToolBroker::with_test_process_authority(&root).expect("broker");
-        let permissions = PermissionController::developer_workspace(PermissionMode::Auto);
-        let result = broker
+        // Every gate above the sandbox is deliberately wide open here: owned
+        // worktree authority, the most permissive permission mode, and a
+        // structured argv. The refusal must come from the substrate alone.
+        let permissions = PermissionController::developer_workspace(PermissionMode::Full);
+        let error = broker
             .execute(
                 &permissions,
                 ToolCall::ExecRun {
@@ -699,16 +731,31 @@ mod tests {
                     reason: "verify structured command transport".to_owned(),
                 },
             )
-            .expect("exec");
-        let ToolOutcome::Completed(ToolResult::Exec(exec)) = result else {
-            panic!("auto mode should execute eligible structured command");
-        };
-        assert!(exec.success);
-        assert!(!exec.timed_out);
-        assert_eq!(exec.argv.first().map(String::as_str), Some("git"));
-        assert!(exec.stdout_preview.contains("git version"));
-        assert!(!exec.stdout_sha256.is_empty());
+            .expect_err("no substrate enforces the required isolation dimensions");
+        let message = error.to_string();
+        assert!(message.contains("strong isolation"), "{message}");
+        assert!(message.contains("workspace-write"), "{message}");
         cleanup_fixture(root, broker);
+    }
+
+    #[test]
+    fn the_catalog_states_that_process_execution_is_unavailable() {
+        let catalog = ToolBroker::core_catalog();
+        let exec = catalog
+            .iter()
+            .find(|tool| tool.id == "exec.run")
+            .expect("exec.run stays discoverable");
+        assert!(
+            exec.unavailable_because.is_some(),
+            "a tool that always refuses must say so before it is called"
+        );
+        for tool in catalog.iter().filter(|tool| tool.id != "exec.run") {
+            assert!(
+                tool.unavailable_because.is_none(),
+                "{} is available and must not claim otherwise",
+                tool.id
+            );
+        }
     }
 
     #[test]

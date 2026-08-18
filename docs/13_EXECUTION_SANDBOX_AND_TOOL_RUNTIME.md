@@ -154,6 +154,27 @@ Implementation MAY reach strong isolation through different backends:
 
 If strong isolation is unavailable, AER MUST report the degraded security profile rather than pretending equivalence.
 
+## Current implementation truth
+
+The typed vocabulary of this document exists in `crates/aer-exec`: `TrustLevel`, `NetworkClass`, `IsolationDimension` and `IsolationReport`. Two of those types are deliberately partial. Only the `read-only` and `workspace-write` trust levels and only the `none` and `unrestricted` network classes are defined, because no policy path selects the others yet, and a level nothing can select would be an authority claim with no implementation behind it.
+
+Authority and enforcement are separate types on purpose. A trust level states what a run is permitted to do; an `IsolationReport` states what the substrate actually controls. Nothing derives the second from the first.
+
+### What the available substrate enforces
+
+The only execution substrate today is a direct host child process. Its report enforces **none** of the six required dimensions. Confining the working directory and clearing inherited environment variables is real hygiene and is implemented, but a child process can still write anywhere the user can, open any socket, and read any credential file, so claiming a dimension would be false.
+
+### Consequence: two execution paths, one boundary
+
+| Path | Argv author | Policy | Behavior today |
+|---|---|---|---|
+| AER-authored tooling — Git, provider CLI, verification commands | AER | `ExecutionPolicy::trusted_workspace` | runs, with bounded timeout, capture limits, cwd containment, environment allowlist and argv/output-hash evidence |
+| Model-directed execution — the `exec.run` tool | the model | `ExecutionPolicy::sandboxed` | **fails closed**, naming the trust level, the network class and every unenforced dimension |
+
+`exec.run` remains in the tool catalog and carries the reason it is unavailable, so a caller discovers the refusal before making the call rather than by being denied.
+
+This satisfies the requirement above that an unavailable strong isolation is reported rather than treated as equivalent. It does not substitute for a sandbox: adding a strong backend means adding a substrate that can prove dimensions, at which point the same policy stops failing closed without any change to the tool runtime.
+
 ## Cleanup
 
 Sandbox destruction must clean:
