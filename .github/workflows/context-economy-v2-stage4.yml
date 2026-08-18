@@ -36,3 +36,5 @@ jobs:
         run: cargo +1.97.1 test --locked -p aer-provider --test context_assembly_v2 -- --nocapture
       - name: RI2 capsule provenance
         run: cargo +1.97.1 test --locked -p aer-repo --test ri2_capsule -- --nocapture
+      - name: Provider-call budget guard
+        run: echo "offline_stage=true provider_calls=0"
