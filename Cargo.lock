@@ -96,6 +96,7 @@ name = "aer-provider"
 version = "0.0.1"
 dependencies = [
  "serde_json",
+ "sha2",
 ]
 
 [[package]]

@@ -16,6 +16,10 @@ use serde_json::Value;
 use crate::{
     AuthenticationMethod, CancellationSignal, ProviderAdapter, ProviderDescriptor, ProviderError,
     ProviderFailureClass, ProviderRequest, ProviderResponse, ProviderUsage,
+    context_assembly::{
+        ContextAssemblyPlanner, ContextReuseScope, ContextSegment, ContextSemanticRole,
+        ContextTrustClass, ContextVolatility, ProviderCacheCapabilities,
+    },
 };
 
 const SMOKE_TIMEOUT: Duration = Duration::from_secs(300);
@@ -118,6 +122,17 @@ impl DelegatedProviderKind {
         match self {
             Self::Codex | Self::Claude => None,
             Self::Gemini => Some(GEMINI_DELEGATED_ISOLATION_BLOCK),
+        }
+    }
+
+    /// Truthful cache geometry of the current transport. Unknown or
+    /// unestablished cache behavior degrades to no-cache semantics; it is never
+    /// inferred from model name or context-window size.
+    #[must_use]
+    pub fn cache_capabilities(self) -> ProviderCacheCapabilities {
+        match self {
+            Self::Claude => ProviderCacheCapabilities::delegated_claude_cli(),
+            Self::Codex | Self::Gemini => ProviderCacheCapabilities::no_cache(),
         }
     }
 }
@@ -229,19 +244,52 @@ pub struct ModelIoTrace {
 pub struct DelegatedModelContext {
     authority: String,
     evidence: String,
+    evidence_segments: Vec<ContextSegment>,
     digest: String,
 }
 
 impl DelegatedModelContext {
-    /// `constitutional_core` is the AER-compiled stable authority prefix.
-    /// `evidence` is the rendered Context Economy pack. `digest` is the
-    /// model-visible semantic identity; audit identities (repository snapshot,
-    /// pack id, source hashes) stay out of provider-visible bytes.
+    /// Compatibility constructor for callers that already own one canonical
+    /// evidence blob. New Context Economy callers should use
+    /// [`Self::new_segmented`] so provider geometry can order stable and dynamic
+    /// semantics without changing what was selected.
     #[must_use]
     pub fn new(constitutional_core: &str, evidence: &str, digest: impl Into<String>) -> Self {
+        let evidence_segments = if evidence.is_empty() {
+            Vec::new()
+        } else {
+            vec![ContextSegment {
+                id: "task-evidence".to_owned(),
+                semantic_role: ContextSemanticRole::TaskEvidence,
+                trust_class: ContextTrustClass::UntrustedData,
+                reuse_scope: ContextReuseScope::Snapshot,
+                volatility: ContextVolatility::SnapshotStable,
+                content_hash: digest_bytes(evidence.as_bytes()),
+                token_estimate: 0,
+                source_refs: Vec::new(),
+                rendered_bytes: evidence.to_owned(),
+            }]
+        };
+        Self::new_segmented(constitutional_core, evidence_segments, digest)
+    }
+
+    #[must_use]
+    pub fn new_segmented(
+        constitutional_core: &str,
+        evidence_segments: Vec<ContextSegment>,
+        digest: impl Into<String>,
+    ) -> Self {
+        let evidence = ContextAssemblyPlanner
+            .plan(&evidence_segments, &ProviderCacheCapabilities::no_cache())
+            .expect("validated Context Economy segments")
+            .render();
         Self {
-            authority: format!("{constitutional_core}\n{TRANSPORT_AUTHORITY_POLICY}"),
-            evidence: evidence.to_owned(),
+            authority: format!(
+                "{constitutional_core}
+{TRANSPORT_AUTHORITY_POLICY}"
+            ),
+            evidence,
+            evidence_segments,
             digest: digest.into(),
         }
     }
@@ -257,35 +305,86 @@ impl DelegatedModelContext {
     }
 
     #[must_use]
+    pub fn evidence_segments(&self) -> &[ContextSegment] {
+        &self.evidence_segments
+    }
+
+    #[must_use]
     pub fn digest(&self) -> &str {
         &self.digest
     }
 
-    /// The untrusted user/data layer: evidence followed by the user objective.
-    /// Both are data; neither may appear in the authority layer.
-    #[must_use]
-    pub fn user_layer(&self, objective: &str) -> String {
-        let mut text = String::with_capacity(self.evidence.len() + objective.len() + 128);
+    /// Provider-specific assembly of the same untrusted semantic facts. Cache
+    /// capability can change legal ordering/boundaries but cannot promote any
+    /// repository evidence into system authority or add/remove requirements.
+    pub fn user_layer_for(
+        &self,
+        kind: DelegatedProviderKind,
+        objective: &str,
+    ) -> Result<String, ProviderError> {
+        let mut segments = self.evidence_segments.clone();
+        segments.push(ContextSegment {
+            id: "user-objective".to_owned(),
+            semantic_role: ContextSemanticRole::UserObjective,
+            trust_class: ContextTrustClass::UntrustedData,
+            reuse_scope: ContextReuseScope::Iteration,
+            volatility: ContextVolatility::IterationDynamic,
+            content_hash: digest_bytes(objective.as_bytes()),
+            token_estimate: 0,
+            source_refs: Vec::new(),
+            rendered_bytes: format!(
+                "# User objective
+{objective}
+"
+            ),
+        });
+        let plan = ContextAssemblyPlanner
+            .plan(&segments, &kind.cache_capabilities())
+            .map_err(|error| {
+                ProviderError::new(
+                    ProviderFailureClass::InvalidRequest,
+                    format!("context assembly failed: {error}"),
+                )
+            })?;
+        let mut text = String::with_capacity(plan.provider_visible_bytes + 128);
         text.push_str(EVIDENCE_PREAMBLE);
-        text.push_str(&self.evidence);
-        if !self.evidence.ends_with('\n') {
-            text.push('\n');
-        }
-        text.push_str("# User objective\n");
-        text.push_str(objective);
-        text.push('\n');
-        text
+        text.push_str(&plan.render());
+        Ok(text)
     }
 
-    /// Authority followed by the user/data layer, for transports that accept a
-    /// single prompt channel. The ordering keeps AER authority ahead of any
-    /// untrusted content even when the transport cannot separate them.
+    /// Compatibility view used by existing diagnostics. No-cache assembly is
+    /// the canonical provider-neutral rendering.
     #[must_use]
-    fn merged_layers(&self, objective: &str) -> String {
-        format!("{}\n{}", self.authority, self.user_layer(objective))
+    pub fn user_layer(&self, objective: &str) -> String {
+        self.user_layer_for(DelegatedProviderKind::Codex, objective)
+            .expect("no-cache context assembly is valid")
+    }
+
+    fn merged_layers(
+        &self,
+        kind: DelegatedProviderKind,
+        objective: &str,
+    ) -> Result<String, ProviderError> {
+        Ok(format!(
+            "{}
+{}",
+            self.authority,
+            self.user_layer_for(kind, objective)?
+        ))
     }
 }
 
+fn digest_bytes(bytes: &[u8]) -> String {
+    use sha2::{Digest as _, Sha256};
+    let digest = Sha256::digest(bytes);
+    let mut output = String::with_capacity(64);
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    for byte in digest {
+        output.push(HEX[(byte >> 4) as usize] as char);
+        output.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    output
+}
 /// Production delegated adapter for local vendor-owned CLI sessions.
 ///
 /// The adapter never reads or copies the vendor's raw OAuth material. The vendor
@@ -552,7 +651,12 @@ impl DelegatedCliProvider {
                 ];
                 self.push_model(&mut args);
                 args.push(OsString::from("-"));
-                RequestPlan::new(args, self.context.merged_layers(objective))
+                RequestPlan::new(
+                    args,
+                    self.context
+                        .merged_layers(self.kind, objective)
+                        .expect("validated delegated context assembly"),
+                )
             }
             DelegatedProviderKind::Claude => {
                 let mut args = vec![
@@ -580,7 +684,12 @@ impl DelegatedCliProvider {
                     OsString::from(self.context.authority()),
                 ];
                 self.push_model(&mut args);
-                RequestPlan::new(args, self.context.user_layer(objective))
+                RequestPlan::new(
+                    args,
+                    self.context
+                        .user_layer_for(self.kind, objective)
+                        .expect("validated delegated context assembly"),
+                )
             }
             DelegatedProviderKind::Gemini => {
                 let mut args = vec![
@@ -593,7 +702,12 @@ impl DelegatedCliProvider {
                     OsString::from("--skip-trust"),
                 ];
                 self.push_model(&mut args);
-                RequestPlan::new(args, self.context.merged_layers(objective))
+                RequestPlan::new(
+                    args,
+                    self.context
+                        .merged_layers(self.kind, objective)
+                        .expect("validated delegated context assembly"),
+                )
             }
         }
     }
