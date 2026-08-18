@@ -386,7 +386,7 @@ Trust is stronger than cache economics. Repository/task evidence remains `Untrus
 
 ### Working set and deltas
 
-Long-running engineering loops use an ephemeral `TaskWorkingSet` projection over existing Engineering State/Handoff facts. It carries edit targets, relevant symbols, verified facts, architecture constraints, latest failures, tests, changed files, unresolved hypotheses, and stable evidence identities. `ContextDelta` reports added, changed, removed, and invalidated evidence. A content-hash change invalidates immediately; unrelated metadata churn does not change semantic evidence identity. This is not a second persistence or memory subsystem.
+An ephemeral `TaskWorkingSet` projection over existing Engineering State/Handoff facts is defined for long-running engineering loops. It is a typed projection only: no runtime loop consumes it yet, and it is not exposed through any product surface until one does. It carries edit targets, relevant symbols, verified facts, architecture constraints, latest failures, tests, changed files, unresolved hypotheses, and stable evidence identities. `ContextDelta` reports added, changed, removed, and invalidated evidence. A content-hash change invalidates immediately; unrelated metadata churn does not change semantic evidence identity. This is not a second persistence or memory subsystem.
 
 ### Deterministic quality accounting
 

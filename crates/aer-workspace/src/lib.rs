@@ -483,6 +483,33 @@ fn remove_worktree_registration(repo_root: &Path, path: &Path) -> Result<(), Wor
     Ok(())
 }
 
+/// Git configuration AER forces on every Git command it runs.
+///
+/// A materialized worktree must reproduce committed bytes exactly. The compact
+/// edit ABI addresses file content by hash, so a checkout that rewrites line
+/// endings makes every recorded base hash wrong on platforms where Git converts
+/// by default. Passing the setting per invocation neutralizes only the
+/// machine-local default: `.gitattributes` still wins, so a project that
+/// deliberately declares CRLF keeps it, and the user's own repository
+/// configuration is never modified.
+const BYTE_FIDELITY_CONFIG: [&str; 2] = ["-c", "core.autocrlf=false"];
+
+/// Builds a Git command that reproduces committed bytes faithfully.
+///
+/// Every Git invocation in this crate goes through here so the fidelity rule
+/// has one source of truth rather than one copy per call site.
+pub(crate) fn git_spec<I>(cwd: &Path, args: I, side_effect: SideEffectClass) -> CommandSpec
+where
+    I: IntoIterator<Item = OsString>,
+{
+    CommandSpec::new("git", cwd, side_effect).args(
+        BYTE_FIDELITY_CONFIG
+            .iter()
+            .map(|setting| OsString::from(*setting))
+            .chain(args),
+    )
+}
+
 fn run_git<I>(
     cwd: &Path,
     args: I,
@@ -511,7 +538,7 @@ where
     I: IntoIterator<Item = OsString>,
 {
     let policy = ExecutionPolicy::trusted_workspace(cwd, Duration::from_secs(30), capture_limit)?;
-    let mut spec = CommandSpec::new("git", cwd, side_effect).args(args);
+    let mut spec = git_spec(cwd, args, side_effect);
     if let Some(stdin) = stdin {
         spec = spec.stdin(stdin);
     }
@@ -753,6 +780,58 @@ mod tests {
         git(&repo, &["add", "tracked.txt"]);
         git(&repo, &["commit", "-m", "baseline"]);
         repo
+    }
+
+    /// A repository whose local configuration asks Git to rewrite line endings.
+    ///
+    /// This is the default on Windows installs, so it is the configuration real
+    /// users have, not an exotic one.
+    fn line_ending_rewriting_repo(label: &str) -> std::path::PathBuf {
+        let repo = temp_dir(label);
+        git(&repo, &["init"]);
+        git(&repo, &["config", "user.name", "Everything Tests"]);
+        git(&repo, &["config", "user.email", "tests@everything.invalid"]);
+        git(&repo, &["config", "core.autocrlf", "true"]);
+        fs::write(
+            repo.join("tracked.txt"),
+            "base
+",
+        )
+        .expect("tracked file");
+        git(&repo, &["add", "tracked.txt"]);
+        git(&repo, &["commit", "-m", "baseline"]);
+        repo
+    }
+
+    /// Content addressed by hash cannot survive a checkout that rewrites bytes.
+    ///
+    /// The compact edit ABI records a base file hash and refuses to apply an
+    /// edit when the file no longer matches it. If Git converts line endings
+    /// while materializing an owned worktree, every such base hash is wrong on
+    /// that platform and the edit path fails for reasons the user never caused.
+    #[test]
+    fn materialized_worktree_reproduces_committed_bytes_under_hostile_git_config() {
+        let repo = line_ending_rewriting_repo("eol");
+        let committed = fs::read(repo.join("tracked.txt")).expect("committed bytes");
+
+        let snapshot = WorkspaceSnapshot::capture(&repo, &SnapshotPolicy::default())
+            .expect("capture snapshot");
+        let owned_path = temp_dir("owned-eol").join("worktree");
+        let owned = snapshot
+            .materialize_owned_worktree(&owned_path)
+            .expect("materialize worktree");
+
+        let materialized = fs::read(owned.path.join("tracked.txt")).expect("materialized bytes");
+        assert_eq!(
+            materialized,
+            b"base
+",
+            "owned worktree must reproduce committed bytes, not the platform's line endings"
+        );
+        assert_eq!(materialized, committed);
+
+        owned.remove().expect("remove owned worktree");
+        fs::remove_dir_all(repo).expect("repo cleanup");
     }
 
     #[test]
