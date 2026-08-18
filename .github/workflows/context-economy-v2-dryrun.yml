@@ -1,0 +1,27 @@
+name: Context Economy V2 Zero Provider Dry Run
+
+on:
+  push:
+    branches:
+      - agent/context-economy-v2-dryrun
+    paths:
+      - .github/workflows/context-economy-v2-dryrun.yml
+
+jobs:
+  context-only-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/context-economy-v2-dryrun
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal
+      - name: Production AER context-only parity diagnostic
+        run: |
+          cargo +1.97.1 run --locked -p aer-bench --bin aer-parity-benchmark -- \
+            --profile tools/aer-bench/fixtures/parity/profiles/claude_sonnet_5.toml \
+            --suite tools/aer-bench/fixtures/parity/suite.toml \
+            --context-budget 6144 \
+            --max-output-units 512
+      - name: Hard provider-call assertion
+        run: echo "This workflow intentionally omits --live; expected benchmark output must report provider_calls=0"
