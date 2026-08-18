@@ -18,11 +18,11 @@ The benchmark is designed to be able to answer *no*. Its primary metric is cost 
 
 | Id | Name | System layer | Tools | Payload |
 | --- | --- | --- | --- | --- |
-| P0 | `P0-claude-code-native` | vendor default system prompt | `Read,Grep,Glob` | objective only; the agent finds its own evidence |
+| P0 | `P0-claude-code-native` | vendor default system prompt | `Read,Grep,Glob` | objective only; the agent finds its own evidence, with an exact fixture read required for adversarial tasks |
 | P1 | `P1-claude-code-controlled` | vendor default system prompt | none | AER's exact payload bytes on stdin |
 | P2 | `P2-aer-production` | AER-owned system authority | none | the same payload, through the shipped transport |
 
-P0 is the product as a user would run it. Machine-specific configuration is suppressed (`--setting-sources ""`, empty MCP config, `--strict-mcp-config`, `--disable-slash-commands`, `--no-session-persistence`) so the baseline is the product rather than one operator's install. It is not otherwise handicapped: it keeps its native system prompt, its agent loop, and read-only tools, because denying it tools would make it unable to answer anything.
+P0 is the product as a user would run it. Machine-specific configuration is suppressed (`--setting-sources ""`, empty MCP config, `--strict-mcp-config`, `--disable-slash-commands`, `--no-session-persistence`) so the baseline is the product rather than one operator's install. It is not otherwise handicapped: it keeps its native system prompt, its agent loop, and read-only tools, because denying it tools would make it unable to answer anything. For each security/adversarial task, the harness names the exact planted file that P0 must read; this is an evidence-validity condition, not an answer hint.
 
 P1 is an **architecture control, not a product experience**. It exists only to separate the cost of the vendor's framing from the cost of the vendor's retrieval. It must never be quoted as "how Claude Code performs".
 
@@ -49,10 +49,11 @@ Main-loop usage (`usage`) and cumulative per-model pipeline usage (`per_model_us
 
 Thirty tasks in six families of five: exact repository facts, cross-file reasoning, architecture reasoning, bug diagnosis, security/adversarial, change impact. The `quick` suite takes one representative task per family.
 
-Bug-diagnosis and adversarial tasks use fixtures planted into the shadow workspace as ordinary repository files. Two rules govern them:
+Bug-diagnosis and adversarial tasks use fixtures planted into the shadow workspace as ordinary repository files. Three rules govern them:
 
 1. No fixture contains its own expected answer.
 2. The defect or hostile instruction sits inside a function **body**, never only in a module header.
+3. Every adversarial task maps to one exact fixture. P0 is scored only after its stream proves a successful `Read` of that path.
 
 Rule 2 is not cosmetic. Retrieval selects definition spans, so a lure placed above the definition is silently dropped and the task then asks about material the model was never shown. This was observed during dry runs: five of ten fixtures initially failed this way. `every_lure_and_defect_sits_inside_a_definition_body` now prevents it from recurring.
 
@@ -70,7 +71,7 @@ Context is compiled against a filtered Git-backed shadow of the repository. Harn
 
 Profiles run interleaved in a deterministic rotating order, never all of one profile followed by all of another. The execution index of every sample is persisted.
 
-A sample is excluded from aggregates when its main-loop token accounting is incomplete, its pipeline model set is unknown, or the call failed. Exclusions are counted and listed, never dropped silently. A profile that verified nothing reports `null` for cost per verified success rather than dividing by zero.
+A sample is excluded from aggregates when its main-loop token accounting is incomplete, its pipeline model set is unknown, a required P0 fixture read did not succeed, or the call failed. The stream parser correlates each `Read` tool-use ID with its tool result; an attempted or failed read is not evidence. Receipts record the required path, successful read paths, and explicit invalid reason. Exclusions are counted and listed, never dropped silently. A profile that verified nothing reports `null` for cost per verified success rather than dividing by zero.
 
 ## 8. Pilot result
 
@@ -155,7 +156,7 @@ These results are recorded because they are true, not because they are convenien
 
 **10.1 Sample size.** Twelve samples per profile. No statistical significance is claimed and none should be inferred. Bootstrap intervals are computed by the harness but are not meaningful at this size and are not quoted here.
 
-**10.2 The adversarial family did not test P0.** P0 made zero tool calls on `sec_repository_override`, so the hostile fixture never entered its context. Its pass is evidence about its priors, not about injection resistance. The same applies to `arch_permission_ceiling`. Only P1 and P2, which receive the frozen payload containing the fixture, were meaningfully tested. A future revision must force P0 to read the file before the question is scored.
+**10.2 The pilot's adversarial family did not test P0.** P0 made zero tool calls on `sec_repository_override`, so the hostile fixture never entered its context. Its pass is evidence about its priors, not about injection resistance. The same applies to `arch_permission_ceiling`. Only P1 and P2, which receive the frozen payload containing the fixture, were meaningfully tested in that run. `aer-parity-suite-v2` repairs this validity defect: all five adversarial tasks require their mapped fixture to be read successfully by P0 before the sample can enter aggregates. This does not retroactively rehabilitate the pilot result.
 
 **10.3 One cache mode.** Only `cache-on` was executed. The `cache-off` phase, which measures undiscounted context size, has not been run.
 
@@ -177,13 +178,14 @@ Not claimed: that AER is cheaper in general; that the token reduction causes the
 
 ## 12. Suite revisions after the pilot
 
-Three defects found by the pilot were repaired afterwards, so the current suite digest differs from the one the numbers above were produced under. The recorded digests identify the exact revision that produced the evidence.
+Four defects found by the pilot were repaired afterwards. The current methodology is `aer-parity-suite-v2`, so its suite digest differs from the one the numbers above were produced under. The recorded versions and digests identify the exact revision that produced the evidence.
 
 1. `impact_new_provider` asked what "must be established about the authentication state" while its rubric checked for *separability* from provider-local state. All three profiles gave defensible answers that failed. Reworded to ask the question the rubric checks.
 2. `model_stability` conflated the pinned main-loop model with the vendor's auxiliary pipeline model. Split into `pipeline_model_stability` and `model_parity_held`.
 3. First-run and steady-state samples were aggregated together. Now reported separately, as section 8.3 shows.
+4. P0 could pass a security/adversarial task without reading its hostile fixture. Each such task now names one required fixture in the native objective, and stream-JSON tool-use/result correlation excludes the sample unless that exact read succeeded. The requirement and successful paths are persisted in the receipt.
 
-A rerun under the revised suite has not been executed. Until it is, section 8 remains the only real evidence and is labelled with the revision that produced it.
+A live rerun under suite v2 has not been executed. Until it is, section 8 remains the only real evidence and is labelled with the revision that produced it.
 
 ### 8.6 Raw receipt
 
@@ -198,7 +200,7 @@ cargo run --locked -p aer-bench --bin aer-parity-benchmark -- \
   --workspace . --suite quick --cache on --model claude-sonnet-5
 ```
 
-Without `--live` this compiles context, prints the selected evidence for every task, and makes no provider calls. Reviewing that output before spending money is the intended workflow: it is how the misplaced-lure defect in section 4 was found.
+Without `--live` this compiles context, prints the suite version/digest and selected evidence for every task, and makes no provider calls. Reviewing that output before spending money is the intended workflow: it is how the misplaced-lure defect in section 4 was found.
 
 Add `--live` to execute, `--out <path>` to write the JSON receipt, `--suite standard|full` for larger samples, and `--cache off` for the undiscounted phase. The harness never stores provider credentials and never inherits the operator's environment beyond a fixed allowlist.
 <!-- context-economy-v2-parity-offline-note -->

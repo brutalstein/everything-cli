@@ -20,6 +20,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 13
 
       - name: Install pinned Rust toolchain
         if: runner.os != 'Windows'
@@ -130,7 +132,7 @@ jobs:
 
       - name: Architecture health gate
         if: runner.os != 'Windows'
-        run: cargo +1.97.1 run --locked -p aer-health-check -- --check
+        run: cargo +1.97.1 run --locked -p aer-health-check -- --against-distance 12
 
       - name: Canonical isolated Windows verification
         if: runner.os == 'Windows'

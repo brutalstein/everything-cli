@@ -1,6 +1,6 @@
 # everything Implementation Status
 
-**Last updated:** 2026-08-17  
+**Last updated:** 2026-08-18
 **Public product / executable:** `everything`  
 **Internal architecture terminology:** AER  
 **Current phase:** Inter-step Provider Runtime Productization Gate  
@@ -193,7 +193,7 @@ Three findings that constrain what may be claimed:
 - 4.4× fewer input tokens did not make the controlled profile cheaper than the native one, because cache writes bill above base rate and cache reads far below it — **token reduction does not imply cost reduction**;
 - the AER transport rewrites per-task evidence on every call and reuses only its 2,870-token constitutional core, so it pays full cache-write price for bytes it will send again.
 
-The pilot is 12 samples per profile in one cache mode. No statistical significance is claimed. The adversarial family did not meaningfully test the native profile, which answered two tasks with zero tool calls and therefore never read the hostile fixture. Three benchmark defects the pilot exposed are repaired in the current suite, which has not yet been rerun; `docs/48` §12 records exactly what changed.
+The pilot is 12 samples per profile in one cache mode. No statistical significance is claimed. The adversarial family did not meaningfully test the native profile, which answered two tasks with zero tool calls and therefore never read the hostile fixture. Four benchmark defects the pilot exposed are repaired in `aer-parity-suite-v2`, which has not yet been rerun; `docs/48` §12 records exactly what changed.
 
 ## Closed correctness defect: exact-definition retrieval
 
@@ -288,6 +288,8 @@ Debt records are time-bounded and dimension-scoped. A record excuses the dimensi
 
 The layer gate currently passes and would catch a real inversion: a test asserts that making `aer-exec` depend on `aer-core` is reported as infrastructure depending on application.
 
+The repository gate now selects drift baselines by explicit first-parent distance. Linux CI and canonical Windows verification retain thirteen commits and run `aer-health-check --against-distance 12`; the resolved full commit identity is printed before measurement. Zero distance and insufficient/shallow history fail closed. A real-Git regression fixture proves that twelve five-line changes trigger review while the previous-commit comparison remains below the same policy threshold. The 2026-08-18 canonical Windows verifier passed with this gate and measured 47 Rust files against the selected twelve-commit baseline.
+
 Duplication is now measured: blocks of at least six normalized lines that repeat across the measured set. It is line-based and therefore heuristic — it sees copied text, not copied meaning — and it carries the same capability tier as the rest of the file's numbers.
 
 Dead code, test fragility and documentation drift stay unmeasured for stated reasons. Dead code needs compiler truth, and a syntax-tier guess is wrong across traits, macros and re-exports. Test fragility needs verification history the runtime does not yet retain. Documentation drift needs a claim-to-code mapping; document *integrity* proves documents are unmodified, not that they are still true. None is stubbed, because a dimension that always reports zero would read as a clean bill of health it did not earn.
@@ -359,13 +361,13 @@ What it deliberately does not give:
 5. ~~Re-run the full live Claude authority-split matrix on the target Windows machine.~~ **Done — `claude-authority-split-acceptance-v3`, all six production contracts pass.**
 6. ~~Promote authority split to production Claude delegated transport.~~ **Done — one production request builder; the retired preset survives only as a harness comparator.**
 7. ~~Re-run the canonical provider economics benchmark after the transport change.~~ **Done — post-promotion baseline recorded above and in `docs/46` §7.2.**
-8. Rerun `claude-parity-benchmark-v1` under the revised suite (`docs/48` §12) at `--suite standard` and in both cache modes, and force the native profile to read the adversarial fixture before that family is scored. The pilot's numbers stand only for the revision that produced them.
+8. Rerun `claude-parity-benchmark-v1` under `aer-parity-suite-v2` (`docs/48` §12) at `--suite standard` and in both cache modes. **Native evidence prerequisite done:** all five adversarial tasks map to an exact fixture; the native objective requires that read, stream-JSON correlates tool-use and tool-result IDs, and a missing or failed exact read excludes the sample with receipt evidence. A focused zero-provider-call dry run selected `bench-fixtures/ceiling_override.rs` for `sec_repository_override`; 34 harness tests pass. The paid live reruns remain pending, and the pilot's numbers stand only for the revision that produced them.
 9. ~~Establish the strong sandbox boundary required by `docs/45` §5.2 for the intended agentic surface.~~ **Done in its fail-closed form.** See below; a strong backend is still absent.
 10. ~~Close the Provider Runtime Productization Gate.~~ **Done for the surfaces the product exposes.** It does not cover process-capable agentic execution, which remains unavailable.
 11. ~~Start Step 14, the Architecture Health Controller.~~ **Started.** The controller and the repository layer gate are implemented; see below.
 12. ~~Wire the health delta into task acceptance, and let a sustained regression create a refactoring task.~~ **Done** — `aer_core::architecture_health`.
 13. ~~Build EvolutionBench.~~ **Done, with a negative finding about the default gate.** See below. The remaining claim — that gating helps *real* model trajectories — needs live evidence and must not be asserted from the synthetic run.
-14. Choose acceptance baselines by distance, not by convenience. EvolutionBench shows the previous-change baseline is close to inert; a gate run against a merge base is a different instrument from a gate run against `HEAD`.
+14. ~~Choose acceptance baselines by distance, not by convenience.~~ **Done for the repository gate** — CI and canonical Windows verification use an explicit twelve-first-parent-commit baseline, preserve enough history and fail closed when that distance is unavailable. Merge-base comparison remains a distinct instrument rather than an alias for this drift window.
 15. Add a strong isolation backend when one can be verified on both target platforms. Until then, `exec.run` stays refused. Do not weaken the policy to make the tool appear to work.
 
 Do not skip from the present evidence directly to ContextSizer tuning or learned routing.

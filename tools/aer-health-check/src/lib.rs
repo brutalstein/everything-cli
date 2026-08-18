@@ -10,10 +10,12 @@
 //! architectural fact, so a dependency that crosses it is wrong today, not
 //! merely worse than yesterday.
 //!
-//! The **health delta** is relative and advisory. It measures the working tree
-//! against `HEAD` and reports what a change worsened. It does not fail the
-//! build, because a pre-existing hotspot must not block unrelated work and a
-//! threshold tight enough to be useful is too tight to be automatic.
+//! The **health delta** is relative and advisory. Local checks may measure the
+//! working tree against `HEAD`; CI selects an explicit first-parent distance so
+//! slow erosion cannot hide below a one-change threshold. It reports what the
+//! selected interval worsened without failing the build, because a pre-existing
+//! hotspot must not block unrelated work and a threshold tight enough to be
+//! useful is too tight to be automatic.
 
 use std::{
     fmt, fs,
@@ -239,6 +241,70 @@ fn snapshot_of(sources: &[(String, String)]) -> Result<HealthSnapshot, HealthChe
     Ok(snapshot)
 }
 
+/// A commit selected by an explicit first-parent distance from `HEAD`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BaselineRevision {
+    /// Full commit identity returned by Git.
+    pub revision: String,
+    /// Number of first-parent edges between `HEAD` and `revision`.
+    pub first_parent_distance: usize,
+}
+
+/// Resolves the commit exactly `distance` first-parent edges behind `HEAD`.
+///
+/// This fails closed when the requested history is unavailable. Falling back
+/// to a nearer commit would silently weaken the drift measurement that the
+/// caller explicitly requested.
+///
+/// # Errors
+///
+/// Fails for zero/overflowing distance, unavailable history, or a Git failure.
+pub fn baseline_at_distance(
+    root: &Path,
+    distance: usize,
+) -> Result<BaselineRevision, HealthCheckError> {
+    let count = distance
+        .checked_add(1)
+        .filter(|_| distance > 0)
+        .ok_or(HealthCheckError::InvalidBaselineDistance)?;
+    let policy = ExecutionPolicy::trusted_workspace(root, GIT_TIMEOUT, GIT_CAPTURE_BYTES)
+        .map_err(HealthCheckError::Execution)?;
+    let maximum = format!("--max-count={count}");
+    let spec = CommandSpec::new("git", root, SideEffectClass::PureRead).args([
+        "rev-list",
+        "--first-parent",
+        maximum.as_str(),
+        "HEAD",
+    ]);
+    let result = LocalProcessExecutor
+        .execute(&policy, spec)
+        .map_err(HealthCheckError::Execution)?;
+    if !result.success || result.stdout.truncated {
+        return Err(HealthCheckError::Git(
+            "git rev-list failed while resolving the health baseline".to_owned(),
+        ));
+    }
+
+    let revisions = String::from_utf8_lossy(&result.stdout.preview)
+        .lines()
+        .map(str::trim)
+        .filter(|revision| !revision.is_empty())
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    let available = revisions.len().saturating_sub(1);
+    if available < distance {
+        return Err(HealthCheckError::InsufficientHistory {
+            requested: distance,
+            available,
+        });
+    }
+
+    Ok(BaselineRevision {
+        revision: revisions[distance].clone(),
+        first_parent_distance: distance,
+    })
+}
+
 /// The source files that differ from the given revision.
 ///
 /// Only tracked changes are listed. A file that has never been committed is
@@ -379,6 +445,15 @@ pub enum HealthCheckError {
     Git(String),
     /// A file could not be measured by the language adapters.
     Measurement(String),
+    /// A zero or overflowing first-parent distance was requested.
+    InvalidBaselineDistance,
+    /// Git history did not contain the explicitly requested baseline.
+    InsufficientHistory {
+        /// Requested first-parent distance.
+        requested: usize,
+        /// First-parent distance available in the checkout.
+        available: usize,
+    },
 }
 
 impl fmt::Display for HealthCheckError {
@@ -387,6 +462,16 @@ impl fmt::Display for HealthCheckError {
             Self::Io(error) => error.fmt(formatter),
             Self::Execution(error) => error.fmt(formatter),
             Self::Git(message) | Self::Measurement(message) => formatter.write_str(message),
+            Self::InvalidBaselineDistance => {
+                formatter.write_str("health baseline distance must be greater than zero")
+            }
+            Self::InsufficientHistory {
+                requested,
+                available,
+            } => write!(
+                formatter,
+                "health baseline requires {requested} first-parent commit(s), but only {available} are available"
+            ),
         }
     }
 }
@@ -457,7 +542,75 @@ fn tier_label(finding: &Finding) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    use std::{
+        process::Command,
+        time::{SystemTime, UNIX_EPOCH},
+    };
+
     use super::*;
+
+    struct GitFixture {
+        root: PathBuf,
+    }
+
+    impl GitFixture {
+        fn new(label: &str) -> Self {
+            let nonce = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("clock")
+                .as_nanos();
+            let root = std::env::temp_dir().join(format!(
+                "everything-health-{label}-{}-{nonce}",
+                std::process::id()
+            ));
+            fs::create_dir_all(root.join("src")).expect("fixture directory");
+            let fixture = Self { root };
+            fixture.git(&["init", "--quiet"]);
+            fixture.git(&["config", "user.name", "Everything Tests"]);
+            fixture.git(&["config", "user.email", "tests@everything.invalid"]);
+            fixture.git(&["config", "core.autocrlf", "false"]);
+            fixture
+        }
+
+        fn git(&self, arguments: &[&str]) -> String {
+            let output = Command::new("git")
+                .args(arguments)
+                .current_dir(&self.root)
+                .output()
+                .expect("git command");
+            assert!(
+                output.status.success(),
+                "git {arguments:?} failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            String::from_utf8_lossy(&output.stdout).trim().to_owned()
+        }
+
+        fn commit_hotspot(&self, added_lines: usize) {
+            let mut source = String::from("pub fn hotspot() {\n");
+            for index in 0..added_lines {
+                source.push_str(&format!("    let value_{index} = {index};\n"));
+            }
+            source.push_str("}\n");
+            fs::write(self.root.join("src/lib.rs"), source).expect("fixture source");
+            self.git(&["add", "src/lib.rs"]);
+            self.git(&["commit", "--quiet", "-m", &format!("growth {added_lines}")]);
+        }
+    }
+
+    impl Drop for GitFixture {
+        fn drop(&mut self) {
+            fs::remove_dir_all(&self.root).expect("fixture cleanup");
+        }
+    }
+
+    fn verdict_against(root: &Path, revision: &str) -> HealthVerdict {
+        let changed = changed_sources(root, revision).expect("changed sources");
+        let before = measure_revision(root, revision, &changed).expect("baseline health");
+        let after = measure_working_tree(root, &changed).expect("current health");
+        let findings = compare(&before, &after);
+        evaluate(&findings, &[], &[], HealthPolicy::default(), 0)
+    }
 
     #[test]
     fn this_workspace_has_no_forbidden_crate_dependency() {
@@ -574,5 +727,58 @@ mod tests {
             measure("src/lib.rs", "fn only() {\n    let value = 1;\n}\n").expect("measure");
         assert_eq!(health.units, 1);
         assert!(health.lines >= 3);
+    }
+
+    #[test]
+    fn distance_baseline_exposes_slow_erosion_hidden_by_the_previous_commit() {
+        let repository = GitFixture::new("drift");
+        repository.commit_hotspot(100);
+        for change in 1..=12 {
+            repository.commit_hotspot(100 + change * 5);
+        }
+
+        let previous = baseline_at_distance(&repository.root, 1).expect("previous baseline");
+        let drift = baseline_at_distance(&repository.root, 12).expect("drift baseline");
+        let expected = repository.git(&["rev-parse", "HEAD~12"]);
+
+        assert_eq!(drift.revision, expected);
+        assert_eq!(drift.first_parent_distance, 12);
+        assert_eq!(
+            verdict_against(&repository.root, &previous.revision),
+            HealthVerdict::Accept,
+            "five lines of local growth stay below the review threshold"
+        );
+        assert!(
+            matches!(
+                verdict_against(&repository.root, &drift.revision),
+                HealthVerdict::Review(_)
+            ),
+            "sixty lines of cumulative growth must be visible to the drift gate"
+        );
+    }
+
+    #[test]
+    fn distance_baseline_fails_closed_when_history_is_too_shallow() {
+        let repository = GitFixture::new("shallow");
+        repository.commit_hotspot(0);
+
+        assert!(matches!(
+            baseline_at_distance(&repository.root, 1),
+            Err(HealthCheckError::InsufficientHistory {
+                requested: 1,
+                available: 0
+            })
+        ));
+    }
+
+    #[test]
+    fn distance_baseline_rejects_zero_distance() {
+        let repository = GitFixture::new("zero-distance");
+        repository.commit_hotspot(0);
+
+        assert!(matches!(
+            baseline_at_distance(&repository.root, 0),
+            Err(HealthCheckError::InvalidBaselineDistance)
+        ));
     }
 }

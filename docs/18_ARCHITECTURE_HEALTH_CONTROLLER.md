@@ -141,6 +141,8 @@ Debt records are **time-bounded and dimension-scoped**. A record excuses the dim
 
 The two checks differ in kind on purpose. The **layer gate** is absolute and blocking: crate layering is a declared architectural fact, so a dependency crossing it is wrong today rather than merely worse than yesterday. The **health delta** compares the working tree against a revision and reports what a change worsened, without failing the build, because a threshold tight enough to be useful is too tight to be automatic.
 
+Local `--check` retains the immediate `HEAD` baseline. Repository CI uses `--against-distance 12`: the tool resolves the commit exactly twelve first-parent edges behind `HEAD`, prints its full identity and compares the current tree against it. The checkout retains thirteen commits, and missing/shallow history fails closed instead of silently substituting a nearer baseline. Twelve commits is an explicit initial operating window, not a claim that commits and benchmark tasks are equivalent; real repository evidence may justify changing the distance later.
+
 ### Acceptance-time integration
 
 `aer_core::architecture_health` turns a verdict into a decision with a durable record.
