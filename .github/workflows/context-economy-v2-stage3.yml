@@ -43,6 +43,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Source is committed only after all deterministic gates above pass.
           rm -rf .aer-dev
           rm -f .github/workflows/context-economy-v2-stage3.yml
           git config user.name "aer-context-v2-bot"
