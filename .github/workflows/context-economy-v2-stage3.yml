@@ -7,6 +7,7 @@ on:
     paths:
       - .aer-dev/stage3-runtime-assembly.py
       - .aer-dev/fix-stage3-transformer.py
+      - .aer-dev/fix-stage3-tests.py
       - .github/workflows/context-economy-v2-stage3.yml
   pull_request:
     branches:
@@ -14,6 +15,7 @@ on:
     paths:
       - .aer-dev/stage3-runtime-assembly.py
       - .aer-dev/fix-stage3-transformer.py
+      - .aer-dev/fix-stage3-tests.py
       - .github/workflows/context-economy-v2-stage3.yml
 
 permissions:
@@ -31,6 +33,8 @@ jobs:
         run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
       - name: Narrow Stage-3 transformer boundary
         run: python3 .aer-dev/fix-stage3-transformer.py
+      - name: Make runtime test transform structural
+        run: python3 .aer-dev/fix-stage3-tests.py
       - name: Apply fail-closed Stage-3 integration
         run: python3 .aer-dev/stage3-runtime-assembly.py
       - name: Update lockfile for workspace dependency edge
@@ -45,7 +49,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Source is committed only after all deterministic gates above pass.
           rm -rf .aer-dev
           rm -f .github/workflows/context-economy-v2-stage3.yml
           git config user.name "aer-context-v2-bot"
