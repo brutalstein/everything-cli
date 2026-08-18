@@ -1,0 +1,24 @@
+name: Context Economy V2 Parity Gate
+
+on:
+  push:
+    branches:
+      - agent/context-economy-v2-parity-gate
+    paths:
+      - tools/aer-bench/tests/parity_context_only.rs
+      - .github/workflows/context-economy-v2-parity-gate.yml
+
+permissions:
+  contents: read
+
+jobs:
+  parity-context-only:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/context-economy-v2-parity-gate
+      - name: Install pinned Rust toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal
+      - name: Zero-provider parity regression
+        run: cargo +1.97.1 test --locked -p aer-bench --test parity_context_only -- --nocapture
