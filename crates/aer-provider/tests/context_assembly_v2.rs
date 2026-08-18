@@ -75,7 +75,10 @@ fn prefix_cache_orders_stable_semantics_before_iteration_delta() {
     assert_eq!(plan.ordered_segments[1].id, "delta");
     assert!(plan.stable_bytes > 0);
     assert!(plan.dynamic_bytes > 0);
-    assert!(plan.cache_breakpoints.is_empty(), "CLI exposes no legal AER breakpoint");
+    assert!(
+        plan.cache_breakpoints.is_empty(),
+        "CLI exposes no legal AER breakpoint"
+    );
 }
 
 #[test]
