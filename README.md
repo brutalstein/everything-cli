@@ -175,12 +175,14 @@ Then launch it:
 
 ### Interactive
 
-There is no full-screen TUI, and that is deliberate. A bare launch starts a small line-oriented shell that avoids alternate-screen rendering and does no eager architecture or provider work.
+There is no full-screen TUI, and that is deliberate. A bare launch starts a small line-oriented shell that avoids alternate-screen rendering and does no eager architecture or provider work. The entry screen states only what is already known — where it is pointed, and what authority the session starts with — because the first frame should not pay for state you did not ask for.
 
 ```text
-everything
-workspace C:\path\to\repo
-type /help for available commands
+everything ─────────────────────────────────────────────────────────────────────
+workspace   C:\path\to\repo
+permission  default · reads automatic, other eligible actions ask
+
+/help for commands · /quit to exit
 
 ❯
 ```
@@ -222,6 +224,8 @@ type /help for available commands
 </table>
 
 The shell projects existing application and runtime state. It does not maintain a second UI-specific authority model.
+
+Rendering adapts to the terminal it actually has. Color obeys `--color auto|always|never`, `NO_COLOR` and `TERM=dumb`; every glyph has an ASCII fallback and every status carries a text label, so nothing means anything only through color; and on a narrow terminal alignment padding and panel borders are dropped rather than allowed to overflow. Piped output stays plain and copyable.
 
 ### Headless
 

@@ -130,17 +130,21 @@ The interactive client MAY disappear without terminating the underlying durable 
 
 ## 4. Recommended Rust implementation baseline
 
-The architecture MUST remain library-replaceable, but the initial Rust implementation SHOULD use:
+The architecture MUST remain library-replaceable. The implementation MUST have an abstraction over terminal capabilities so that no specific terminal library becomes part of the domain architecture.
 
-- `clap` for stable command parsing and help generation;
-- `ratatui` for full-screen interactive terminal composition;
-- `crossterm` as the default cross-platform terminal backend.
+Command parsing and help generation use `clap`. Versions MUST be controlled by the repository lockfile and dependency policy rather than copied from this document.
 
-Versions MUST be controlled by the repository lockfile and dependency policy rather than copied from this document.
+### 4.1 What is implemented today
 
-The full-screen TUI MUST only activate after terminal capability detection. Unsupported terminals, redirected streams, dumb terminals, CI, or accessibility modes MUST receive a clean line-oriented interface instead.
+The shipped binary implements the **compact interactive line mode** rung of the ladder in §5, and nothing above it. There is no full-screen composition layer, and no full-screen terminal dependency (`ratatui`, `crossterm` or equivalent) may enter the shipped binary's dependency graph; repository CI enforces this.
 
-The implementation MUST have an abstraction over terminal capabilities so a specific TUI library is not part of the domain architecture.
+The capability abstraction lives in `crates/aer-cli/src/surface.rs`. It resolves interactivity, color, Unicode and width once at startup, then exposes the §6 visual language as pure functions that take an explicit capability set and return strings. That purity is what makes every degraded rendering testable without a terminal.
+
+Width is read from the exported `COLUMNS` variable and otherwise assumed to be 80 columns: querying the terminal portably would require either a new dependency or `unsafe`, and neither is justified by the layouts this product needs.
+
+### 4.2 If a full-screen layer is ever added
+
+A full-screen implementation MUST activate only after terminal capability detection, and unsupported terminals, redirected streams, dumb terminals, CI and accessibility modes MUST continue to receive the line-oriented interface described here. Adding it requires lifting the CI restriction above as a deliberate, recorded decision — never as a side effect of adding a dependency.
 
 ---
 

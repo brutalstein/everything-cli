@@ -259,9 +259,27 @@ Pack sizes stayed within the dynamic budget (5.4k–6.0k estimated units against
 | Live end-to-end product validation | PASS | six real `everything provider smoke claude` scenarios, including retrieved adversarial repository evidence |
 | Post-promotion provider economics | RECORDED | `provider-context-economics-v1`, `valid: true`, 7144-token exact main-loop input, $0.029039/call |
 | Claude Code parity pilot | RECORDED, INSUFFICIENT | `claude-parity-benchmark-v1`, 36 real calls, 0 invalid; AER lowest cost per verified success; native product cheaper per task in steady state; 12 samples per profile supports no general claim |
+| Terminal user-experience contract | PARTIAL | `docs/23` §5 compact interactive line mode implemented in `crates/aer-cli/src/surface.rs`; the full-screen rung is deliberately not shipped |
 | Strong sandbox for provider-native agentic tool execution | **OPEN** | direct host process is not a strong sandbox |
 | Provider Productization Gate | **OPEN** | blockers above |
 | Step 14 | **BLOCKED** | gate must close first |
+
+## Terminal user-experience surface
+
+The CLI capability layer required by `docs/23` §4/§5 is implemented in `crates/aer-cli/src/surface.rs`: interactivity, color, Unicode and width are negotiated once at startup, and the visual language is exposed as pure functions that take an explicit capability set.
+
+What that gives the product today:
+
+- `--color auto|always|never`, with `NO_COLOR` and `TERM=dumb` honored in `auto`.
+- An ASCII fallback for every glyph and a text label on every status, so no meaning depends on color or Unicode.
+- Responsive behavior at the narrow breakpoint: alignment padding and panel borders are dropped rather than allowed to overflow.
+- A bordered panel for the authority boundary shown by `/permission`.
+
+What it deliberately does not give:
+
+- no full-screen composition layer, and no full-screen terminal dependency in the shipped binary (CI-enforced);
+- no width query — the exported `COLUMNS` variable, else an assumed 80 columns;
+- no progress or spinner vocabulary, because no runtime loop currently reports incremental progress. Statuses are added when something real reports them.
 
 ## Exact next-action order
 
