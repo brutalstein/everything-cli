@@ -242,3 +242,9 @@ Do not tune the old ~7k cache-write plateau as if it were current: it belongs to
 - `47_PROVIDER_AUTHORITY_SPLIT_ACCEPTANCE.md` — production-candidate correctness and adversarial acceptance.
 - `48_CLAUDE_CODE_PARITY_BENCHMARK.md` — cross-product comparison against the vendor Claude Code runtime on the same model.
 - root `STATUS.md` — current implementation/gate truth.
+<!-- context-economy-v2-offline-economics-note -->
+## Context Economy V2 validation note
+
+The Context Economy V2 engineering pass intentionally adds **no new live provider-economics result**. Provider quota was treated as a hard resource constraint, so implementation validation uses deterministic/offline repository, context, cache-geometry, freshness, and edit-output gates. The resulting context-unit estimates and provider-visible byte counts must not be relabeled as provider tokenizer counts, cache-hit rates, dollars, or latency.
+
+The historical live evidence in this document remains unchanged. In particular, the earlier pilot's cache-write/cache-read observations remain evidence about that transport/session, not a target fitted into production selection logic. A later live economics rerun should be performed only when quota is intentionally available and should measure the then-current provider transport with real usage telemetry.

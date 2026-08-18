@@ -315,3 +315,13 @@ The dry run makes zero provider calls and exists to inspect retrieved evidence b
 - A live benchmark does not promote its own candidate.
 - A cheaper prompt is not accepted if source-grounded engineering correctness regresses.
 - Step 14 remains blocked until this document and the applicable normative provider gates can truthfully say the provider productization gate is closed.
+<!-- context-economy-v2-status -->
+## Context Economy V2 engineering pass — current branch truth
+
+On `feat/context-economy-v2`, AER now has demand-driven evidence sufficiency, progressive retrieval, budget-ceiling semantics, derived hierarchical RI2 capsules, provider-neutral context assembly/cache geometry, provider-neutral cognitive work roles, task working-set deltas, and a hash-bound compact edit ABI wired into Single-Agent Runtime 0.1.
+
+Deterministic regressions cover exact-definition early stopping, budget invariance after sufficiency, preservation of test/implementation evidence, stale-snapshot rejection, trust/cache assembly boundaries, compact-edit stale/overlap/path/symlink failure modes, deterministic replay, sparse-edit output economy, and a CI-safe synthetic repository with thousands of unrelated files whose exact localized task remains bounded.
+
+No live provider benchmark or provider-economics loop was run for this pass. Live provider calls used by this pass: **0**. Therefore no new claim is made about real provider tokenizer counts, cache-hit economics, latency, dollar cost, or parity answer quality. The prior live parity/provider evidence remains historical evidence and is not rewritten.
+
+The pass is complete only when the canonical Linux foundation gates, canonical isolated Windows verifier, documentation integrity, and the feature PR checks are green. Until then this section records implemented branch behavior, not merged-main truth.

@@ -615,3 +615,13 @@ Benchmark against at least the current AER baseline, lexical-only, graph-only an
 - retrieval remains bounded by token, latency and resource policy;
 - language breadth cannot weaken sandbox, provenance or supply-chain requirements;
 - a new storage/search technology is adopted only when AER-native benchmarks justify it.
+<!-- context-economy-v2-ri2 -->
+## Context Economy V2: hierarchical RI2 capsules
+
+RI2 remains the only repository intelligence index and source-of-truth localization fabric. Context Economy V2 adds **derived repository capsules**, not a second index, database, memory, or retrieval system. `RepositoryIndex::repository_capsule` projects already-indexed RI2 facts into bounded navigation records at repository, package, directory, file, and symbol scope.
+
+A capsule may expose only compact deterministic facts that RI2 can ground: canonical scope identity, a deterministic primary-role label, key symbols/signatures, dependency and dependent edges, test links, build targets, source anchors, content hashes, capability tier, snapshot freshness, and producer version. Capsule identity is stable for the same logical scope; truth remains snapshot-bound through the capsule snapshot id, source anchors, hashes, and freshness. A stale snapshot is never made current by a capsule.
+
+Capsules are for **narrowing and navigation**. They never replace exact source for an edit, verification-critical decision, or exact-definition demand. For large repositories the intended narrowing sequence is repository/workspace or package -> directory/module -> file -> symbol -> exact source. Repository size should increase local indexing/query work much more than provider-visible context size. The CI-safe synthetic large-repository gate currently plants thousands of unrelated files and requires an exact-definition task to remain localized to one exact source item without invoking broad lexical or structural retrieval.
+
+Capsule production is deterministic and bounded by explicit per-field limits. Optional future model-written role descriptions, if introduced, must remain non-authoritative, content-hash-bound, source-anchored, lazy, and invalidated with their source scope. No such model-written summaries are authoritative in the current implementation.
