@@ -33,6 +33,8 @@ jobs:
         run: python3 .aer-dev/fix-stage3-transformer.py
       - name: Apply fail-closed Stage-3 integration
         run: python3 .aer-dev/stage3-runtime-assembly.py
+      - name: Update lockfile for workspace dependency edge
+        run: cargo +1.97.1 check -p aer-provider
       - name: Format
         run: cargo +1.97.1 fmt --all
       - name: Lint runtime/provider/context packages
