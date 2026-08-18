@@ -361,12 +361,12 @@ text = replace_once(
             .enumerate()
             .map(|(index, item)| ContextSegment {
                 id: format!("task-evidence:{index:03}:{}", item.path),
-                semantic_role: if item.required_symbols.is_empty()
-                    && item.required_semantic_ids.is_empty()
+                semantic_role: if item.tier >= aer_context::ContextTier::SourceSpan
+                    || !item.required_semantic_ids.is_empty()
                 {
-                    ContextSemanticRole::TaskEvidence
-                } else {
                     ContextSemanticRole::DecisionCriticalEvidence
+                } else {
+                    ContextSemanticRole::TaskEvidence
                 },
                 trust_class: ContextTrustClass::UntrustedData,
                 reuse_scope: ContextReuseScope::Snapshot,
@@ -649,14 +649,11 @@ fn exact_lines<'a>(bytes: &'a [u8], text: &'a str) -> Vec<&'a str> {
 
 '''
 text = replace_between(text, old_helpers_start, old_helpers_end, new_helpers, "runtime edit helpers")
-# validate_relative_path remains for verifier paths. Remove only the old edit-specific
-# Component-based implementation and replace it with delegation so verifier and edit
-# paths share one fail-closed policy.
 old_validate = '''fn validate_relative_path(value: &str) -> Result<(), RuntimeError> {
     if value.trim().is_empty() {
         return Err(RuntimeError::InvalidPlan("edit path is empty".to_owned()));
     }
-    if value.contains('\\\\') || value.contains(':') || value.contains('\\0') {
+    if value.contains('\\') || value.contains(':') || value.contains('\0') {
         return Err(RuntimeError::InvalidPlan(format!(
             "edit path must use portable forward-slash relative syntax: {value}"
         )));
@@ -697,7 +694,6 @@ new_validate = '''fn validate_relative_path(value: &str) -> Result<(), RuntimeEr
 }
 '''
 text = replace_once(text, old_validate, new_validate, "runtime shared path validation")
-# Runtime tests: use exact compact range ops.
 text = replace_once(
     text,
     '''    use super::{
@@ -717,11 +713,11 @@ text = replace_once(
     text,
     '''        let plan = serde_json::json!({
             "summary":"repair fixture value",
-            "edits":[{"path":"src/value.txt","content":"correct\\n"}]
+            "edits":[{"path":"src/value.txt","content":"correct\n"}]
         })
         .to_string();
 ''',
-    '''        let base = b"wrong\\n";
+    '''        let base = b"wrong\n";
         let plan = serde_json::json!({
             "summary":"repair fixture value",
             "operations":[{
@@ -731,7 +727,7 @@ text = replace_once(
                 "start_line":1,
                 "end_line":1,
                 "expected_segment_sha256":edit_sha256(base),
-                "replacement":"correct\\n"
+                "replacement":"correct\n"
             }]
         })
         .to_string();
