@@ -77,5 +77,40 @@ text = replace_between(
 '''
 text = text[:request_start] + request_transform + text[request_end:]
 
+old_remove = '''text = replace_between(
+    text,
+    ''' + "'''" + '''#[derive(Clone, Debug, Eq, PartialEq)]
+struct FileEdit {
+''' + "'''" + ''',
+    ''' + "'''" + '''#[derive(Clone, Debug)]
+struct RunRecord {
+''' + "'''" + ''',
+    ''' + "'''" + '''#[derive(Clone, Debug)]
+struct RunRecord {
+''' + "'''" + ''',
+    "remove old edit structs",
+)
+'''
+new_remove = '''text = replace_between(
+    text,
+    ''' + "'''" + '''#[derive(Clone, Debug, Eq, PartialEq)]
+struct FileEdit {
+''' + "'''" + ''',
+    ''' + "'''" + '''#[derive(Clone, Debug)]
+struct RunRecord {
+''' + "'''" + ''',
+    "",
+    "remove old edit structs",
+)
+'''
+if text.count(old_remove) != 1:
+    raise SystemExit("old edit-struct removal transformer not found")
+text = text.replace(old_remove, new_remove, 1)
+
+old_helpers = "new_helpers = '''fn provider_instructions() -> String {\n"
+if text.count(old_helpers) != 1:
+    raise SystemExit("runtime helper string anchor not found")
+text = text.replace(old_helpers, "new_helpers = r'''fn provider_instructions() -> String {\n", 1)
+
 path.write_text(text, encoding="utf-8")
-print("Stage-3 transformer uses structural boundaries for delegated context and runtime request")
+print("Stage-3 transformer preserves Rust escapes and structural end markers")
