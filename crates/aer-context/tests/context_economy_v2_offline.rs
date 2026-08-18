@@ -117,7 +117,8 @@ fn offline_quality(pack: &ContextPack) -> OfflineQuality {
             || !item.required_semantic_ids.is_empty()
             || item.selected_reason.contains("evidence demand:");
         if mandatory_like {
-            mandatory_like_context_units = mandatory_like_context_units.saturating_add(item.token_cost);
+            mandatory_like_context_units =
+                mandatory_like_context_units.saturating_add(item.token_cost);
         } else {
             optional_context_units = optional_context_units.saturating_add(item.token_cost);
         }
@@ -139,11 +140,7 @@ fn offline_quality(pack: &ContextPack) -> OfflineQuality {
 
     OfflineQuality {
         selected_context_units: pack.total_token_cost(),
-        provider_visible_bytes: pack
-            .items
-            .iter()
-            .map(|item| item.rendered_text.len())
-            .sum(),
+        provider_visible_bytes: pack.items.iter().map(|item| item.rendered_text.len()).sum(),
         selected_source_lines,
         redundant_selected_lines,
         overlapping_span_pairs,
@@ -159,7 +156,9 @@ fn offline_quality(pack: &ContextPack) -> OfflineQuality {
 fn enterprise_scale_exact_localization_keeps_model_visible_context_bounded() {
     let fixture = Fixture::large();
     let mut index = fixture.index();
-    index.refresh(&fixture.repo).expect("index large repository");
+    index
+        .refresh(&fixture.repo)
+        .expect("index large repository");
     let engine = ContextEngine::new(ContextPolicy::default()).expect("context engine");
     let mut request = ContextRequest::new(
         "large-repo-exact-definition",
