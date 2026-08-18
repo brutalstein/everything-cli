@@ -1,4 +1,5 @@
 mod build;
+mod capsule;
 mod freshness;
 mod graph_query;
 mod graph_write;
@@ -6,6 +7,7 @@ mod invalidation;
 mod model;
 mod schema;
 
+pub use capsule::*;
 pub use invalidation::{InvalidationFrontier, repository_file_entity_id};
 pub use model::*;
 
