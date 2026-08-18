@@ -4,9 +4,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use aer_core::edit_abi::{
-    CompactEditPlan, EditLimits, EditOperation, apply_edit_plan, sha256,
-};
+use aer_core::edit_abi::{CompactEditPlan, EditLimits, EditOperation, apply_edit_plan, sha256};
 
 fn temp_root() -> PathBuf {
     let nonce = SystemTime::now()

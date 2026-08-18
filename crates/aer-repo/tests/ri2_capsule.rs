@@ -21,10 +21,8 @@ impl Fixture {
             .duration_since(UNIX_EPOCH)
             .expect("clock")
             .as_nanos();
-        let root = std::env::temp_dir().join(format!(
-            "aer-ri2-capsule-{}-{nonce}",
-            std::process::id()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("aer-ri2-capsule-{}-{nonce}", std::process::id()));
         let repo = root.join("repo");
         let index_path = root.join("index.sqlite");
         fs::create_dir_all(repo.join("src/auth")).expect("src");
