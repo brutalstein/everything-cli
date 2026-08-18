@@ -1,6 +1,7 @@
 use std::{
     error::Error,
-    io::{self, IsTerminal},
+    fmt::{Display, Write as _},
+    io,
     path::{Path, PathBuf},
 };
 
@@ -12,9 +13,15 @@ use aer_environment::EnvironmentFingerprint;
 use aer_workspace::WorkspaceIdentity;
 use clap::{Parser, Subcommand};
 
-use crate::shell;
+use crate::{
+    shell,
+    surface::{ColorChoice, Status, Surface},
+};
 
 const PRODUCT: &str = "everything";
+
+/// Key-column width shared by the aligned field lists this module prints.
+const FIELD_WIDTH: usize = 11;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -26,6 +33,16 @@ struct Cli {
     /// Repository workspace to operate on. Defaults to the current directory.
     #[arg(long, global = true, value_name = "PATH")]
     workspace: Option<PathBuf>,
+
+    /// When to colorize output: auto (default), always or never.
+    #[arg(
+        long,
+        global = true,
+        value_name = "WHEN",
+        default_value = "auto",
+        value_parser = ColorChoice::parse
+    )]
+    color: ColorChoice,
 
     #[command(subcommand)]
     command: Option<Command>,
@@ -76,9 +93,10 @@ pub fn run_cli() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
     let cwd = std::env::current_dir()?;
     let workspace = resolve_workspace(&cwd, cli.workspace.as_deref());
+    let surface = Surface::detect(cli.color);
 
     match cli.command {
-        Some(Command::Status { json }) => print_status(&workspace, json),
+        Some(Command::Status { json }) => print_status(&workspace, json, &surface),
         Some(Command::Doctor { json }) => print_doctor(&workspace, json),
         Some(Command::Workspace { json }) => print_workspace(&workspace, json),
         Some(Command::Intent { json }) => print_intent(&workspace, json),
@@ -89,12 +107,16 @@ pub fn run_cli() -> Result<(), Box<dyn Error>> {
             print_providers();
             Ok(())
         }
-        None if io::stdin().is_terminal() && io::stdout().is_terminal() => shell::run(&workspace),
-        None => print_status(&workspace, false),
+        None if surface.interactive() => shell::run(&workspace, &surface),
+        None => print_status(&workspace, false, &surface),
     }
 }
 
-pub(crate) fn print_status(path: &Path, json: bool) -> Result<(), Box<dyn Error>> {
+pub(crate) fn print_status(
+    path: &Path,
+    json: bool,
+    surface: &Surface,
+) -> Result<(), Box<dyn Error>> {
     let workspace = WorkspaceIdentity::inspect(path)?;
     let runtime = runtime_catalog(&workspace.repo_root);
     let spec = spec_catalog(&workspace.repo_root);
@@ -124,43 +146,113 @@ pub(crate) fn print_status(path: &Path, json: bool) -> Result<(), Box<dyn Error>
         return Ok(());
     }
 
-    println!("{PRODUCT} · {}", workspace_name(&workspace.repo_root));
-    println!(
-        "workspace  {}",
-        if workspace.is_clean() {
-            "clean"
-        } else {
-            "dirty"
-        }
+    print!(
+        "{}",
+        render_status(&workspace, spec.as_ref(), runtime.as_deref(), surface)
     );
-    println!(
-        "branch     {}",
-        workspace.branch.as_deref().unwrap_or("detached")
-    );
-    match spec {
-        Ok(spec) => println!(
-            "spec       rev {} · {} unknown(s) · {} research artifact(s)",
-            spec.revision,
-            spec.open_unknown_count(),
-            spec.research_artifact_count
-        ),
-        Err(error) => println!("spec       error · {error}"),
-    }
-    match runtime {
-        Ok(runs) => {
-            println!("runtime    ready · {} durable run(s)", runs.len());
-            if let Some(latest) = runs.first() {
-                println!(
-                    "latest     {} · {}",
-                    short_id(&latest.run_id),
-                    run_state(latest)
-                );
-            }
-        }
-        Err(error) => println!("runtime    error · {error}"),
-    }
-    println!("provider   gateway ready · profile not configured");
     Ok(())
+}
+
+/// Renders the status view.
+///
+/// Each subsystem reports one of the semantic statuses rather than a bare
+/// string, so a failed subsystem is distinguishable from a healthy one without
+/// relying on the reader parsing prose — and, per the accessibility contract,
+/// without relying on color either.
+fn render_status(
+    workspace: &WorkspaceIdentity,
+    spec: Result<&SpecSnapshot, &impl Display>,
+    runtime: Result<&[RunSummary], &impl Display>,
+    surface: &Surface,
+) -> String {
+    let mut view = String::with_capacity(512);
+    let _ = writeln!(
+        view,
+        "{}",
+        surface.heading(&format!(
+            "{PRODUCT} · {}",
+            workspace_name(&workspace.repo_root)
+        ))
+    );
+
+    let (workspace_status, workspace_detail) = if workspace.is_clean() {
+        (Status::Accepted, "clean")
+    } else {
+        (Status::Attention, "uncommitted changes")
+    };
+    let _ = writeln!(
+        view,
+        "{}",
+        surface.field(
+            "workspace",
+            &surface.status(workspace_status, workspace_detail, None),
+            FIELD_WIDTH
+        )
+    );
+    let _ = writeln!(
+        view,
+        "{}",
+        surface.field(
+            "branch",
+            workspace.branch.as_deref().unwrap_or("detached"),
+            FIELD_WIDTH
+        )
+    );
+
+    let spec_line = match spec {
+        Ok(spec) => surface.status(
+            if spec.open_unknown_count() == 0 {
+                Status::Ready
+            } else {
+                Status::Attention
+            },
+            &format!(
+                "rev {} · {} unknown(s) · {} research artifact(s)",
+                spec.revision,
+                spec.open_unknown_count(),
+                spec.research_artifact_count
+            ),
+            None,
+        ),
+        Err(error) => surface.status(Status::Failed, &error.to_string(), None),
+    };
+    let _ = writeln!(view, "{}", surface.field("spec", &spec_line, FIELD_WIDTH));
+
+    let runtime_line = match runtime {
+        Ok(runs) => {
+            let latest = runs
+                .first()
+                .map(|latest| format!("latest {} {}", short_id(&latest.run_id), run_state(latest)));
+            surface.status(
+                Status::Ready,
+                &format!("{} durable run(s)", runs.len()),
+                latest.as_deref(),
+            )
+        }
+        Err(error) => surface.status(Status::Failed, &error.to_string(), None),
+    };
+    let _ = writeln!(
+        view,
+        "{}",
+        surface.field("runtime", &runtime_line, FIELD_WIDTH)
+    );
+
+    // The gateway boundary exists; no provider profile is configured through it
+    // yet. Reporting that as `ready` would overstate the capability.
+    let _ = writeln!(
+        view,
+        "{}",
+        surface.field(
+            "provider",
+            &surface.status(
+                Status::Waiting,
+                "gateway ready · profile not configured",
+                None
+            ),
+            FIELD_WIDTH
+        )
+    );
+    view
 }
 
 pub(crate) fn print_workspace(path: &Path, json: bool) -> Result<(), Box<dyn Error>> {

@@ -211,6 +211,10 @@ Therefore provider-native process-capable agent loops MUST NOT be treated as pro
 
 The intended agentic surface must have an isolation backend that satisfies the applicable execution/security contract or fail closed before exposing that authority.
 
+That boundary is now implemented as the fail-closed half. Model-directed process execution runs under a policy that demands every isolation dimension of `13_EXECUTION_SANDBOX_AND_TOOL_RUNTIME.md`; the only available substrate enforces none of them, so `exec.run` refuses every call and names what is missing. AER-authored commands, whose argv AER builds itself, are a different path and continue to run under the trusted-workspace policy.
+
+Permission mode cannot reach this boundary. A refusal is produced with owned-worktree authority and `full` permission mode, because the substrate — not the prompt, the mode or the caller — decides it.
+
 ## 6. Permission mode is not capability authority
 
 ```text
@@ -402,7 +406,7 @@ Therefore:
 - every production delegated Claude request now carries an AER-owned system authority layer; there is no second Claude request builder in the product;
 - the retired vendor-preset framing survives only as a labelled non-production comparator inside `tools/aer-bench`, used to produce paired economics;
 - Step 14 remains blocked;
-- the Provider Runtime Productization Gate remains open: strong sandbox work is still necessary before process-capable provider-native agentic execution is accepted, and running delegated calls as ordinary host processes does not satisfy §5.2.
+- the §5.2 boundary is implemented in its fail-closed form: model-directed process execution is refused by the substrate, and the tool catalog states the reason. A strong isolation backend remains absent, so process-capable provider-native agentic execution stays unavailable rather than becoming available under a weaker substrate.
 
 ## 14. Primary-source revalidation
 

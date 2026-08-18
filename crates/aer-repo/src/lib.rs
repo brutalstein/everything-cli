@@ -10,6 +10,7 @@ mod syntax;
 
 pub use model::*;
 pub use ri2::*;
+pub use syntax::{SourceMeasurement, SourceUnit, measure_source};
 
 use std::{
     collections::{BTreeMap, BTreeSet},

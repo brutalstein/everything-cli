@@ -61,9 +61,9 @@ Authority size is bounded, and exceeding the bound **fails closed** rather than 
 
 | | |
 |---|---|
-| **Sequence position** | Steps 01–13 complete of 18 |
-| **Active work** | Provider Runtime Productization Gate (non-numbered, between 13 and 14) |
-| **Step 14** | Intentionally blocked until that gate closes |
+| **Sequence position** | Steps 01–13 complete of 18; Step 14 in progress |
+| **Active work** | Architecture Health Controller |
+| **Provider gate** | Closed for the surfaces the product exposes; process-capable agentic execution stays refused |
 | **Authoritative CI** | `foundation-ci` — Linux and Windows jobs, both required |
 
 The merged runtime includes:
@@ -81,7 +81,9 @@ The merged runtime includes:
 | **Providers** | Resilience, cost routing, truthful telemetry, delegated onboarding |
 | **Horizon** | Long-horizon engineering state and recovery |
 | **Parallelism** | Bounded parallel execution with isolated worktrees and integration verification |
-| **Authority** | AER-owned permission policy and typed ToolBroker foundations |
+| **Authority** | AER-owned permission policy, typed ToolBroker, and a fail-closed isolation boundary for model-directed execution |
+| **Health** | Architecture health measurement, a blocking crate-layer gate and acceptance-time recording |
+| **Interface** | A terminal surface that negotiates color, Unicode and width, and degrades without losing meaning |
 
 ---
 
@@ -175,12 +177,14 @@ Then launch it:
 
 ### Interactive
 
-There is no full-screen TUI, and that is deliberate. A bare launch starts a small line-oriented shell that avoids alternate-screen rendering and does no eager architecture or provider work.
+There is no full-screen TUI, and that is deliberate. A bare launch starts a small line-oriented shell that avoids alternate-screen rendering and does no eager architecture or provider work. The entry screen states only what is already known — where it is pointed, and what authority the session starts with — because the first frame should not pay for state you did not ask for.
 
 ```text
-everything
-workspace C:\path\to\repo
-type /help for available commands
+everything ─────────────────────────────────────────────────────────────────────
+workspace   C:\path\to\repo
+permission  default · reads automatic, other eligible actions ask
+
+/help for commands · /quit to exit
 
 ❯
 ```
@@ -223,6 +227,8 @@ type /help for available commands
 
 The shell projects existing application and runtime state. It does not maintain a second UI-specific authority model.
 
+Rendering adapts to the terminal it actually has. Color obeys `--color auto|always|never`, `NO_COLOR` and `TERM=dumb`; every glyph has an ASCII fallback and every status carries a text label, so nothing means anything only through color; and on a narrow terminal alignment padding and panel borders are dropped rather than allowed to overflow. Piped output stays plain and copyable.
+
 ### Headless
 
 The same binary is scriptable, and every inspection command speaks JSON.
@@ -252,6 +258,25 @@ Point it at another repository without changing directory:
 
 Deterministic CI proves parsers, policy, context construction, permission and tool invariants, resource bounds and fail-closed behavior — with no credentials and no paid calls.
 
+### Architecture health
+
+The controller measures file size, unit size, complexity concentration, duplication and declared layer boundaries — with no aggregate score, on deltas rather than absolute thresholds, and with every finding carrying the evidence tier that produced it. Acceptance journals every outcome, refuses a change that crosses a declared boundary, and asks for a refactor only after the same file and dimension regress three times.
+
+[EvolutionBench](benchmarks/evolution/aer-evolution-bench-v1.json) replays one synthetic trajectory under four regimes. It reports two things, one of which does not flatter the default configuration:
+
+| Regime | Redirects | Largest unit | Worst concentration | Total lines | Duplicated lines |
+|---|---|---|---|---|---|
+| ungated (control) | 0 | 271 | 10000 bps | 1140 | 0 |
+| default policy, previous-change baseline | 6 | 269 | 9607 bps | 1194 | 42 |
+| default policy, twelve-task baseline | 69 | 235 | 6255 bps | 1761 | 483 |
+| deliberately over-tight policy | 120 | 213 | 4122 bps | 2220 | 840 |
+
+The baseline matters more than the thresholds: the same default policy is nearly inert against the previous change and cuts worst concentration by 37% against a baseline twelve tasks back. And structure is bought, monotonically, with duplication and size — no regime improved everything. The engineer in this benchmark is a deterministic rule, not a language model, so none of it is evidence about real model trajectories.
+
+### Repository gates
+
+Two gates guard the architecture itself. Documentation integrity checks that every architecture document is accounted for and unmodified. The architecture health gate reads the declared crate layering and fails on a dependency that crosses it, so an inversion — the process substrate reaching up into the orchestration layer — is caught when it is written rather than when someone tries to reuse the crate. The same gate reports what a change did to file size, unit size and complexity concentration, and does not fail on those, because a threshold tight enough to be useful is too tight to be automatic.
+
 Live provider acceptance is a **separate** product gate, because it makes real provider calls. Inspect what retrieval selected before paying for anything:
 
 ```powershell
@@ -275,14 +300,13 @@ The matrix runs repository facts, architecture authority and an adversarial repo
 
 Honesty about the boundary is part of the contract. `everything` does **not** currently claim:
 
-- Provider Runtime Productization Gate completion;
-- a strong sandbox for unrestricted provider-native agentic process execution — delegated calls still run as ordinary host processes;
+- a strong sandbox for provider-native agentic process execution. There is no isolating substrate, so model-directed process execution is refused rather than run: `exec.run` fails closed under owned-worktree authority and `full` permission mode alike, and the tool catalog says why before you call it;
 - universal exact semantic understanding for every programming language;
 - that provider prompt-cache ratios are an engineering-quality score;
 - that it is cheaper than Claude Code in general — a 12-sample pilot in one cache mode cannot carry that, and the native product won a metric in it;
 - that fewer input tokens implies lower cost — the same pilot shows it does not;
 - that it resists prompt injection better than Claude Code — that comparison was not validly measured;
-- that Step 14 has started.
+- that architecture-health gating improves real model trajectories. EvolutionBench measures a deterministic modelled engineer, and its clearest finding is unflattering: the shipped default policy, run against the previous change, is close to inert.
 
 Current blockers and the exact next-action order live in [`STATUS.md`](STATUS.md).
 
@@ -298,6 +322,9 @@ Implementation follows the precedence and change discipline in [`docs/00_READ_ME
 | [`docs/02_ARCHITECTURE_PRINCIPLES.md`](docs/02_ARCHITECTURE_PRINCIPLES.md) | Standing architectural principles |
 | [`docs/06_REPOSITORY_INTELLIGENCE.md`](docs/06_REPOSITORY_INTELLIGENCE.md) | Repository knowledge, source and provenance model |
 | [`docs/07_CONTEXT_ECONOMY_ENGINE.md`](docs/07_CONTEXT_ECONOMY_ENGINE.md) | Bounded selection and progressive disclosure |
+| [`docs/13_EXECUTION_SANDBOX_AND_TOOL_RUNTIME.md`](docs/13_EXECUTION_SANDBOX_AND_TOOL_RUNTIME.md) | Trust levels, isolation dimensions and the tool runtime |
+| [`docs/18_ARCHITECTURE_HEALTH_CONTROLLER.md`](docs/18_ARCHITECTURE_HEALTH_CONTROLLER.md) | Health dimensions, debt records and EvolutionBench |
+| [`docs/23_CLI_AND_USER_EXPERIENCE.md`](docs/23_CLI_AND_USER_EXPERIENCE.md) | Terminal capability negotiation and the degradation ladder |
 | [`docs/45_PROVIDER_AUTH_CONTEXT_PERMISSION_AND_TOOL_RUNTIME.md`](docs/45_PROVIDER_AUTH_CONTEXT_PERMISSION_AND_TOOL_RUNTIME.md) | Provider authority, isolation and runtime semantics |
 | [`docs/46_PROVIDER_CONTEXT_ECONOMICS_BENCHMARK.md`](docs/46_PROVIDER_CONTEXT_ECONOMICS_BENCHMARK.md) | Context, cache and cost measurement contract |
 | [`docs/47_PROVIDER_AUTHORITY_SPLIT_ACCEPTANCE.md`](docs/47_PROVIDER_AUTHORITY_SPLIT_ACCEPTANCE.md) | Claude authority-split acceptance gate |

@@ -74,6 +74,7 @@ Do not read every document into context at once.
 | Real provider auth / context / permissions / tools | `45` |
 | Provider context economics | `46` |
 | Provider authority-split acceptance | `47` |
+| Cross-product benchmark against Claude Code | `48` |
 | Tasks / orchestration / parallelism / resources | `10`, `11`, `12`, `39` |
 | Sandboxing / tools / protocols | `13`, `14`, `45` |
 | State / memory / recovery | `15`, `16`, `24` |

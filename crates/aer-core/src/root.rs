@@ -14,6 +14,7 @@ use sha2::{Digest, Sha256};
 mod phase1_runtime;
 
 pub use phase1_runtime::*;
+pub mod architecture_health;
 pub mod context;
 pub mod edit_abi;
 pub mod engineering_invalidation;

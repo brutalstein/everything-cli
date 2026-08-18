@@ -242,6 +242,8 @@ Selected parallelizable tasks improve wall-clock or success without unacceptable
 
 EvolutionBench demonstrates reduced long-horizon deterioration versus the same runtime without health control. Architecture-health conclusions preserve the same provenance/capability distinctions as Repository Intelligence rather than treating heuristic graph structure as compiler truth.
 
+Current state: EvolutionBench exists and reports reduced deterioration under gating, at a measured cost in duplication and size, on a **deterministic synthetic trajectory driven by a modelled engineer**. That is evidence about the gate, not about real model behavior, so this exit gate is met for the controller and open for the runtime claim. See `18_ARCHITECTURE_HEALTH_CONTROLLER.md`.
+
 ---
 
 # Phase 9 — Ecosystem Protocols, Skills, and Supply-Chain Hardening

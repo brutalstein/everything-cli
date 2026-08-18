@@ -7,6 +7,7 @@
 mod commands;
 mod provider_cli;
 mod shell;
+mod surface;
 
 pub fn run_cli() -> Result<(), Box<dyn std::error::Error>> {
     if provider_cli::try_run_provider_surface()? {

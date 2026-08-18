@@ -10,6 +10,8 @@ rust-version.workspace = true
 [dependencies]
 aer-context = { path = "../../crates/aer-context" }
 aer-core = { path = "../../crates/aer-core" }
+aer-health = { path = "../../crates/aer-health" }
+aer-repo = { path = "../../crates/aer-repo" }
 aer-provider = { path = "../../crates/aer-provider" }
 clap.workspace = true
 serde_json.workspace = true
@@ -26,6 +28,10 @@ path = "src/bin/aer-provider-acceptance.rs"
 [[bin]]
 name = "aer-parity-benchmark"
 path = "src/bin/aer-parity-benchmark.rs"
+
+[[bin]]
+name = "aer-evolution-bench"
+path = "src/bin/aer-evolution-bench.rs"
 
 [lints]
 workspace = true

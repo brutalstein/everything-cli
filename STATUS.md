@@ -259,9 +259,96 @@ Pack sizes stayed within the dynamic budget (5.4k–6.0k estimated units against
 | Live end-to-end product validation | PASS | six real `everything provider smoke claude` scenarios, including retrieved adversarial repository evidence |
 | Post-promotion provider economics | RECORDED | `provider-context-economics-v1`, `valid: true`, 7144-token exact main-loop input, $0.029039/call |
 | Claude Code parity pilot | RECORDED, INSUFFICIENT | `claude-parity-benchmark-v1`, 36 real calls, 0 invalid; AER lowest cost per verified success; native product cheaper per task in steady state; 12 samples per profile supports no general claim |
-| Strong sandbox for provider-native agentic tool execution | **OPEN** | direct host process is not a strong sandbox |
-| Provider Productization Gate | **OPEN** | blockers above |
-| Step 14 | **BLOCKED** | gate must close first |
+| Terminal user-experience contract | PARTIAL | `docs/23` §5 compact interactive line mode implemented in `crates/aer-cli/src/surface.rs`; the full-screen rung is deliberately not shipped |
+| Isolation boundary for model-directed execution | PASS as fail-closed | `exec.run` is refused by the substrate under owned-worktree authority and `full` permission mode; refusal names the trust level, network class and all six unenforced dimensions |
+| Strong isolation backend | **ABSENT** | the only substrate is a direct host process, which enforces none of the six dimensions; process-capable agentic execution stays unavailable rather than running under it |
+| Provider Productization Gate | CLOSED for the exposed surfaces | delegated inference and read-only tools; explicitly does not cover process-capable agentic execution |
+| Step 14 | IMPLEMENTED, RUNTIME CLAIM OPEN | controller, duplication, layer gate, acceptance-time integration and EvolutionBench all exist; the comparative evidence is a modelled trajectory, not real model behavior |
+
+## Architecture health controller — Step 14, partial
+
+`crates/aer-health` measures file size, unit count, largest unit, complexity concentration and declared boundary violations. Measurement reuses the existing language capability registry through `aer_repo::measure_source`, so there is one idea of what a unit is; a file whose parse reported an error degrades to the text tier rather than reporting partial symbols as complete.
+
+Three rules from `docs/18` are implemented literally rather than approximated:
+
+- **no aggregate score** — a comparison returns per-dimension findings and nothing else;
+- **delta, not absolute thresholds** — a pre-existing large file produces no finding for a patch that does not touch it, and deleting code is never a regression;
+- **every finding carries its capability tier**, so a syntax-derived measurement never impersonates compiler truth.
+
+Complexity concentration is the structural-erosion signal: folding a helper into an already-large function moves it from 5000 to 6451 basis points while the file grows by ten lines and the unit count *falls*. A naive "more units, more complexity" reading would have called that an improvement. That case is a test.
+
+Debt records are time-bounded and dimension-scoped. A record excuses the dimension and path it names, up to the regression it names, until the revision it names — and nothing else. Expiry, over-large regressions and wrong-path records are each covered by a test.
+
+`tools/aer-health-check` applies the controller to this repository, as `docs/18` requires of AER itself, and is wired into `scripts/verify-windows.ps1` and Linux CI. It runs two checks of deliberately different kinds:
+
+| Check | Kind | On failure |
+|---|---|---|
+| crate layer boundaries | absolute — layering is a declared fact | exits non-zero |
+| working tree versus a revision | relative — a delta, not a threshold | reports, does not block |
+
+The layer gate currently passes and would catch a real inversion: a test asserts that making `aer-exec` depend on `aer-core` is reported as infrastructure depending on application.
+
+Duplication is now measured: blocks of at least six normalized lines that repeat across the measured set. It is line-based and therefore heuristic — it sees copied text, not copied meaning — and it carries the same capability tier as the rest of the file's numbers.
+
+Dead code, test fragility and documentation drift stay unmeasured for stated reasons. Dead code needs compiler truth, and a syntax-tier guess is wrong across traits, macros and re-exports. Test fragility needs verification history the runtime does not yet retain. Documentation drift needs a claim-to-code mapping; document *integrity* proves documents are unmodified, not that they are still true. None is stubbed, because a dimension that always reports zero would read as a clean bill of health it did not earn.
+
+### Acceptance-time integration
+
+`aer_core::architecture_health` records every acceptance outcome in the durable journal, including clean ones, because a series that logs only bad news cannot show a trend. A crossed boundary refuses acceptance. A single regression is recorded and allowed. A refactoring task is created only after the same path and dimension regress three times, with an identity derived from path and dimension so a hotspot keeps pointing at one task, and with the count read from the journal so a restarted runtime counts what the previous one did.
+
+### EvolutionBench — evidence, including the part that does not flatter us
+
+`tools/aer-bench/src/bin/aer-evolution-bench.rs`, 120 tasks, 6 files, fixed seed. Receipt: `benchmarks/evolution/aer-evolution-bench-v1.json`. The measurement is the shipped controller; the engineer is a deterministic rule, not a language model.
+
+| Regime | Redirects | Largest unit | Worst concentration | Total lines | Units | Duplicated lines |
+|---|---|---|---|---|---|---|
+| ungated (control) | 0 | 271 | 10000 bps | 1140 | 6 | 0 |
+| default policy, previous-change baseline | 6 | 269 | 9607 bps | 1194 | 12 | 42 |
+| default policy, twelve-task baseline | 69 | 235 | 6255 bps | 1761 | 75 | 483 |
+| deliberately over-tight policy | 120 | 213 | 4122 bps | 2220 | 126 | 840 |
+
+**The shipped default gate, run against the previous change, is close to inert.** Six redirects in a hundred and twenty tasks, and two lines off the largest unit. Erosion arrives nine lines at a time and nine is under every threshold. The same policy against a baseline twelve tasks back redirected sixty-nine changes and cut worst concentration by 37%. The baseline matters more than the thresholds, and no amount of threshold tuning would have found that.
+
+**Structure is bought with duplication and size, monotonically.** Every regime that improved concentration paid for it in lines, units and duplicated call preambles. No regime improved everything.
+
+What this settles: gating changes the trajectory, baseline distance dominates threshold choice, and the improvement has a measurable price. What it does not settle: anything about real model trajectories. It must not be quoted as if it did.
+
+## Isolation boundary for model-directed execution
+
+`docs/13` names six isolation dimensions a substrate must control before it may be called a sandbox: filesystem, network, credentials, process resources, host control sockets and verifier assets. The only substrate available today is a direct host child process, which controls **none** of them. Confining the working directory and clearing inherited environment variables is real hygiene and is implemented, but a child process can still write anywhere the user can, open any socket and read any credential file.
+
+The boundary now separates two execution paths by who authored the argv:
+
+| Path | Argv author | Behavior |
+|---|---|---|
+| AER-authored tooling — Git, provider CLI, verification commands | AER | runs, with bounded timeout, capture limits, cwd containment, environment allowlist and argv/output-hash evidence |
+| Model-directed execution — the `exec.run` tool | the model | fails closed, naming the trust level, the network class and every unenforced dimension |
+
+Two properties are asserted by test rather than asserted in prose:
+
+- the refusal is produced with owned-worktree authority and `full` permission mode, so the substrate — not the prompt, the mode or the caller — decides it;
+- `exec.run` stays in the tool catalog carrying the reason it is unavailable, so a caller discovers the refusal before making the call.
+
+This satisfies `docs/45` §5.2, which requires an isolation backend that meets the contract **or** a fail-closed refusal before that authority is exposed. It is not a substitute for a sandbox. Adding a strong backend means adding a substrate that can prove dimensions; the same policy then stops failing closed with no change to the tool runtime.
+
+Types added to `crates/aer-exec`: `TrustLevel`, `NetworkClass`, `IsolationDimension`, `IsolationReport`. Only the trust levels and network classes a policy path actually selects are defined; the rest of the `docs/13` vocabulary arrives with the code that selects it.
+
+## Terminal user-experience surface
+
+The CLI capability layer required by `docs/23` §4/§5 is implemented in `crates/aer-cli/src/surface.rs`: interactivity, color, Unicode and width are negotiated once at startup, and the visual language is exposed as pure functions that take an explicit capability set.
+
+What that gives the product today:
+
+- `--color auto|always|never`, with `NO_COLOR` and `TERM=dumb` honored in `auto`.
+- An ASCII fallback for every glyph and a text label on every status, so no meaning depends on color or Unicode.
+- Responsive behavior at the narrow breakpoint: alignment padding and panel borders are dropped rather than allowed to overflow.
+- A bordered panel for the authority boundary shown by `/permission`.
+
+What it deliberately does not give:
+
+- no full-screen composition layer, and no full-screen terminal dependency in the shipped binary (CI-enforced);
+- no width query — the exported `COLUMNS` variable, else an assumed 80 columns;
+- no progress or spinner vocabulary, because no runtime loop currently reports incremental progress. Statuses are added when something real reports them.
 
 ## Exact next-action order
 
@@ -273,11 +360,15 @@ Pack sizes stayed within the dynamic budget (5.4k–6.0k estimated units against
 6. ~~Promote authority split to production Claude delegated transport.~~ **Done — one production request builder; the retired preset survives only as a harness comparator.**
 7. ~~Re-run the canonical provider economics benchmark after the transport change.~~ **Done — post-promotion baseline recorded above and in `docs/46` §7.2.**
 8. Rerun `claude-parity-benchmark-v1` under the revised suite (`docs/48` §12) at `--suite standard` and in both cache modes, and force the native profile to read the adversarial fixture before that family is scored. The pilot's numbers stand only for the revision that produced them.
-9. Establish the strong sandbox boundary required by `docs/45` §5.2 for the intended agentic surface. Direct host-process execution does not satisfy it.
-10. Close the Provider Runtime Productization Gate only after that and any other remaining acceptance requirements are satisfied.
-11. Start Step 14 only after the gate is formally closed.
+9. ~~Establish the strong sandbox boundary required by `docs/45` §5.2 for the intended agentic surface.~~ **Done in its fail-closed form.** See below; a strong backend is still absent.
+10. ~~Close the Provider Runtime Productization Gate.~~ **Done for the surfaces the product exposes.** It does not cover process-capable agentic execution, which remains unavailable.
+11. ~~Start Step 14, the Architecture Health Controller.~~ **Started.** The controller and the repository layer gate are implemented; see below.
+12. ~~Wire the health delta into task acceptance, and let a sustained regression create a refactoring task.~~ **Done** — `aer_core::architecture_health`.
+13. ~~Build EvolutionBench.~~ **Done, with a negative finding about the default gate.** See below. The remaining claim — that gating helps *real* model trajectories — needs live evidence and must not be asserted from the synthetic run.
+14. Choose acceptance baselines by distance, not by convenience. EvolutionBench shows the previous-change baseline is close to inert; a gate run against a merge base is a different instrument from a gate run against `HEAD`.
+15. Add a strong isolation backend when one can be verified on both target platforms. Until then, `exec.run` stays refused. Do not weaken the policy to make the tool appear to work.
 
-Do not skip from the present evidence directly to ContextSizer tuning, learned routing or Step 14.
+Do not skip from the present evidence directly to ContextSizer tuning or learned routing.
 
 ## Canonical Windows verification
 

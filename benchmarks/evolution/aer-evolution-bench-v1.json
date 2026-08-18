@@ -1,0 +1,85 @@
+{
+  "benchmark": "aer-evolution-bench-v1",
+  "comparisons": [
+    {
+      "baseline": "ungated",
+      "compared": "gated-default",
+      "duplicated_lines_delta": 42,
+      "max_unit_lines_delta": -2,
+      "total_lines_delta": 54,
+      "total_units_delta": 6,
+      "worst_concentration_bps_delta": -393
+    },
+    {
+      "baseline": "ungated",
+      "compared": "gated-default-drift",
+      "duplicated_lines_delta": 483,
+      "max_unit_lines_delta": -36,
+      "total_lines_delta": 621,
+      "total_units_delta": 69,
+      "worst_concentration_bps_delta": -3745
+    },
+    {
+      "baseline": "ungated",
+      "compared": "gated-tight",
+      "duplicated_lines_delta": 840,
+      "max_unit_lines_delta": -58,
+      "total_lines_delta": 1080,
+      "total_units_delta": 120,
+      "worst_concentration_bps_delta": -5878
+    }
+  ],
+  "files": 6,
+  "regimes": [
+    {
+      "description": "every change is applied; the control trajectory",
+      "duplicated_lines": 0,
+      "max_unit_lines": 271,
+      "redirects": 0,
+      "regime": "ungated",
+      "total_lines": 1140,
+      "total_units": 6,
+      "worst_concentration_bps": 10000
+    },
+    {
+      "description": "the shipped default policy against the previous change",
+      "duplicated_lines": 42,
+      "max_unit_lines": 269,
+      "redirects": 6,
+      "regime": "gated-default",
+      "total_lines": 1194,
+      "total_units": 12,
+      "worst_concentration_bps": 9607
+    },
+    {
+      "description": "the same default policy against a baseline twelve tasks back",
+      "duplicated_lines": 483,
+      "max_unit_lines": 235,
+      "redirects": 69,
+      "regime": "gated-default-drift",
+      "total_lines": 1761,
+      "total_units": 75,
+      "worst_concentration_bps": 6255
+    },
+    {
+      "description": "a deliberately over-tight policy, to show that the policy is a choice",
+      "duplicated_lines": 840,
+      "max_unit_lines": 213,
+      "redirects": 120,
+      "regime": "gated-tight",
+      "total_lines": 2220,
+      "total_units": 126,
+      "worst_concentration_bps": 4122
+    }
+  ],
+  "schema_version": 1,
+  "seed": "0x5eed12349876abcd",
+  "tasks": 120,
+  "validity_limits": [
+    "The engineer is a deterministic rule, not a language model. This measures the gate's effect on one modelled failure mode, not on real model trajectories.",
+    "The project is synthetic. Absolute magnitudes carry no meaning; only the difference between regimes on the same trajectory does.",
+    "A lower number is not automatically better. Gating buys structure by adding units, lines and duplicated call preambles, and every one of those costs is reported here.",
+    "No regime is declared a winner by this harness. Read the deltas.",
+    "Redirect counts are part of the result. A regime that redirected almost nothing did not protect anything, however good its final numbers look."
+  ]
+}

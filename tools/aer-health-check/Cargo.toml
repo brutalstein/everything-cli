@@ -1,0 +1,14 @@
+[package]
+name = "aer-health-check"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+aer-exec = { path = "../../crates/aer-exec" }
+aer-health = { path = "../../crates/aer-health" }
+aer-repo = { path = "../../crates/aer-repo" }
+
+[lints]
+workspace = true
