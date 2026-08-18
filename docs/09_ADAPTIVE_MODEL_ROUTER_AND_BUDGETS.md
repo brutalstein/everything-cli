@@ -143,3 +143,11 @@ Expose simple user-facing policies:
 - `maximum-quality`
 
 These alter utility weights and escalation thresholds, not hard-coded model names.
+<!-- context-economy-v2-cognitive-routing -->
+## Context Economy V2: cognitive work roles and deterministic-first routing
+
+The routing layer now has provider-neutral cognitive work roles: `Deterministic`, `Scout`, `Locator`, `RepositoryExplorer`, `FailureAnalyst`, `EvidenceCompressor`, `Planner`, `Coder`, and `SemanticReviewer`. These are work capabilities, not model names. They do not grant execution authority and they do not require every role to invoke an LLM.
+
+The default policy is deterministic-first: exact retrieval, graph traversal, freshness/state tracking, validation, context assembly, and cheap classification remain in AER's deterministic control plane whenever adequate. Bounded ambiguous scouting/localization may later be assigned to a low-cost or local provider. Planning/coding/semantic review must not be silently downgraded solely for price when the requested reasoning capability is not met. The deterministic verifier remains the acceptance authority.
+
+Provider/model eligibility continues to be resolved from capabilities and policy. Cache geometry is also a transport capability, not a model-name branch. An OpenAI-compatible multi-provider gateway can therefore be added later as transport while AER retains requested capability, task role, security constraints, budgets, escalation, verification, and acceptance. An external router's `auto` policy is not AER's control plane.

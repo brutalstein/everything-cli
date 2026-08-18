@@ -181,6 +181,63 @@ fn context_bench_beats_naive_whole_context_yield_with_full_provenance() {
 }
 
 #[test]
+fn satisfied_evidence_is_invariant_to_a_larger_budget() {
+    let (fixture, index, _) = indexed_fixture();
+    let engine = ContextEngine::new(ContextPolicy::default()).expect("context engine");
+    let low = ContextRequest::new(
+        "task-budget-ceiling",
+        "fix expired authentication token verification and its tests",
+        1,
+        1200,
+    );
+    let high = ContextRequest::new(
+        "task-budget-ceiling",
+        "fix expired authentication token verification and its tests",
+        1,
+        2400,
+    );
+
+    let low_pack = engine
+        .compile(&fixture.repo, &index, &low)
+        .expect("low-budget pack");
+    let high_pack = engine
+        .compile(&fixture.repo, &index, &high)
+        .expect("high-budget pack");
+    let semantic_payload = |pack: &aer_context::ContextPack| {
+        pack.items
+            .iter()
+            .map(|item| {
+                (
+                    item.path.clone(),
+                    item.tier,
+                    item.source_ref.clone(),
+                    item.rendered_text.clone(),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(semantic_payload(&low_pack), semantic_payload(&high_pack));
+    assert_eq!(low_pack.retrieval_trace, high_pack.retrieval_trace);
+    assert!(low_pack.total_token_cost() < high.input_token_budget);
+}
+
+#[test]
+fn exact_definition_demand_stops_before_lexical_or_structural_retrieval() {
+    let (fixture, index, _) = indexed_fixture();
+    let engine = ContextEngine::new(ContextPolicy::default()).expect("context engine");
+    let mut request = ContextRequest::new("task-exact", "inspect `verify_token`", 1, 1200);
+    request.required_symbols.push("verify_token".to_owned());
+    let pack = engine
+        .compile(&fixture.repo, &index, &request)
+        .expect("exact pack");
+    assert_eq!(pack.items.len(), 1);
+    assert_eq!(
+        pack.retrieval_trace.stages_invoked,
+        vec![aer_context::RetrievalStage::Exact]
+    );
+}
+
+#[test]
 fn stale_workspace_is_rejected_before_a_pack_can_be_reused() {
     let (fixture, index, _) = indexed_fixture();
     let engine = ContextEngine::new(ContextPolicy::default()).expect("context engine");

@@ -43,26 +43,41 @@ impl ContextEngine {
     ) -> Result<ContextPack, ContextError> {
         validate_request(request, &self.policy)?;
         let workspace_root = workspace_root.as_ref();
-        let lexical = index.search_current(
-            workspace_root,
-            &SearchQuery {
-                text: request.objective.clone(),
-                limit: self.policy.max_candidates.min(64),
-                min_score_micros: 100_000,
-            },
-        )?;
-        let snapshot_id = lexical.snapshot_id.clone();
+        let snapshot_id = index.verified_current_snapshot_id(workspace_root)?;
+        let demands = compile_evidence_demands(request);
+        let mut retrieval_trace = RetrievalTrace {
+            demands_total: demands.len(),
+            ..RetrievalTrace::default()
+        };
         let mut candidates = BTreeMap::<String, Candidate>::new();
 
-        for (rank, hit) in lexical.hits.into_iter().enumerate() {
-            let candidate = candidates
-                .entry(hit.path.clone())
-                .or_insert_with(|| Candidate::from_hit(&hit));
-            candidate.merge_hit(&hit);
-            candidate.lexical_rank = Some(rank + 1);
-            candidate
-                .reasons
-                .insert("lexical/symbol retrieval".to_owned());
+        if demands.iter().any(demand_needs_lexical) {
+            retrieval_trace.stages_invoked.push(RetrievalStage::Lexical);
+            let lexical = index.search(
+                &snapshot_id,
+                &SearchQuery {
+                    text: request.objective.clone(),
+                    limit: self.policy.max_candidates.min(64),
+                    min_score_micros: 100_000,
+                },
+            )?;
+            for (rank, hit) in lexical.hits.into_iter().enumerate() {
+                let candidate = candidates
+                    .entry(hit.path.clone())
+                    .or_insert_with(|| Candidate::from_hit(&hit));
+                candidate.merge_hit(&hit);
+                candidate.lexical_rank = Some(rank + 1);
+                candidate
+                    .reasons
+                    .insert("lexical/symbol retrieval".to_owned());
+            }
+        }
+
+        if !request.required_semantic_ids.is_empty()
+            || !request.required_symbols.is_empty()
+            || !request.runtime_hints.is_empty()
+        {
+            retrieval_trace.stages_invoked.push(RetrievalStage::Exact);
         }
 
         for semantic_id in &request.required_semantic_ids {
@@ -149,27 +164,33 @@ impl ContextEngine {
                 .insert(format!("runtime hint: {}", hint.reason));
         }
 
-        let seed_paths = ranked_seed_paths(&candidates, self.policy.max_impact_seeds);
-        let mut structural_rank = 1_usize;
-        for seed in seed_paths {
-            for impact in index.impact(&snapshot_id, &seed)? {
-                if candidates.len() >= self.policy.max_candidates
-                    && !candidates.contains_key(&impact.path)
-                {
-                    break;
+        if structural_retrieval_required(&demands, &candidates) {
+            retrieval_trace
+                .stages_invoked
+                .push(RetrievalStage::Structural);
+            let seed_paths = ranked_seed_paths(&candidates, self.policy.max_impact_seeds);
+            let mut structural_rank = 1_usize;
+            for seed in seed_paths {
+                for impact in index.impact(&snapshot_id, &seed)? {
+                    if candidates.len() >= self.policy.max_candidates
+                        && !candidates.contains_key(&impact.path)
+                    {
+                        break;
+                    }
+                    let Some(resolved_candidate) =
+                        resolve_path_candidate(index, &snapshot_id, &impact.path)?
+                    else {
+                        continue;
+                    };
+                    let path = resolved_candidate.path.clone();
+                    let candidate = candidates.entry(path).or_insert(resolved_candidate);
+                    candidate.structural_rank =
+                        min_rank(candidate.structural_rank, structural_rank);
+                    candidate
+                        .reasons
+                        .insert(format!("repository impact: {}", impact.reason));
+                    structural_rank = structural_rank.saturating_add(1);
                 }
-                let Some(resolved_candidate) =
-                    resolve_path_candidate(index, &snapshot_id, &impact.path)?
-                else {
-                    continue;
-                };
-                let path = resolved_candidate.path.clone();
-                let candidate = candidates.entry(path).or_insert(resolved_candidate);
-                candidate.structural_rank = min_rank(candidate.structural_rank, structural_rank);
-                candidate
-                    .reasons
-                    .insert(format!("repository impact: {}", impact.reason));
-                structural_rank = structural_rank.saturating_add(1);
             }
         }
 
@@ -185,17 +206,19 @@ impl ContextEngine {
         });
         ranked.truncate(self.policy.max_candidates);
 
-        let pack = self.select(workspace_root, index, &snapshot_id, request, ranked)?;
-
-        let final_check = index.search_current(
+        let pack = self.select(
             workspace_root,
-            &SearchQuery {
-                text: request.objective.clone(),
-                limit: 1,
-                min_score_micros: 0,
+            index,
+            SelectionInputs {
+                snapshot_id: &snapshot_id,
+                request,
+                demands: &demands,
+                retrieval_trace,
+                ranked,
             },
         )?;
-        if final_check.snapshot_id != snapshot_id {
+
+        if index.verified_current_snapshot_id(workspace_root)? != snapshot_id {
             return Err(ContextError::Fidelity(
                 "repository snapshot changed while the Context Pack was compiled".to_owned(),
             ));
@@ -219,15 +242,7 @@ impl ContextEngine {
                 pack.input_token_budget
             )));
         }
-        let final_check = index.search_current(
-            workspace_root,
-            &SearchQuery {
-                text: pack.task_id.clone(),
-                limit: 1,
-                min_score_micros: 0,
-            },
-        )?;
-        if final_check.snapshot_id != pack.repo_snapshot {
+        if index.verified_current_snapshot_id(workspace_root)? != pack.repo_snapshot {
             return Err(ContextError::Fidelity(
                 "pack repository snapshot is no longer current".to_owned(),
             ));
@@ -259,10 +274,15 @@ impl ContextEngine {
         &self,
         workspace_root: &Path,
         index: &RepositoryIndex,
-        snapshot_id: &str,
-        request: &ContextRequest,
-        ranked: Vec<Candidate>,
+        inputs: SelectionInputs<'_>,
     ) -> Result<ContextPack, ContextError> {
+        let SelectionInputs {
+            snapshot_id,
+            request,
+            demands,
+            mut retrieval_trace,
+            ranked,
+        } = inputs;
         let available = request.input_token_budget;
         if available <= self.policy.base_pack_token_overhead {
             return Err(ContextError::BudgetTooSmall {
@@ -293,6 +313,15 @@ impl ContextEngine {
             .filter(|candidate| !candidate.required_definitions.is_empty())
         {
             mandatory_paths.insert(candidate.path.clone());
+        }
+        for candidate in &ranked {
+            if demands.iter().any(|demand| {
+                demand.verification_critical
+                    && !matches!(demand.target, EvidenceDemandTarget::Objective)
+                    && candidate_covers_demand(candidate, demand)
+            }) {
+                mandatory_paths.insert(candidate.path.clone());
+            }
         }
 
         for candidate in ranked.iter().take(consideration_limit).chain(
@@ -333,26 +362,59 @@ impl ContextEngine {
             selected.insert(candidate.candidate.path.clone(), item);
         }
 
-        for semantic_id in &request.required_semantic_ids {
-            let candidate = materialized
-                .iter()
-                .filter(|candidate| {
-                    candidate
-                        .candidate
-                        .required_semantic_ids
-                        .contains(semantic_id)
-                })
-                .max_by(|left, right| {
-                    left.candidate
-                        .utility_micros
-                        .cmp(&right.candidate.utility_micros)
-                        .then_with(|| right.candidate.path.cmp(&left.candidate.path))
-                })
-                .ok_or_else(|| ContextError::MandatoryCoverageUnavailable(semantic_id.clone()))?;
-            if selected.contains_key(&candidate.candidate.path) {
-                continue;
+        // Evidence sufficiency, not spare budget, drives selection. A candidate
+        // is admitted only when it adds coverage to an unsatisfied demand.
+        while !demands_satisfied(demands, &materialized, &selected) {
+            if selected.len() >= self.policy.max_items {
+                let demand_id = first_unsatisfied_demand(demands, &materialized, &selected)
+                    .unwrap_or_else(|| "unknown".to_owned());
+                return Err(ContextError::EvidenceDemandUnsatisfied(demand_id));
             }
-            let item = candidate.tier(ContextTier::Structural, &self.policy)?;
+
+            let mut best: Option<(&MaterializedCandidate, ContextItem, usize, u64)> = None;
+            for candidate in materialized
+                .iter()
+                .filter(|candidate| !selected.contains_key(&candidate.candidate.path))
+            {
+                let (marginal, tier, demand_ids) =
+                    marginal_demand_value(candidate, demands, &materialized, &selected);
+                if marginal == 0 {
+                    continue;
+                }
+                let mut item = candidate.tier(tier, &self.policy)?;
+                if !demand_ids.is_empty() {
+                    item.selected_reason.push_str("; evidence demand: ");
+                    item.selected_reason.push_str(&demand_ids.join(", "));
+                }
+                let ratio = candidate
+                    .candidate
+                    .utility_micros
+                    .saturating_mul(u64::try_from(marginal).unwrap_or(u64::MAX))
+                    .saturating_mul(RRF_SCALE)
+                    .checked_div(u64::from(item.token_cost.max(1)))
+                    .ok_or_else(|| {
+                        ContextError::Arithmetic("marginal utility/token division".to_owned())
+                    })?;
+                let replace = match &best {
+                    None => true,
+                    Some((current, _, current_marginal, current_ratio)) => {
+                        marginal > *current_marginal
+                            || (marginal == *current_marginal && ratio > *current_ratio)
+                            || (marginal == *current_marginal
+                                && ratio == *current_ratio
+                                && candidate.candidate.path < current.candidate.path)
+                    }
+                };
+                if replace {
+                    best = Some((candidate, item, marginal, ratio));
+                }
+            }
+
+            let Some((candidate, item, _, _)) = best else {
+                let demand_id = first_unsatisfied_demand(demands, &materialized, &selected)
+                    .unwrap_or_else(|| "unknown".to_owned());
+                return Err(ContextError::EvidenceDemandUnsatisfied(demand_id));
+            };
             if item.token_cost > remaining {
                 return Err(ContextError::BudgetTooSmall {
                     required: available
@@ -365,78 +427,29 @@ impl ContextEngine {
             selected.insert(candidate.candidate.path.clone(), item);
         }
 
-        let mut general = materialized
+        retrieval_trace.demands_satisfied = demands
             .iter()
-            .filter(|candidate| !selected.contains_key(&candidate.candidate.path))
-            .map(|candidate| {
-                let item = candidate.tier(ContextTier::Structural, &self.policy)?;
-                let ratio = candidate
-                    .candidate
-                    .utility_micros
-                    .saturating_mul(RRF_SCALE)
-                    .checked_div(u64::from(item.token_cost.max(1)))
-                    .ok_or_else(|| ContextError::Arithmetic("utility/token division".to_owned()))?;
-                Ok((candidate, item, ratio))
-            })
-            .collect::<Result<Vec<_>, ContextError>>()?;
-        general.sort_by(|left, right| {
-            right
-                .2
-                .cmp(&left.2)
-                .then_with(|| {
-                    right
-                        .0
-                        .candidate
-                        .utility_micros
-                        .cmp(&left.0.candidate.utility_micros)
-                })
-                .then_with(|| left.0.candidate.path.cmp(&right.0.candidate.path))
-        });
-
-        for (candidate, item, _) in general {
-            if selected.len() >= self.policy.max_items {
-                break;
-            }
-            if item.token_cost <= remaining {
-                remaining -= item.token_cost;
-                selected.insert(candidate.candidate.path.clone(), item);
-            }
+            .filter(|demand| demand_satisfied(demand, &materialized, &selected))
+            .count();
+        retrieval_trace.tier_escalations = selected
+            .values()
+            .filter(|item| item.tier > ContextTier::Structural)
+            .count();
+        if retrieval_trace.demands_satisfied != retrieval_trace.demands_total {
+            let demand_id = first_unsatisfied_demand(demands, &materialized, &selected)
+                .unwrap_or_else(|| "unknown".to_owned());
+            return Err(ContextError::EvidenceDemandUnsatisfied(demand_id));
         }
 
-        for tier in [ContextTier::SourceSpan, ContextTier::Expanded] {
-            let mut paths = selected.keys().cloned().collect::<Vec<_>>();
-            paths.sort_by(|left, right| {
-                let left_utility = materialized
+        for semantic_id in &request.required_semantic_ids {
+            if !selected.values().any(|item| {
+                item.required_semantic_ids
                     .iter()
-                    .find(|candidate| candidate.candidate.path == *left)
-                    .map_or(0, |candidate| candidate.candidate.utility_micros);
-                let right_utility = materialized
-                    .iter()
-                    .find(|candidate| candidate.candidate.path == *right)
-                    .map_or(0, |candidate| candidate.candidate.utility_micros);
-                right_utility
-                    .cmp(&left_utility)
-                    .then_with(|| left.cmp(right))
-            });
-            for path in paths {
-                let Some(candidate) = materialized
-                    .iter()
-                    .find(|candidate| candidate.candidate.path == path)
-                else {
-                    continue;
-                };
-                let richer = candidate.tier(tier, &self.policy)?;
-                let current = selected
-                    .get(&path)
-                    .expect("selected path originated from materialized candidate");
-                if richer.token_cost <= current.token_cost {
-                    continue;
-                }
-                let increment = richer.token_cost - current.token_cost;
-                if increment <= remaining {
-                    remaining -= increment;
-                    selected.insert(path, richer);
-                }
+                    .any(|id| id == semantic_id)
+            }) {
+                return Err(ContextError::MandatoryCoverageUnavailable(
+                    semantic_id.clone(),
+                ));
             }
         }
 
@@ -500,6 +513,8 @@ impl ContextEngine {
             items,
             omitted_high_rank_items,
             source_hashes,
+            evidence_demands: demands.to_vec(),
+            retrieval_trace,
         };
         let identity = manifest_value(&pack);
         pack.pack_id = format!(
@@ -560,6 +575,14 @@ impl ContextEngine {
             .validate_current(CoreContract::ContextPack, &instance)
             .map_err(|error| ContextError::ContractValidation(error.issues))
     }
+}
+
+struct SelectionInputs<'a> {
+    snapshot_id: &'a str,
+    request: &'a ContextRequest,
+    demands: &'a [EvidenceDemand],
+    retrieval_trace: RetrievalTrace,
+    ranked: Vec<Candidate>,
 }
 
 #[derive(Clone, Debug)]
@@ -861,6 +884,271 @@ fn validate_request(request: &ContextRequest, policy: &ContextPolicy) -> Result<
         ));
     }
     Ok(())
+}
+
+fn compile_evidence_demands(request: &ContextRequest) -> Vec<EvidenceDemand> {
+    let mut demands = Vec::new();
+    for (index, symbol) in request.required_symbols.iter().enumerate() {
+        demands.push(EvidenceDemand {
+            demand_id: format!("exact-definition:{index}:{symbol}"),
+            kind: EvidenceDemandKind::ExactDefinition,
+            target: EvidenceDemandTarget::Symbol(symbol.clone()),
+            minimum_tier: ContextTier::Expanded,
+            required_provenance: EvidenceProvenance::ExactSource,
+            minimum_coverage: 1,
+            expansion_policy: EvidenceExpansionPolicy::ExactDefinition,
+            importance_milli: 1000,
+            verification_critical: true,
+        });
+    }
+    let implementation_task = objective_requires_implementation(&request.objective);
+    for (index, semantic_id) in request.required_semantic_ids.iter().enumerate() {
+        let kind = if implementation_task {
+            EvidenceDemandKind::ImplementationContext
+        } else {
+            EvidenceDemandKind::RequirementContext
+        };
+        demands.push(EvidenceDemand {
+            demand_id: format!("requirement-context:{index}:{semantic_id}"),
+            kind,
+            target: EvidenceDemandTarget::SemanticId(semantic_id.clone()),
+            minimum_tier: if implementation_task {
+                ContextTier::SourceSpan
+            } else {
+                ContextTier::Structural
+            },
+            required_provenance: if implementation_task {
+                EvidenceProvenance::ExactSource
+            } else {
+                EvidenceProvenance::IndexedSource
+            },
+            minimum_coverage: 1,
+            expansion_policy: if implementation_task {
+                EvidenceExpansionPolicy::BoundedSourceSpan
+            } else {
+                EvidenceExpansionPolicy::Never
+            },
+            importance_milli: 950,
+            verification_critical: true,
+        });
+    }
+    for (index, hint) in request.runtime_hints.iter().enumerate() {
+        if hint.score_milli == 0 {
+            continue;
+        }
+        demands.push(EvidenceDemand {
+            demand_id: format!("runtime-evidence:{index}:{}", hint.path),
+            kind: EvidenceDemandKind::RuntimeEvidence,
+            target: EvidenceDemandTarget::Path(hint.path.clone()),
+            minimum_tier: ContextTier::SourceSpan,
+            required_provenance: EvidenceProvenance::RuntimeObserved,
+            minimum_coverage: 1,
+            expansion_policy: EvidenceExpansionPolicy::BoundedSourceSpan,
+            importance_milli: hint.score_milli,
+            verification_critical: false,
+        });
+    }
+
+    // Exact/semantic/runtime facts are allowed to terminate discovery. Only a
+    // task with no such deterministic demand receives broad objective demands.
+    if demands.is_empty() {
+        let objective_lower = request.objective.to_ascii_lowercase();
+        let wants_test_context = objective_lower.contains("test");
+        demands.push(EvidenceDemand {
+            demand_id: "objective:edit-target".to_owned(),
+            kind: EvidenceDemandKind::EditTarget,
+            target: EvidenceDemandTarget::Objective,
+            minimum_tier: ContextTier::SourceSpan,
+            required_provenance: EvidenceProvenance::ExactSource,
+            minimum_coverage: 1,
+            expansion_policy: EvidenceExpansionPolicy::BoundedSourceSpan,
+            importance_milli: 1000,
+            verification_critical: true,
+        });
+        if wants_test_context {
+            demands.push(EvidenceDemand {
+                demand_id: "objective:test-context".to_owned(),
+                kind: EvidenceDemandKind::TestContext,
+                target: EvidenceDemandTarget::Objective,
+                minimum_tier: ContextTier::SourceSpan,
+                required_provenance: EvidenceProvenance::IndexedSource,
+                minimum_coverage: 1,
+                expansion_policy: EvidenceExpansionPolicy::BoundedNeighborhood,
+                importance_milli: 850,
+                verification_critical: false,
+            });
+        } else {
+            demands.push(EvidenceDemand {
+                demand_id: "objective:supporting-context".to_owned(),
+                kind: EvidenceDemandKind::SupportingContext,
+                target: EvidenceDemandTarget::Objective,
+                minimum_tier: ContextTier::Structural,
+                required_provenance: EvidenceProvenance::IndexedSource,
+                minimum_coverage: 1,
+                expansion_policy: EvidenceExpansionPolicy::BoundedNeighborhood,
+                importance_milli: 700,
+                verification_critical: false,
+            });
+        }
+    }
+    if request.objective.to_ascii_lowercase().contains("test")
+        && !demands
+            .iter()
+            .any(|demand| demand.kind == EvidenceDemandKind::TestContext)
+    {
+        demands.push(EvidenceDemand {
+            demand_id: "objective:test-context".to_owned(),
+            kind: EvidenceDemandKind::TestContext,
+            target: EvidenceDemandTarget::Objective,
+            minimum_tier: ContextTier::SourceSpan,
+            required_provenance: EvidenceProvenance::IndexedSource,
+            minimum_coverage: 1,
+            expansion_policy: EvidenceExpansionPolicy::BoundedNeighborhood,
+            importance_milli: 850,
+            verification_critical: false,
+        });
+    }
+    demands
+}
+
+fn objective_requires_implementation(objective: &str) -> bool {
+    objective
+        .split(|character: char| !character.is_ascii_alphanumeric() && character != '_')
+        .filter(|token| !token.is_empty())
+        .any(|token| {
+            matches!(
+                token.to_ascii_lowercase().as_str(),
+                "fix"
+                    | "implement"
+                    | "change"
+                    | "modify"
+                    | "update"
+                    | "repair"
+                    | "refactor"
+                    | "add"
+                    | "remove"
+                    | "delete"
+                    | "create"
+            )
+        })
+}
+
+fn demand_needs_lexical(demand: &EvidenceDemand) -> bool {
+    matches!(demand.target, EvidenceDemandTarget::Objective)
+}
+
+fn demand_requires_structural(demand: &EvidenceDemand) -> bool {
+    matches!(
+        demand.kind,
+        EvidenceDemandKind::ChangeImpact
+            | EvidenceDemandKind::TestContext
+            | EvidenceDemandKind::SupportingContext
+    ) && demand.expansion_policy == EvidenceExpansionPolicy::BoundedNeighborhood
+}
+
+fn structural_retrieval_required(
+    demands: &[EvidenceDemand],
+    candidates: &BTreeMap<String, Candidate>,
+) -> bool {
+    demands.iter().any(|demand| {
+        demand_requires_structural(demand)
+            && usize::from(demand.minimum_coverage)
+                > candidates
+                    .values()
+                    .filter(|candidate| candidate_covers_demand(candidate, demand))
+                    .count()
+    })
+}
+
+fn candidate_covers_demand(candidate: &Candidate, demand: &EvidenceDemand) -> bool {
+    match &demand.target {
+        EvidenceDemandTarget::Symbol(symbol) => candidate.required_symbols.contains(symbol),
+        EvidenceDemandTarget::SemanticId(semantic_id) => {
+            candidate.required_semantic_ids.contains(semantic_id)
+                && (demand.kind != EvidenceDemandKind::ImplementationContext
+                    || !is_test_source_path(&candidate.path))
+        }
+        EvidenceDemandTarget::Path(path) => candidate.path == *path,
+        EvidenceDemandTarget::Objective => {
+            if demand.kind == EvidenceDemandKind::TestContext {
+                is_test_source_path(&candidate.path)
+            } else {
+                candidate.lexical_rank.is_some() || candidate.structural_rank.is_some()
+            }
+        }
+    }
+}
+
+fn is_test_source_path(path: &str) -> bool {
+    let path = path.to_ascii_lowercase();
+    path.starts_with("tests/")
+        || path.contains("/tests/")
+        || path.contains("/test/")
+        || path.ends_with("_test.rs")
+        || path.ends_with("_test.py")
+        || path.ends_with(".test.ts")
+        || path.ends_with(".test.tsx")
+        || path.ends_with(".test.js")
+        || path.ends_with(".spec.ts")
+        || path.ends_with(".spec.js")
+}
+
+fn demand_satisfied(
+    demand: &EvidenceDemand,
+    materialized: &[MaterializedCandidate],
+    selected: &BTreeMap<String, ContextItem>,
+) -> bool {
+    materialized
+        .iter()
+        .filter(|candidate| {
+            selected.contains_key(&candidate.candidate.path)
+                && candidate_covers_demand(&candidate.candidate, demand)
+        })
+        .count()
+        >= usize::from(demand.minimum_coverage)
+}
+
+fn demands_satisfied(
+    demands: &[EvidenceDemand],
+    materialized: &[MaterializedCandidate],
+    selected: &BTreeMap<String, ContextItem>,
+) -> bool {
+    demands
+        .iter()
+        .all(|demand| demand_satisfied(demand, materialized, selected))
+}
+
+fn first_unsatisfied_demand(
+    demands: &[EvidenceDemand],
+    materialized: &[MaterializedCandidate],
+    selected: &BTreeMap<String, ContextItem>,
+) -> Option<String> {
+    demands
+        .iter()
+        .find(|demand| !demand_satisfied(demand, materialized, selected))
+        .map(|demand| demand.demand_id.clone())
+}
+
+fn marginal_demand_value(
+    candidate: &MaterializedCandidate,
+    demands: &[EvidenceDemand],
+    materialized: &[MaterializedCandidate],
+    selected: &BTreeMap<String, ContextItem>,
+) -> (usize, ContextTier, Vec<String>) {
+    let mut marginal = 0_usize;
+    let mut tier = ContextTier::Identifier;
+    let mut demand_ids = Vec::new();
+    for demand in demands {
+        if demand_satisfied(demand, materialized, selected)
+            || !candidate_covers_demand(&candidate.candidate, demand)
+        {
+            continue;
+        }
+        marginal = marginal.saturating_add(usize::from(demand.importance_milli.max(1)));
+        tier = tier.max(demand.minimum_tier);
+        demand_ids.push(demand.demand_id.clone());
+    }
+    (marginal, tier.max(ContextTier::Structural), demand_ids)
 }
 
 fn resolve_path_candidate(

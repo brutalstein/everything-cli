@@ -9,7 +9,13 @@ use std::{
 use aer_context::{
     ContextEngine, ContextError, ContextPack, ContextPolicy, ContextRequest, estimate_tokens,
 };
-use aer_provider::delegated::DelegatedModelContext;
+use aer_provider::{
+    context_assembly::{
+        ContextReuseScope, ContextSegment, ContextSemanticRole, ContextTrustClass,
+        ContextVolatility,
+    },
+    delegated::DelegatedModelContext,
+};
 use aer_repo::{IndexPolicy, RepoError, RepositoryIndex};
 use sha2::{Digest, Sha256};
 
@@ -320,9 +326,41 @@ impl ModelContextEnvelope {
     /// bytes entirely — they remain on this envelope for the receipt.
     #[must_use]
     pub fn delegated_context(&self) -> DelegatedModelContext {
-        DelegatedModelContext::new(
+        let segments = self
+            .task_context
+            .items
+            .iter()
+            .enumerate()
+            .map(|(index, item)| ContextSegment {
+                id: format!("task-evidence:{index:03}:{}", item.path),
+                semantic_role: if item.tier >= aer_context::ContextTier::SourceSpan
+                    || !item.required_semantic_ids.is_empty()
+                {
+                    ContextSemanticRole::DecisionCriticalEvidence
+                } else {
+                    ContextSemanticRole::TaskEvidence
+                },
+                trust_class: ContextTrustClass::UntrustedData,
+                reuse_scope: ContextReuseScope::Snapshot,
+                volatility: ContextVolatility::SnapshotStable,
+                content_hash: hex_sha256(item.rendered_text.as_bytes()),
+                token_estimate: item.token_cost,
+                source_refs: item
+                    .segments
+                    .iter()
+                    .map(|segment| {
+                        format!(
+                            "{}#L{}-L{}",
+                            item.path, segment.start_line, segment.end_line
+                        )
+                    })
+                    .collect(),
+                rendered_bytes: item.rendered_text.clone(),
+            })
+            .collect();
+        DelegatedModelContext::new_segmented(
             &self.architecture.rendered,
-            &self.task_evidence,
+            segments,
             self.digest.clone(),
         )
     }

@@ -365,3 +365,29 @@ Do not:
 - invoke an expensive semantic/model retriever when exact identifiers already satisfy the task;
 - let a compact summary upgrade an `inferred` graph edge into an exact fact;
 - preserve stale role summaries merely because provider prompt caching is convenient.
+<!-- context-economy-v2-engine -->
+## Context Economy V2: evidence sufficiency, assembly, and offline quality gates
+
+Context Economy now compiles a typed `EvidenceDemand` set before selecting provider-visible repository evidence. A demand records the information target, required tier/provenance, minimum coverage, expansion policy, importance, and whether it is verification-critical. Current demand classes cover exact definitions, requirement/implementation context, runtime evidence, edit targets, test context, supporting context, and change impact. The representation is deliberately capability- and task-oriented rather than provider- or benchmark-oriented.
+
+Retrieval is progressive. The engine first establishes the verified RI2 snapshot without forcing a lexical query. Exact symbol/semantic/runtime evidence can enter the `Exact` stage and terminate discovery when sufficient. Lexical localization runs only for objective demands that require it. Bounded structural/impact expansion runs only when a remaining demand actually requires neighborhood coverage. Exact-definition ambiguity and missing mandatory evidence continue to fail closed.
+
+### Budget is a ceiling
+
+`input_token_budget` is a hard maximum, never a target. Selection repeatedly admits only a candidate that contributes marginal coverage to an unsatisfied demand. Once every demand is satisfied, selection stops immediately even when budget remains. The old spare-budget `Structural -> SourceSpan -> Expanded` upgrade sweep is removed. Tier escalation now requires a demand whose minimum tier justifies the richer representation, and the selected item's reason records the demand relationship.
+
+A regression invariant is explicit: with identical task and evidence, a 6,144-unit ceiling and a 12,288-unit ceiling must produce the same model-visible semantic payload when 6,144 is already sufficient. Unused budget is a successful outcome.
+
+### Semantic selection is separate from provider assembly
+
+Context Economy decides **which semantic facts are required**. `ContextAssemblyPlanner` decides how those already-selected facts are legally ordered for a transport. Provider-neutral `ContextSegment` records semantic role, trust class, reuse scope, volatility, content hash, deterministic context-unit estimate, source references, and rendered bytes. Audit-only source references/hashes are not rendered merely to improve cache accounting.
+
+Trust is stronger than cache economics. Repository/task evidence remains `UntrustedData`; it cannot be promoted into `SystemAuthority`. Provider cache capability can alter legal ordering or breakpoint geometry but cannot add/remove semantic requirements. For common-prefix transports stable snapshot evidence precedes iteration-dynamic material inside the untrusted layer, while decision-critical evidence remains close to the objective/output contract according to the assembly role order. The current delegated Claude CLI is modeled only as an implicit common-prefix transport because AER does not control independent per-file cache objects or breakpoints there. Codex/Gemini delegated transports conservatively use no-cache geometry until equivalent behavior is established.
+
+### Working set and deltas
+
+An ephemeral `TaskWorkingSet` projection over existing Engineering State/Handoff facts is defined for long-running engineering loops. It is a typed projection only: no runtime loop consumes it yet, and it is not exposed through any product surface until one does. It carries edit targets, relevant symbols, verified facts, architecture constraints, latest failures, tests, changed files, unresolved hypotheses, and stable evidence identities. `ContextDelta` reports added, changed, removed, and invalidated evidence. A content-hash change invalidates immediately; unrelated metadata churn does not change semantic evidence identity. This is not a second persistence or memory subsystem.
+
+### Deterministic quality accounting
+
+Offline gates use deterministic context-unit estimates and provider-visible byte counts; these are **not provider tokenizer counts or provider cost measurements**. Current gates measure mandatory-like versus optional context, selected source lines, redundant selected lines, overlapping span pairs, retrieval stages, unnecessary stages, tier escalation, provider-visible bytes, large-repository boundedness, budget invariance, cache assembly invariants, freshness, and compact edit output size. Provider economics claims still require real provider telemetry.

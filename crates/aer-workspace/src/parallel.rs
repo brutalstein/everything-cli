@@ -14,13 +14,11 @@ use std::{
     time::Duration,
 };
 
-use aer_exec::{
-    CommandSpec, ExecutionPolicy, LocalProcessExecutor, ProcessResult, SideEffectClass,
-};
+use aer_exec::{ExecutionPolicy, LocalProcessExecutor, ProcessResult, SideEffectClass};
 
 use super::{
     INSPECTION_OUTPUT_LIMIT, OwnedWorktree, WorkspaceError, WorkspaceSnapshot, git_failure,
-    parse_nul_paths, run_git, run_git_status,
+    git_spec, parse_nul_paths, run_git, run_git_status,
 };
 
 const INTERNAL_AUTHOR_NAME: &str = "Everything AER";
@@ -605,7 +603,7 @@ where
 {
     let policy =
         ExecutionPolicy::trusted_workspace(cwd, Duration::from_secs(30), INSPECTION_OUTPUT_LIMIT)?;
-    let mut spec = CommandSpec::new("git", cwd, side_effect).args(args);
+    let mut spec = git_spec(cwd, args, side_effect);
     for (name, value) in environment {
         spec = spec.env(*name, *value);
     }

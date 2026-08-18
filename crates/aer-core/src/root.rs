@@ -15,6 +15,7 @@ mod phase1_runtime;
 
 pub use phase1_runtime::*;
 pub mod context;
+pub mod edit_abi;
 pub mod engineering_invalidation;
 pub mod engineering_state;
 pub mod model_context;
@@ -22,6 +23,7 @@ pub mod parallel;
 pub mod permissions;
 pub mod repository;
 pub mod spec;
+pub mod task_working_set;
 pub mod tools;
 pub mod verification;
 

@@ -5,6 +5,8 @@
 //! `routing` module. Deterministic fixture adapters remain non-production and
 //! allow core correctness tests to run without paid APIs or credentials.
 
+pub mod cognitive;
+pub mod context_assembly;
 pub mod delegated;
 pub mod routing;
 
