@@ -1,4 +1,8 @@
-use std::{fs, path::PathBuf, time::{SystemTime, UNIX_EPOCH}};
+use std::{
+    fs,
+    path::PathBuf,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use aer_core::edit_abi::{
     CompactEditPlan, EditLimits, EditOperation, apply_edit_plan, sha256,
