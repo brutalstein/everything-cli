@@ -12,9 +12,11 @@ members = [
     "crates/aer-repo",
     "crates/aer-context",
     "crates/aer-core",
+    "crates/aer-health",
     "crates/aer-cli",
     "tools/aer-bench",
     "tools/aer-doc-check",
+    "tools/aer-health-check",
     "tools/aer-phase0-check",
 ]
 

@@ -8,7 +8,9 @@ version = "0.0.1"
 dependencies = [
  "aer-context",
  "aer-core",
+ "aer-health",
  "aer-provider",
+ "aer-repo",
  "clap",
  "serde_json",
  "sha2",
@@ -45,6 +47,7 @@ dependencies = [
  "aer-domain",
  "aer-environment",
  "aer-exec",
+ "aer-health",
  "aer-provider",
  "aer-repo",
  "aer-research",
@@ -79,6 +82,22 @@ name = "aer-exec"
 version = "0.0.1"
 dependencies = [
  "sha2",
+]
+
+[[package]]
+name = "aer-health"
+version = "0.0.1"
+dependencies = [
+ "aer-repo",
+]
+
+[[package]]
+name = "aer-health-check"
+version = "0.0.1"
+dependencies = [
+ "aer-exec",
+ "aer-health",
+ "aer-repo",
 ]
 
 [[package]]

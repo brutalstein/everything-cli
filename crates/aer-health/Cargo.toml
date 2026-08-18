@@ -1,0 +1,12 @@
+[package]
+name = "aer-health"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+aer-repo = { path = "../aer-repo" }
+
+[lints]
+workspace = true

@@ -221,6 +221,9 @@ try {
         "run", "--locked", "--target", $Target, "-p", "aer-phase0-check", "--", "--check"
     )
     Invoke-Checked -FilePath $CargoPath -Arguments @(
+        "run", "--locked", "--target", $Target, "-p", "aer-health-check", "--", "--check"
+    )
+    Invoke-Checked -FilePath $CargoPath -Arguments @(
         "build", "--locked", "--target", $Target, "-p", "everything"
     )
 

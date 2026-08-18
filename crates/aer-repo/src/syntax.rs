@@ -6,6 +6,7 @@ use tree_sitter::{Language, Node, Parser};
 use crate::{
     language,
     model::{EdgeKind, IndexPolicy, LanguageKind, RepoError, SymbolKind},
+    ri2::CapabilityTier,
 };
 
 pub(crate) const TREE_SITTER_RUNTIME: &str = "0.26.11";
@@ -708,5 +709,104 @@ mod tests {
         assert_eq!(detect_language("pkg/app.py"), LanguageKind::Python);
         assert_eq!(detect_language("web/app.tsx"), LanguageKind::Tsx);
         assert_eq!(detect_language("README.md"), LanguageKind::Markdown);
+    }
+}
+
+/// One measurable unit a language adapter identified in a source buffer.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SourceUnit {
+    /// The unit name as the adapter reported it.
+    pub name: String,
+    /// First line of the unit, 1-indexed.
+    pub start_line: u32,
+    /// Last line of the unit, inclusive.
+    pub end_line: u32,
+}
+
+/// Structural measurement of one source buffer.
+///
+/// The tier is part of the measurement, not metadata about it. A file the
+/// grammar adapters could parse and a file only counted as text are different
+/// claims, and a consumer that treats them alike would be presenting a guess as
+/// a fact.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SourceMeasurement {
+    /// Addressable lines in the buffer.
+    pub lines: u32,
+    /// Units the adapter identified, empty at text tier.
+    pub units: Vec<SourceUnit>,
+    /// The evidence tier that produced this measurement.
+    pub tier: CapabilityTier,
+}
+
+/// Measures one source buffer through the existing language capability registry.
+///
+/// This exists so structural consumers — architecture health above all — reuse
+/// the adapters and the tier vocabulary the index already uses, instead of
+/// growing a second, quietly divergent idea of what a function is.
+///
+/// # Errors
+///
+/// Propagates the tokenizer and parser failures of the underlying adapter.
+pub fn measure_source(path: &str, text: &str) -> Result<SourceMeasurement, RepoError> {
+    let language = detect_language(path);
+    let policy = IndexPolicy::default();
+    let parsed = parse_text(path, text, language, &policy)?;
+    // A parse that reported an error saw part of the file. Reporting the
+    // symbols it did find at syntax tier would overstate them, so the buffer
+    // degrades to the text tier it can actually support.
+    let usable = !parsed.parse_had_error && !parsed.symbols.is_empty();
+    let (units, tier) = if usable {
+        (
+            parsed
+                .symbols
+                .iter()
+                .map(|symbol| SourceUnit {
+                    name: symbol.name.clone(),
+                    start_line: symbol.start_line,
+                    end_line: symbol.end_line,
+                })
+                .collect(),
+            CapabilityTier::Tier1Syntax,
+        )
+    } else {
+        (Vec::new(), CapabilityTier::Tier0Text)
+    };
+    Ok(SourceMeasurement {
+        lines: parsed.line_count,
+        units,
+        tier,
+    })
+}
+
+#[cfg(test)]
+mod measurement_tests {
+    use super::{CapabilityTier, measure_source};
+
+    #[test]
+    fn a_parsed_language_reports_units_at_syntax_tier() {
+        let source =
+            "fn first() {\n    let value = 1;\n}\n\nfn second() {\n    let other = 2;\n}\n";
+        let measured = measure_source("src/lib.rs", source).expect("measure");
+        assert_eq!(measured.tier, CapabilityTier::Tier1Syntax);
+        assert_eq!(measured.lines, 8);
+        let names = measured
+            .units
+            .iter()
+            .map(|unit| unit.name.as_str())
+            .collect::<Vec<_>>();
+        assert!(names.contains(&"first"), "{names:?}");
+        assert!(names.contains(&"second"), "{names:?}");
+        for unit in &measured.units {
+            assert!(unit.end_line >= unit.start_line, "{unit:?}");
+        }
+    }
+
+    #[test]
+    fn a_buffer_without_a_grammar_adapter_stays_at_text_tier() {
+        let measured = measure_source("notes.txt", "one\ntwo\nthree\n").expect("measure");
+        assert_eq!(measured.tier, CapabilityTier::Tier0Text);
+        assert!(measured.units.is_empty());
+        assert_eq!(measured.lines, 4);
     }
 }
