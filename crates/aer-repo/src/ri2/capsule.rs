@@ -293,16 +293,16 @@ impl RepositoryIndex {
         outgoing: bool,
         limit: usize,
     ) -> Result<Vec<CapsuleRelation>, RepoError> {
-        let (scope_alias, peer_alias, source_column, target_column) = if outgoing {
-            ("s", "t", "source_node_id", "target_node_id")
+        let (scope_alias, source_column, target_column) = if outgoing {
+            ("s", "source_node_id", "target_node_id")
         } else {
-            ("t", "s", "target_node_id", "source_node_id")
+            ("t", "target_node_id", "source_node_id")
         };
         let sql = format!(
             "SELECT e.edge_kind,p.node_id,p.label,p.path,{scope_alias}.path
              FROM ri2_graph_edges e
              JOIN ri2_graph_nodes {scope_alias} ON {scope_alias}.snapshot_id=e.snapshot_id AND {scope_alias}.node_id=e.{source_column}
-             JOIN ri2_graph_nodes {peer_alias} p ON p.snapshot_id=e.snapshot_id AND p.node_id=e.{target_column}
+             JOIN ri2_graph_nodes p ON p.snapshot_id=e.snapshot_id AND p.node_id=e.{target_column}
              WHERE e.snapshot_id=? ORDER BY e.edge_kind,p.label,p.node_id"
         );
         let mut statement = self.connection.prepare(&sql)?;
