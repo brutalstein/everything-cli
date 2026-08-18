@@ -112,5 +112,28 @@ if text.count(old_helpers) != 1:
     raise SystemExit("runtime helper string anchor not found")
 text = text.replace(old_helpers, "new_helpers = r'''fn provider_instructions() -> String {\n", 1)
 
+# Provider ContextSegment identities are cryptographic source/content hashes.
+# Reuse the workspace-pinned sha2 dependency rather than adding a second hashing
+# implementation or a provider-specific dependency version.
+insert_before = 'write(path, text)\n\n\n# ---------------------------------------------------------------------------\n# ModelContextEnvelope:'
+if text.count(insert_before) != 1:
+    raise SystemExit("provider write boundary not found")
+dep_patch = '''write(path, text)
+
+path = "crates/aer-provider/Cargo.toml"
+text = read(path)
+text = replace_once(
+    text,
+    "[dependencies]\\nserde_json.workspace = true\\n",
+    "[dependencies]\\nserde_json.workspace = true\\nsha2.workspace = true\\n",
+    "provider sha2 workspace dependency",
+)
+write(path, text)
+
+
+# ---------------------------------------------------------------------------
+# ModelContextEnvelope:'''
+text = text.replace(insert_before, dep_patch, 1)
+
 path.write_text(text, encoding="utf-8")
-print("Stage-3 transformer preserves Rust escapes and structural end markers")
+print("Stage-3 transformer preserves Rust escapes, structural markers, and workspace SHA-256 dependency")
