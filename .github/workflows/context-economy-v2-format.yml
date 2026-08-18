@@ -1,0 +1,45 @@
+name: Context Economy V2 Format
+
+on:
+  push:
+    branches:
+      - agent/context-economy-v2-format
+    paths:
+      - .github/workflows/context-economy-v2-format.yml
+  pull_request:
+    branches:
+      - feat/context-economy-v2
+    paths:
+      - .github/workflows/context-economy-v2-format.yml
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/context-economy-v2-format
+          fetch-depth: 0
+      - name: Install pinned Rustfmt
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt
+      - name: Apply canonical formatting
+        run: cargo +1.97.1 fmt --all
+      - name: Commit formatter output if needed
+        if: github.event_name == 'push'
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/context-economy-v2-format.yml
+          git config user.name "aer-context-v2-bot"
+          git config user.email "aer-context-v2@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "canonical_formatter_changes=0"
+            exit 0
+          fi
+          git diff --cached --check
+          git commit -m "style: apply canonical Rust formatting"
+          git push origin HEAD:agent/context-economy-v2-format
