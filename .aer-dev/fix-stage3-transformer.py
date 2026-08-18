@@ -112,6 +112,34 @@ if text.count(old_helpers) != 1:
     raise SystemExit("runtime helper string anchor not found")
 text = text.replace(old_helpers, "new_helpers = r'''fn provider_instructions() -> String {\n", 1)
 
+# Replace the brittle escaped copy of validate_relative_path with a structural
+# function-boundary transform. The source implementation itself is still
+# checked by exact function names and the transform fails closed if either
+# boundary disappears.
+validate_block_start = text.find("old_validate = '''fn validate_relative_path(value: &str)")
+if validate_block_start < 0:
+    raise SystemExit("runtime path validation transformer start not found")
+validate_block_end_marker = 'text = replace_once(text, old_validate, new_validate, "runtime shared path validation")\n'
+validate_block_end = text.find(validate_block_end_marker, validate_block_start)
+if validate_block_end < 0:
+    raise SystemExit("runtime path validation transformer end not found")
+validate_block_end += len(validate_block_end_marker)
+validate_transform = '''shared_path_validation = r''' + "'''" + '''fn validate_relative_path(value: &str) -> Result<(), RuntimeError> {
+    crate::edit_abi::validate_relative_path(value)
+        .map_err(|error| RuntimeError::InvalidPlan(error.to_string()))
+}
+
+''' + "'''" + '''
+text = replace_between(
+    text,
+    "fn validate_relative_path(value: &str) -> Result<(), RuntimeError> {\\n",
+    "fn validate_request(request: &RunRequest) -> Result<(), RuntimeError> {\\n",
+    shared_path_validation,
+    "runtime shared path validation",
+)
+'''
+text = text[:validate_block_start] + validate_transform + text[validate_block_end:]
+
 # Provider ContextSegment identities are cryptographic source/content hashes.
 # Reuse the workspace-pinned sha2 dependency rather than adding a second hashing
 # implementation or a provider-specific dependency version.
@@ -136,4 +164,4 @@ write(path, text)
 text = text.replace(insert_before, dep_patch, 1)
 
 path.write_text(text, encoding="utf-8")
-print("Stage-3 transformer preserves Rust escapes, structural markers, and workspace SHA-256 dependency")
+print("Stage-3 transformer uses structural runtime/provider boundaries and workspace SHA-256")
