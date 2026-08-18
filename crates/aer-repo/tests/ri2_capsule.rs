@@ -75,8 +75,8 @@ fn git<const N: usize>(repo: &Path, args: [&str; N]) {
 #[test]
 fn file_and_directory_capsules_are_bounded_derived_views_over_current_ri2() {
     let fixture = Fixture::new();
-    let mut index = RepositoryIndex::open(&fixture.index_path, IndexPolicy::default())
-        .expect("index");
+    let mut index =
+        RepositoryIndex::open(&fixture.index_path, IndexPolicy::default()).expect("index");
     let report = index.refresh(&fixture.repo).expect("refresh");
     let limits = RepositoryCapsuleLimits {
         max_symbols: 8,
