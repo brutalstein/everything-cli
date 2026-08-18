@@ -132,3 +132,13 @@ claimed_requirement_coverage[]
 ```
 
 Claims remain untrusted until verification.
+<!-- context-economy-v2-handoff -->
+## Context Economy V2: working-set deltas and compact coder packets
+
+The Handoff ABI remains the cross-boundary carrier for engineering state; Context Economy V2 does not introduce transcript memory. A task may derive an ephemeral `TaskWorkingSet` from existing Engineering State/Handoff facts and compare consecutive projections with `ContextDelta { added, changed, removed, invalidated }`. Evidence retains a stable logical identity while its content hash is unchanged. Changed or removed evidence is invalidated immediately rather than reused for cache savings.
+
+Coding-worker packets are intentionally machine-oriented. They should contain the smallest verified edit evidence needed for the current action, the user objective, the compact output contract, and only necessary blocked/new facts. The worker is not asked to echo repository context, old test logs, or unchanged source.
+
+Single-Agent Runtime 0.1 now uses the reusable compact edit ABI instead of whole-file `{ path, content }` replacement. `replace_range` binds a path to an exact base-file SHA-256 and exact segment SHA-256 plus original line coordinates; `create_file` is explicit; `delete_file` requires exact base identity. All operations are preflighted before mutation. Stale bases/ranges, overlapping ranges, conflicting operations, path traversal, protected `.git`/`.aer` paths, symlink targets, non-regular targets, and configured operation/byte-limit violations fail closed. Application is deterministic, result hashes are recorded, and already-applied mutations are rolled back if a later path mutation fails.
+
+The current tool-free runtime supplies exact edit evidence only for bounded verifier-declared edit targets, including base SHA-256 and per-line segment hashes for existing UTF-8 files. The provider may mutate only those evidence-backed paths. This keeps source truth in AER and lets a coding model emit changed text rather than entire files. It does not expose shell execution or claim completion of the future strong sandbox/tool-loop phase.

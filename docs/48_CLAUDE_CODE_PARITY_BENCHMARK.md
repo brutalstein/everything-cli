@@ -201,3 +201,9 @@ cargo run --locked -p aer-bench --bin aer-parity-benchmark -- \
 Without `--live` this compiles context, prints the selected evidence for every task, and makes no provider calls. Reviewing that output before spending money is the intended workflow: it is how the misplaced-lure defect in section 4 was found.
 
 Add `--live` to execute, `--out <path>` to write the JSON receipt, `--suite standard|full` for larger samples, and `--cache off` for the undiscounted phase. The harness never stores provider credentials and never inherits the operator's environment beyond a fixed allowlist.
+<!-- context-economy-v2-parity-offline-note -->
+## Context Economy V2 offline parity diagnostics
+
+The historical Claude Code parity pilot and its measured answers/usage remain unchanged. This Context Economy V2 pass does not fabricate replacement parity results and does not run the live parity suite.
+
+The parity harness continues to support its zero-provider-call path: without `--live`, it compiles the benchmark tasks' Context Packs and reports selected evidence/deterministic estimates while the provider-call count remains zero. Context Economy V2 uses that mode for structural diagnostics only. Those diagnostics can establish mandatory evidence coverage, selected tiers, stable/dynamic composition, redundancy, and context boundedness; they cannot establish Claude answer quality, real tokenizer counts, cache economics, latency, or dollar cost.
